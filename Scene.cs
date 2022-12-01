@@ -109,7 +109,7 @@ namespace advent
                 }
                 if (DateTime.Now.Month == 12)
                 {
-                    snowMachine.RainbowSnow = specialScene.RainbowSnow;
+                    snowMachine.RainbowSnow = false;
                 }
                 foreach (Flake flake in snowMachine.Flakes)
                 {
