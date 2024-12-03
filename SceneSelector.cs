@@ -32,6 +32,7 @@ namespace advent
             if (DateTime.Now.Month == 12)
             {
                 specialScenes.Add(santa = new FadingScene(new SantaScene()));
+                specialScenes.Add(santa = new AnimatedGifScene("advent-3.gif"));
             }
         }
 
