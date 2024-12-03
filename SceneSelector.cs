@@ -22,19 +22,25 @@ namespace advent
         {
             random = new Random();
             specialScenes = new List<ISpecialScene>();
-            specialScenes.Add(cat = new CatScene());
-            specialScenes.Add(rainbow = new RainbowSnowScene());
-            specialScenes.Add(bsod = new FadingScene(new ErrorScene()));
-            specialScenes.Add(spaceInvaders = new FadingScene(new SpaceInvadersScene()));
-            specialScenes.Add(ctmLogo = new FadingScene(new CtmLogoScene()));
-            specialScenes.Add(ctmBanner = new FadingScene(new CtmBannerScene()));
-
             if (DateTime.Now.Month == 12)
             {
                 specialScenes.Add(santa = new FadingScene(new SantaScene()));
                 specialScenes.Add(santa = new FadingScene(new AnimatedGifScene("christmas-1.gif")));
                 specialScenes.Add(santa = new FadingScene(new AnimatedGifScene("christmas-2.gif")));
                 specialScenes.Add(santa = new FadingScene(new AnimatedGifScene("christmas-3.gif")));
+                specialScenes.Add(santa = new FadingScene(new AnimatedGifScene("christmas-4.gif")));
+                specialScenes.Add(santa = new FadingScene(new AnimatedGifScene("christmas-5.gif")));
+                specialScenes.Add(santa = new FadingScene(new AnimatedGifScene("christmas-6.gif")));
+                specialScenes.Add(santa = new FadingScene(new AnimatedGifScene("christmas-7.gif")));
+            }
+            else
+            {
+                specialScenes.Add(cat = new CatScene());
+                specialScenes.Add(rainbow = new RainbowSnowScene());
+                specialScenes.Add(bsod = new FadingScene(new ErrorScene()));
+                specialScenes.Add(spaceInvaders = new FadingScene(new SpaceInvadersScene()));
+                specialScenes.Add(ctmLogo = new FadingScene(new CtmLogoScene()));
+                specialScenes.Add(ctmBanner = new FadingScene(new CtmBannerScene()));  
             }
         }
 
