@@ -86,10 +86,14 @@ namespace advent
             // Get the current frame
             var frame = gifImage.Frames.CloneFrame(currentFrameIndex);
 
-            // Resize the frame to fit the display if necessary
+            // Resize the frame to fit the display while maintaining aspect ratio
             if (frame.Width != img.Width || frame.Height != img.Height)
             {
-                frame.Mutate(x => x.Resize(img.Width, img.Height));
+                frame.Mutate(x => x.Resize(new ResizeOptions
+                {
+                    Size = new Size(img.Width, img.Height), // Target display size
+                    Mode = ResizeMode.Pad // Maintain aspect ratio, pad to fit
+                }));
             }
 
             // Draw the frame onto the provided image
