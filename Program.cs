@@ -1,12 +1,6 @@
 ﻿using System;
 using System.Threading;
-using System.Threading.Tasks;
-using Microsoft.AspNetCore.Hosting;
 using MatrixApi;
-using Microsoft.Extensions.Hosting;
-using System.Net.Sockets;
-using System.IO;
-using System.Globalization;
 
 namespace advent
 {
@@ -38,10 +32,7 @@ namespace advent
                 Console.WriteLine($"Enqueued scene: {specialScene.Name}");
             };
 
-            bool canReadKeys = Console.IsInputRedirected;
-
             var now = DateTime.UtcNow;
-            var startedAt = now;
             var prev = now;
             var elapsed = now - prev;
 
@@ -70,7 +61,6 @@ namespace advent
                 matrix.SwapOnVsync(canvas);
                 Thread.Sleep(20);
             }
-            Console.WriteLine("Exiting meerkats.");
         }
     }
 }

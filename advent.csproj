@@ -6,8 +6,8 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="SixLabors.ImageSharp" Version="3.1.6" />
-    <PackageReference Include="SixLabors.ImageSharp.Drawing" Version="2.1.4" />
+    <PackageReference Include="SixLabors.ImageSharp" Version="3.1.12" />
+    <PackageReference Include="SixLabors.ImageSharp.Drawing" Version="2.1.7" />
   </ItemGroup>
 
   <ItemGroup>
@@ -174,6 +174,7 @@
 
   <ItemGroup>
     <Compile Remove="WeatherForecast.cs" />
+    <Compile Remove="advent.Tests/**/*.cs" />
   </ItemGroup>
 
   <ItemGroup>

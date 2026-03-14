@@ -1,53 +1,73 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
-using System.Text.RegularExpressions;
 
 namespace advent
 {
-    public class SceneSelector
+    public sealed class SceneSelector
     {
-        private List<ISpecialScene> specialScenes;
-        private ISpecialScene cat;
-        private ISpecialScene santa;
-        private ISpecialScene rainbow;
-        private ISpecialScene spaceInvaders;
-        private ISpecialScene bsod;
-        private ISpecialScene ctmLogo;
-        private ISpecialScene ctmBanner;
-        private Random random;
+        private static readonly IReadOnlyList<SceneDefinition> DefaultSceneDefinitions = new[]
+        {
+            new SceneDefinition("Cat", static () => new CatScene()),
+            new SceneDefinition("Rainbow", static () => new RainbowSnowScene()),
+            new SceneDefinition("Game of Life", static () => new GameOfLifeScene()),
+            new SceneDefinition("Starfield Parallax", static () => new StarfieldParallaxScene()),
+            new SceneDefinition("Plasma SDF", static () => new PlasmaSdfScene()),
+            new SceneDefinition("Error", static () => new FadingScene(new ErrorScene())),
+            new SceneDefinition("Space Invaders", static () => new FadingScene(new SpaceInvadersScene())),
+            new SceneDefinition("CTM Logo", static () => new FadingScene(new CtmLogoScene())),
+            new SceneDefinition("CTM Banner", static () => new FadingScene(new CtmBannerScene()))
+        };
+
+        private static readonly IReadOnlyList<SceneDefinition> ChristmasSceneDefinitions = new[]
+        {
+            new SceneDefinition("Santa", static () => new FadingScene(new SantaScene())),
+            new SceneDefinition("Animated GIF", static () => new FadingScene(new AnimatedGifScene("christmas-1.gif"))),
+            new SceneDefinition("Animated GIF", static () => new FadingScene(new AnimatedGifScene("christmas-2.gif"))),
+            new SceneDefinition("Animated GIF", static () => new FadingScene(new AnimatedGifScene("christmas-3.gif"))),
+            new SceneDefinition("Animated GIF", static () => new FadingScene(new AnimatedGifScene("christmas-4.gif"))),
+            new SceneDefinition("Animated GIF", static () => new FadingScene(new AnimatedGifScene("christmas-5.gif"))),
+            new SceneDefinition("Animated GIF", static () => new FadingScene(new AnimatedGifScene("christmas-6.gif"))),
+            new SceneDefinition("Animated GIF", static () => new FadingScene(new AnimatedGifScene("christmas-7.gif")))
+        };
+
+        private readonly IReadOnlyList<SceneDefinition> sceneDefinitions;
+        private readonly Func<int, int> nextIndex;
 
         public SceneSelector()
+            : this(DateTime.Now.Month)
         {
-            random = new Random();
-            specialScenes = new List<ISpecialScene>();
-            if (DateTime.Now.Month == 12)
-            {
-                specialScenes.Add(santa = new FadingScene(new SantaScene()));
-                specialScenes.Add(santa = new FadingScene(new AnimatedGifScene("christmas-1.gif")));
-                specialScenes.Add(santa = new FadingScene(new AnimatedGifScene("christmas-2.gif")));
-                specialScenes.Add(santa = new FadingScene(new AnimatedGifScene("christmas-3.gif")));
-                specialScenes.Add(santa = new FadingScene(new AnimatedGifScene("christmas-4.gif")));
-                specialScenes.Add(santa = new FadingScene(new AnimatedGifScene("christmas-5.gif")));
-                specialScenes.Add(santa = new FadingScene(new AnimatedGifScene("christmas-6.gif")));
-                specialScenes.Add(santa = new FadingScene(new AnimatedGifScene("christmas-7.gif")));
-            }
-            else
-            {
-                specialScenes.Add(cat = new CatScene());
-                specialScenes.Add(rainbow = new RainbowSnowScene());
-                specialScenes.Add(bsod = new FadingScene(new ErrorScene()));
-                specialScenes.Add(spaceInvaders = new FadingScene(new SpaceInvadersScene()));
-                specialScenes.Add(ctmLogo = new FadingScene(new CtmLogoScene()));
-                specialScenes.Add(ctmBanner = new FadingScene(new CtmBannerScene()));  
-            }
         }
+
+        public SceneSelector(int month, Func<int, int> nextIndex = null)
+        {
+            if (month is < 1 or > 12)
+            {
+                throw new ArgumentOutOfRangeException(nameof(month), month, "Month must be in the range 1-12.");
+            }
+
+            sceneDefinitions = month == 12
+                ? ChristmasSceneDefinitions
+                : DefaultSceneDefinitions;
+
+            this.nextIndex = nextIndex ?? Random.Shared.Next;
+            AvailableSceneNames = sceneDefinitions.Select(static x => x.Name).ToArray();
+        }
+
+        public IReadOnlyList<string> AvailableSceneNames { get; }
 
         public ISpecialScene GetScene()
         {
-                int index = random.Next(0, specialScenes.Count);
-                return specialScenes[index];
+            var index = nextIndex(sceneDefinitions.Count);
+            if ((uint)index >= (uint)sceneDefinitions.Count)
+            {
+                throw new InvalidOperationException(
+                    $"Scene index provider returned {index}, but valid range is 0..{sceneDefinitions.Count - 1}.");
+            }
+
+            return sceneDefinitions[index].Create();
         }
+
+        private sealed record SceneDefinition(string Name, Func<ISpecialScene> Create);
     }
 }
