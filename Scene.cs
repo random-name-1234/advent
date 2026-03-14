@@ -12,6 +12,7 @@ namespace advent
     public class Scene
     {
         private TimeSpan timeToNextRandomScene;
+        private bool hasPendingSceneRequest;
 
         public Image<Rgba32> Img { get; set; }
 
@@ -22,6 +23,7 @@ namespace advent
         private Font font;
         private String timeToDisplay;
         private bool drawSnow;
+        public bool ContinuousSceneRequests { get; set; }
 
         public event EventHandler NewSceneWanted;
 
@@ -33,8 +35,10 @@ namespace advent
         public Scene()
         {
             timeToNextRandomScene = TimeSpan.FromMinutes(new Random().NextDouble() * 1);
+            hasPendingSceneRequest = false;
             SpecialScenes = new ConcurrentQueue<ISpecialScene>();
             specialScene = null;
+            ContinuousSceneRequests = false;
 
             Img = new Image<Rgba32>(64, 32);
             font = new Font(fontFamily, 16);
@@ -61,10 +65,11 @@ namespace advent
             // Prepare special scene.
             if (specialScene == null)
             {
-                if (SpecialScenes.Count > 0)
+                if (SpecialScenes.TryDequeue(out var queuedScene))
                 {
                     Console.WriteLine("Found special scene on queue");
-                    SpecialScenes.TryDequeue(out specialScene);
+                    specialScene = queuedScene;
+                    hasPendingSceneRequest = false;
                     specialScene.Activate();
                 }
             }
@@ -82,11 +87,18 @@ namespace advent
                 }
             }
 
-            timeToNextRandomScene -= timeSpan;
-            if (timeToNextRandomScene < TimeSpan.Zero)
+            if (ContinuousSceneRequests)
             {
-                timeToNextRandomScene = TimeSpan.FromMinutes(new Random().NextDouble() * 2);
-                NewSceneWanted?.Invoke(this, EventArgs.Empty);
+                RequestSceneIfNeeded();
+            }
+            else
+            {
+                timeToNextRandomScene -= timeSpan;
+                if (timeToNextRandomScene < TimeSpan.Zero)
+                {
+                    timeToNextRandomScene = TimeSpan.FromMinutes(Random.Shared.NextDouble() * 2);
+                    NewSceneWanted?.Invoke(this, EventArgs.Empty);
+                }
             }
 
             if (!hidesTime)
@@ -116,6 +128,23 @@ namespace advent
                     Img.Mutate(x => x.Fill(flake.Color, new EllipsePolygon(flake.Position.X, 32f - flake.Position.Y, flake.Width, flake.Width)));
                 }
             }
+        }
+
+        private void RequestSceneIfNeeded()
+        {
+            if (specialScene != null || !SpecialScenes.IsEmpty)
+            {
+                hasPendingSceneRequest = false;
+                return;
+            }
+
+            if (hasPendingSceneRequest)
+            {
+                return;
+            }
+
+            hasPendingSceneRequest = true;
+            NewSceneWanted?.Invoke(this, EventArgs.Empty);
         }
     }
 }

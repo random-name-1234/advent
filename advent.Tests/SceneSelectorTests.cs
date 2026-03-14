@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using Xunit;
 
@@ -50,6 +51,35 @@ namespace advent.Tests
             var sut = new SceneSelector(11, _ => 99);
 
             Assert.Throws<InvalidOperationException>(() => sut.GetScene());
+        }
+
+        [Fact]
+        public void AllSceneNames_ContainsDefaultAndChristmasScenes()
+        {
+            var sut = new SceneSelector(11);
+
+            Assert.Equal(17, sut.AllSceneNames.Count);
+            Assert.Contains("Game of Life", sut.AllSceneNames);
+            Assert.Contains("Starfield Parallax", sut.AllSceneNames);
+            Assert.Contains("Plasma SDF", sut.AllSceneNames);
+            Assert.Contains("Santa", sut.AllSceneNames);
+            Assert.Equal(7, sut.AllSceneNames.Count(name => name == "Animated GIF"));
+        }
+
+        [Fact]
+        public void GetNextSceneNameInCycle_ReturnsAllScenesInOrder_ThenWraps()
+        {
+            var sut = new SceneSelector(11);
+
+            var cycled = new List<string>();
+            for (var i = 0; i < sut.AllSceneNames.Count + 2; i++)
+            {
+                cycled.Add(sut.GetNextSceneNameInCycle());
+            }
+
+            Assert.Equal(sut.AllSceneNames, cycled.Take(sut.AllSceneNames.Count));
+            Assert.Equal(sut.AllSceneNames[0], cycled[^2]);
+            Assert.Equal(sut.AllSceneNames[1], cycled[^1]);
         }
     }
 }

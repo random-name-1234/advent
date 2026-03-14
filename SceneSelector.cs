@@ -32,7 +32,9 @@ namespace advent
         };
 
         private readonly IReadOnlyList<SceneDefinition> sceneDefinitions;
+        private readonly IReadOnlyList<SceneDefinition> cycleSceneDefinitions;
         private readonly Func<int, int> nextIndex;
+        private int cycleIndex;
 
         public SceneSelector()
             : this(DateTime.Now.Month)
@@ -49,12 +51,16 @@ namespace advent
             sceneDefinitions = month == 12
                 ? ChristmasSceneDefinitions
                 : DefaultSceneDefinitions;
+            cycleSceneDefinitions = DefaultSceneDefinitions.Concat(ChristmasSceneDefinitions).ToArray();
 
             this.nextIndex = nextIndex ?? Random.Shared.Next;
             AvailableSceneNames = sceneDefinitions.Select(static x => x.Name).ToArray();
+            AllSceneNames = cycleSceneDefinitions.Select(static x => x.Name).ToArray();
+            cycleIndex = 0;
         }
 
         public IReadOnlyList<string> AvailableSceneNames { get; }
+        public IReadOnlyList<string> AllSceneNames { get; }
 
         public ISpecialScene GetScene()
         {
@@ -66,6 +72,30 @@ namespace advent
             }
 
             return sceneDefinitions[index].Create();
+        }
+
+        public string GetNextSceneNameInCycle()
+        {
+            var scene = GetNextSceneDefinitionInCycle();
+            return scene.Name;
+        }
+
+        public ISpecialScene GetNextSceneInCycle()
+        {
+            var scene = GetNextSceneDefinitionInCycle();
+            return scene.Create();
+        }
+
+        private SceneDefinition GetNextSceneDefinitionInCycle()
+        {
+            if (cycleSceneDefinitions.Count == 0)
+            {
+                throw new InvalidOperationException("No scenes are available for cycling.");
+            }
+
+            var selectedScene = cycleSceneDefinitions[cycleIndex];
+            cycleIndex = (cycleIndex + 1) % cycleSceneDefinitions.Count;
+            return selectedScene;
         }
 
         private sealed record SceneDefinition(string Name, Func<ISpecialScene> Create);

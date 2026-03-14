@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Linq;
 using System.Threading;
 using MatrixApi;
 
@@ -9,7 +10,9 @@ namespace advent
 
         static void Main(string[] args)
         {
+            var isTestMode = args.Any(static arg => string.Equals(arg, "--test-mode", StringComparison.OrdinalIgnoreCase));
             Console.WriteLine("Starting meerkats...");
+            Console.WriteLine(isTestMode ? "Scene mode: TEST (cycle all scenes)." : "Scene mode: NORMAL (random seasonal scenes).");
 
             var matrix = new RGBLedMatrix(new RGBLedMatrixOptions
             {
@@ -22,15 +25,30 @@ namespace advent
             var canvas = matrix.CreateOffscreenCanvas();
 
 
-            var scene = new Scene();
+            var scene = new Scene
+            {
+                ContinuousSceneRequests = isTestMode
+            };
 
             var sceneSelector = new SceneSelector();
-            scene.NewSceneWanted += (s, e) =>
+            void EnqueueNextScene()
             {
-                var specialScene = sceneSelector.GetScene();
+                var specialScene = isTestMode
+                    ? sceneSelector.GetNextSceneInCycle()
+                    : sceneSelector.GetScene();
                 scene.SpecialScenes.Enqueue(specialScene);
                 Console.WriteLine($"Enqueued scene: {specialScene.Name}");
+            }
+
+            scene.NewSceneWanted += (s, e) =>
+            {
+                EnqueueNextScene();
             };
+
+            if (isTestMode)
+            {
+                EnqueueNextScene();
+            }
 
             var now = DateTime.UtcNow;
             var prev = now;
