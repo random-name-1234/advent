@@ -33,6 +33,7 @@ public sealed class SceneSelector
         new SceneDefinition("Matrix Rain", static () => new FadingScene(new MatrixRainScene())),
         new SceneDefinition("Synthwave Grid", static () => new FadingScene(new SynthwaveGridScene())),
         new SceneDefinition("Orbital", static () => new FadingScene(new OrbitalScene())),
+        new SceneDefinition("Fireworks", static () => new FadingScene(new FireworksScene())),
         new SceneDefinition("Error", static () => new FadingScene(new ErrorScene())),
         new SceneDefinition("Space Invaders", static () => new FadingScene(new SpaceInvadersScene()))
     ];

@@ -14,6 +14,7 @@ public class ProceduralScenesTests
         yield return new object[] { new MatrixRainScene(), true };
         yield return new object[] { new SynthwaveGridScene(), true };
         yield return new object[] { new OrbitalScene(), true };
+        yield return new object[] { new FireworksScene(), true };
         yield return new object[] { new WarpCoreScene(), false };
         yield return new object[] { new WarpCoreScene(WarpCorePalettePreset.RedAlert), false };
     }
