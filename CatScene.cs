@@ -26,8 +26,8 @@ public class CatScene : ISpecialScene
     {
         IsActive = false;
         HidesTime = false;
-        face = Image.Load<Rgba32>("cat2-face.png");
-        eyes = Image.Load<Rgba32>("cat2-eyes.png");
+        face = Image.Load<Rgba32>(AssetPaths.Cat("cat2-face.png"));
+        eyes = Image.Load<Rgba32>(AssetPaths.Cat("cat2-eyes.png"));
     }
 
     public bool IsActive { get; private set; }

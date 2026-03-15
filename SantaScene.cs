@@ -25,9 +25,9 @@ public class SantaScene : ISpecialScene
     {
         IsActive = false;
         HidesTime = false;
-        santa = Image.Load<Rgba32>(SantaFileName);
-        legs1 = Image.Load<Rgba32>(Legs1FileName);
-        legs2 = Image.Load<Rgba32>(Legs2FileName);
+        santa = Image.Load<Rgba32>(AssetPaths.Santa(SantaFileName));
+        legs1 = Image.Load<Rgba32>(AssetPaths.Santa(Legs1FileName));
+        legs2 = Image.Load<Rgba32>(AssetPaths.Santa(Legs2FileName));
     }
 
     public bool IsActive { get; private set; }

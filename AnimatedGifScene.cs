@@ -11,16 +11,18 @@ public class AnimatedGifScene : ISpecialScene
     private static readonly TimeSpan sceneDuration = TimeSpan.FromSeconds(10);
     private readonly List<TimeSpan> frameDurations;
     private readonly Image<Rgba32> gifImage;
+    private readonly string name;
     private readonly TimeSpan totalDuration;
     private TimeSpan currentFrameElapsed;
     private int currentFrameIndex;
 
     private TimeSpan elapsedThisScene;
 
-    public AnimatedGifScene(string gifFilePath)
+    public AnimatedGifScene(string gifFilePath, string? sceneName = null)
     {
         IsActive = false;
         HidesTime = false;
+        name = string.IsNullOrWhiteSpace(sceneName) ? "Animated GIF" : sceneName;
 
         // Load the animated GIF
         gifImage = Image.Load<Rgba32>(gifFilePath);
@@ -43,7 +45,7 @@ public class AnimatedGifScene : ISpecialScene
     public bool HidesTime { get; private set; }
 
     public bool RainbowSnow => false;
-    public string Name => "Animated GIF";
+    public string Name => name;
 
     public void Activate()
     {

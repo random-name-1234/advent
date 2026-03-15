@@ -19,8 +19,8 @@ public class ErrorScene : ISpecialScene
     {
         IsActive = false;
         HidesTime = false;
-        error = Image.Load<Rgba32>("error.png");
-        sadFace = Image.Load<Rgba32>("sad-face.png");
+        error = Image.Load<Rgba32>(AssetPaths.Error("error.png"));
+        sadFace = Image.Load<Rgba32>(AssetPaths.Error("sad-face.png"));
     }
 
     public bool IsActive { get; private set; }

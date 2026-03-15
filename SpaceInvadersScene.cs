@@ -69,10 +69,10 @@ public class SpaceInvadersScene : ISpecialScene
         blocks = new bool[64, 32];
 
         IsActive = false;
-        player = Image.Load<Rgba32>("space-invaders-player.png");
-        invader1 = Image.Load<Rgba32>("space-invaders-invader1.png");
-        exploding1 = Image.Load<Rgba32>("space-invaders-exploding1.png");
-        blocksTemplate = Image.Load<Rgba32>("space-invaders-blocks.png");
+        player = Image.Load<Rgba32>(AssetPaths.SpaceInvaders("space-invaders-player.png"));
+        invader1 = Image.Load<Rgba32>(AssetPaths.SpaceInvaders("space-invaders-invader1.png"));
+        exploding1 = Image.Load<Rgba32>(AssetPaths.SpaceInvaders("space-invaders-exploding1.png"));
+        blocksTemplate = Image.Load<Rgba32>(AssetPaths.SpaceInvaders("space-invaders-blocks.png"));
         invaders = new List<Invader>();
         missiles = new List<Missile>();
 

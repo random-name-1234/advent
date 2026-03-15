@@ -39,6 +39,40 @@ Optional:
 - `RGBMATRIX_REF=<branch-or-tag>` to build a specific ref
 - `RGBMATRIX_REPO_URL=<git-url>` to use a fork
 
+## GitHub Actions Deploy (Pi Native)
+
+Deployment is now handled by GitHub Actions running on a self-hosted runner on the Pi.
+
+Included workflows:
+
+- `.github/workflows/ci.yml`: build + test on PRs and pushes to `main`
+- `.github/workflows/deploy-pi.yml`: deploy on push to `main` and manual dispatch
+
+One-time Pi setup:
+
+1. Register the Pi as a self-hosted runner for this repo with labels:
+   `self-hosted`, `linux`, `arm64`, `advent`.
+2. Ensure runner user can run passwordless sudo for `systemctl` and writing unit files.
+3. Ensure `dotnet` and `git` are installed on the Pi.
+
+Deploy behavior (from `scripts/deploy-on-pi.sh`):
+
+- `dotnet publish -c Release -r linux-arm64` on Pi
+- stage source to `~/advent-next-src` using `git archive`
+- stage publish output to `~/advent-next-app`
+- promote to `~/advent-src` and `~/advent-app` with timestamped backups
+- write `/etc/systemd/system/advent.service`
+- `systemctl daemon-reload`, `enable`, and `restart`
+
+Optional repo variables for deploy customization:
+
+- `ADVENT_LED_ARGS`
+- `ADVENT_SERVICE_UNIT`
+- `ADVENT_STABLE_APP_DIR`
+- `ADVENT_STABLE_SRC_DIR`
+- `ADVENT_NEXT_APP_DIR`
+- `ADVENT_NEXT_SRC_DIR`
+
 ## Run
 
 Important: pass app args after `--` so they are forwarded to the program/native matrix options.
@@ -70,6 +104,13 @@ dotnet run -c Release --no-launch-profile -- --simulator --test-mode
 ## Notes
 
 - Scene selection is seasonal in normal mode (December gets the Christmas scene set).
+- Image scenes are loaded automatically from `advent-images/`:
+    - files in `advent-images/` are available all year
+    - files in `advent-images/<month>/` (for example `advent-images/12/`) are only loaded in that month
+    - `.gif` files use animated playback scenes
+    - wide images use scrolling banner scenes
+    - other static images use fade-in/out scenes
+- Core scene assets (cat/error/santa/space-invaders sprites) are stored under `assets/`.
 - `--test-mode` ignores random seasonal selection and continuously cycles the full scene catalog.
 - `--simulator` renders a live ANSI/terminal preview of the 64x32 output, useful on macOS while developing.
 - Hardware/driver flag details (`--led-*`) are defined by `rpi-rgb-led-matrix`; refer to upstream docs for full options.

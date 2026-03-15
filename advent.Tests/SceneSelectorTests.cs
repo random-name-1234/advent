@@ -1,3 +1,6 @@
+using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.PixelFormats;
+using System.Reflection;
 using Xunit;
 
 namespace advent.Tests;
@@ -12,75 +15,216 @@ public class SceneSelectorTests
     }
 
     [Fact]
-    public void Constructor_UsesChristmasScenes_InDecember()
+    public void Constructor_LoadsRootAndMonthImageScenes_InDecember()
     {
-        var sut = new SceneSelector(12);
+        var imageDirectory = CreateImageDirectory();
+        try
+        {
+            CreatePng(Path.Combine(imageDirectory, "always-logo.png"), 32, 32);
+            CreateGif(Path.Combine(imageDirectory, "always-gif.gif"));
+            Directory.CreateDirectory(Path.Combine(imageDirectory, "12"));
+            CreateGif(Path.Combine(imageDirectory, "12", "december-gif.gif"));
 
-        Assert.Equal(8, sut.AvailableSceneNames.Count);
-        Assert.Equal("Santa", sut.AvailableSceneNames[0]);
-        Assert.All(sut.AvailableSceneNames.Skip(1), name => Assert.Equal("Animated GIF", name));
+            var sut = new SceneSelector(12, imageSceneDirectory: imageDirectory);
+
+            Assert.Contains("Santa", sut.AvailableSceneNames);
+            Assert.Contains("always-logo", sut.AvailableSceneNames);
+            Assert.Contains("always-gif", sut.AvailableSceneNames);
+            Assert.Contains("december-gif", sut.AvailableSceneNames);
+        }
+        finally
+        {
+            Directory.Delete(imageDirectory, true);
+        }
     }
 
     [Fact]
-    public void Constructor_UsesDefaultScenes_OutsideDecember()
+    public void Constructor_LoadsRootImageScenes_OutsideDecember()
     {
-        var sut = new SceneSelector(11);
-
-        var expected = new[]
+        var imageDirectory = CreateImageDirectory();
+        try
         {
-            "Weather",
-            "Cat",
-            "Rainbow",
-            "Game of Life",
-            "Starfield Parallax",
-            "Plasma SDF",
-            "Matrix Rain",
-            "Synthwave Grid",
-            "Orbital",
-            "Error",
-            "Space Invaders",
-            "CTM Logo",
-            "CTM Banner"
-        };
+            CreatePng(Path.Combine(imageDirectory, "always-logo.png"), 32, 32);
+            Directory.CreateDirectory(Path.Combine(imageDirectory, "12"));
+            CreateGif(Path.Combine(imageDirectory, "12", "december-gif.gif"));
 
-        Assert.Equal(expected, sut.AvailableSceneNames);
+            var sut = new SceneSelector(11, imageSceneDirectory: imageDirectory);
+
+            Assert.Contains("always-logo", sut.AvailableSceneNames);
+            Assert.DoesNotContain("december-gif", sut.AvailableSceneNames);
+            Assert.DoesNotContain("Santa", sut.AvailableSceneNames);
+            Assert.Equal(12, sut.AvailableSceneNames.Count);
+        }
+        finally
+        {
+            Directory.Delete(imageDirectory, true);
+        }
+    }
+
+    [Fact]
+    public void Constructor_MapsWideStaticImagesToScrollingScene()
+    {
+        var imageDirectory = CreateImageDirectory();
+        try
+        {
+            CreatePng(Path.Combine(imageDirectory, "wide_banner.png"), 180, 32);
+            var sut = new SceneSelector(11, count => count - 1, imageSceneDirectory: imageDirectory);
+
+            var scene = sut.GetScene();
+            var mainScene = UnwrapMainScene(scene);
+
+            Assert.IsType<ScrollingImageScene>(mainScene);
+        }
+        finally
+        {
+            Directory.Delete(imageDirectory, true);
+        }
+    }
+
+    [Fact]
+    public void Constructor_MapsSquareStaticImagesToStaticScene()
+    {
+        var imageDirectory = CreateImageDirectory();
+        try
+        {
+            CreatePng(Path.Combine(imageDirectory, "logo_square.png"), 32, 32);
+            var sut = new SceneSelector(11, count => count - 1, imageSceneDirectory: imageDirectory);
+
+            var scene = sut.GetScene();
+            var mainScene = UnwrapMainScene(scene);
+
+            Assert.IsType<StaticImageScene>(mainScene);
+        }
+        finally
+        {
+            Directory.Delete(imageDirectory, true);
+        }
+    }
+
+    [Fact]
+    public void Constructor_MapsGifImagesToAnimatedGifScene()
+    {
+        var imageDirectory = CreateImageDirectory();
+        try
+        {
+            CreateGif(Path.Combine(imageDirectory, "animated_name.gif"));
+            var sut = new SceneSelector(11, count => count - 1, imageSceneDirectory: imageDirectory);
+
+            var scene = sut.GetScene();
+            var mainScene = UnwrapMainScene(scene);
+
+            Assert.IsType<AnimatedGifScene>(mainScene);
+            Assert.Equal("animated name", mainScene.Name);
+        }
+        finally
+        {
+            Directory.Delete(imageDirectory, true);
+        }
+    }
+
+    [Fact]
+    public void Constructor_SkipsInvalidImageFiles()
+    {
+        var imageDirectory = CreateImageDirectory();
+        try
+        {
+            File.WriteAllText(Path.Combine(imageDirectory, "broken.png"), "not-a-real-image");
+            var sut = new SceneSelector(11, imageSceneDirectory: imageDirectory);
+
+            Assert.DoesNotContain("broken", sut.AvailableSceneNames);
+        }
+        finally
+        {
+            Directory.Delete(imageDirectory, true);
+        }
     }
 
     [Fact]
     public void GetScene_ThrowsWhenIndexProviderReturnsOutOfRange()
     {
-        var sut = new SceneSelector(11, _ => 99);
-
-        Assert.Throws<InvalidOperationException>(() => sut.GetScene());
+        var imageDirectory = CreateImageDirectory();
+        try
+        {
+            var sut = new SceneSelector(11, _ => 99, imageSceneDirectory: imageDirectory);
+            Assert.Throws<InvalidOperationException>(() => sut.GetScene());
+        }
+        finally
+        {
+            Directory.Delete(imageDirectory, true);
+        }
     }
 
     [Fact]
-    public void AllSceneNames_ContainsDefaultAndChristmasScenes()
+    public void AllSceneNames_ContainsLoadedScenes()
     {
-        var sut = new SceneSelector(11);
+        var imageDirectory = CreateImageDirectory();
+        try
+        {
+            CreatePng(Path.Combine(imageDirectory, "always-logo.png"), 32, 32);
+            var sut = new SceneSelector(11, imageSceneDirectory: imageDirectory);
 
-        Assert.Equal(21, sut.AllSceneNames.Count);
-        Assert.Contains("Game of Life", sut.AllSceneNames);
-        Assert.Contains("Starfield Parallax", sut.AllSceneNames);
-        Assert.Contains("Plasma SDF", sut.AllSceneNames);
-        Assert.Contains("Matrix Rain", sut.AllSceneNames);
-        Assert.Contains("Weather", sut.AllSceneNames);
-        Assert.Contains("Synthwave Grid", sut.AllSceneNames);
-        Assert.Contains("Orbital", sut.AllSceneNames);
-        Assert.Contains("Santa", sut.AllSceneNames);
-        Assert.Equal(7, sut.AllSceneNames.Count(name => name == "Animated GIF"));
+            Assert.Equal(sut.AvailableSceneNames, sut.AllSceneNames);
+            Assert.Contains("Game of Life", sut.AllSceneNames);
+            Assert.Contains("Starfield Parallax", sut.AllSceneNames);
+            Assert.Contains("Plasma SDF", sut.AllSceneNames);
+            Assert.Contains("Matrix Rain", sut.AllSceneNames);
+            Assert.Contains("Weather", sut.AllSceneNames);
+            Assert.Contains("Synthwave Grid", sut.AllSceneNames);
+            Assert.Contains("Orbital", sut.AllSceneNames);
+            Assert.Contains("always-logo", sut.AllSceneNames);
+        }
+        finally
+        {
+            Directory.Delete(imageDirectory, true);
+        }
     }
 
     [Fact]
     public void GetNextSceneNameInCycle_ReturnsAllScenesInOrder_ThenWraps()
     {
-        var sut = new SceneSelector(11);
+        var imageDirectory = CreateImageDirectory();
+        try
+        {
+            CreatePng(Path.Combine(imageDirectory, "always-logo.png"), 32, 32);
+            var sut = new SceneSelector(11, imageSceneDirectory: imageDirectory);
 
-        var cycled = new List<string>();
-        for (var i = 0; i < sut.AllSceneNames.Count + 2; i++) cycled.Add(sut.GetNextSceneNameInCycle());
+            var cycled = new List<string>();
+            for (var i = 0; i < sut.AllSceneNames.Count + 2; i++) cycled.Add(sut.GetNextSceneNameInCycle());
 
-        Assert.Equal(sut.AllSceneNames, cycled.Take(sut.AllSceneNames.Count));
-        Assert.Equal(sut.AllSceneNames[0], cycled[^2]);
-        Assert.Equal(sut.AllSceneNames[1], cycled[^1]);
+            Assert.Equal(sut.AllSceneNames, cycled.Take(sut.AllSceneNames.Count));
+            Assert.Equal(sut.AllSceneNames[0], cycled[^2]);
+            Assert.Equal(sut.AllSceneNames[1], cycled[^1]);
+        }
+        finally
+        {
+            Directory.Delete(imageDirectory, true);
+        }
+    }
+
+    private static string CreateImageDirectory()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), $"advent-images-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(directory);
+        return directory;
+    }
+
+    private static void CreatePng(string filePath, int width, int height)
+    {
+        using var image = new Image<Rgba32>(width, height);
+        image.Save(filePath);
+    }
+
+    private static void CreateGif(string filePath)
+    {
+        using var image = new Image<Rgba32>(4, 4);
+        image.SaveAsGif(filePath);
+    }
+
+    private static ISpecialScene UnwrapMainScene(ISpecialScene scene)
+    {
+        var fadingScene = Assert.IsType<FadingScene>(scene);
+        var field = typeof(FadingScene).GetField("mainScene", BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.NotNull(field);
+        return Assert.IsAssignableFrom<ISpecialScene>(field!.GetValue(fadingScene));
     }
 }
