@@ -321,7 +321,6 @@ namespace advent
         private class Invader
         {
             TimeSpan timeToFire;
-            private readonly Random random;
             private readonly Point startPosition;
             private static TimeSpan explodeDuration = TimeSpan.FromSeconds(0.5);
             private TimeSpan explodeTimeLeft;
@@ -337,7 +336,6 @@ namespace advent
             public Invader(Point startPosition)
             {
                 CanBeRemoved = false;
-                random = new Random();
                 IsAlive = true;
                 this.startPosition = startPosition;
                 Offset = new Point(0, 0);
@@ -347,7 +345,7 @@ namespace advent
 
             private void ResetTimeToFire()
             {
-                timeToFire = TimeSpan.FromSeconds(5.0 + 5.0 * random.NextDouble());
+                timeToFire = TimeSpan.FromSeconds(5.0 + 5.0 * Random.Shared.NextDouble());
             }
 
             public void Elapsed(TimeSpan timeSpan)

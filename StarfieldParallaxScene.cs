@@ -28,7 +28,7 @@ namespace advent
         public void Activate()
         {
             elapsedThisScene = TimeSpan.Zero;
-            HidesTime = false;
+            HidesTime = true;
             IsActive = true;
             stars.Clear();
 

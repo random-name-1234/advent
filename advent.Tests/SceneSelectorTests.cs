@@ -36,6 +36,10 @@ namespace advent.Tests
                 "Game of Life",
                 "Starfield Parallax",
                 "Plasma SDF",
+                "Matrix Rain",
+                "Synthwave Grid",
+                "Orbital",
+                "Warp Core",
                 "Error",
                 "Space Invaders",
                 "CTM Logo",
@@ -58,10 +62,14 @@ namespace advent.Tests
         {
             var sut = new SceneSelector(11);
 
-            Assert.Equal(17, sut.AllSceneNames.Count);
+            Assert.Equal(21, sut.AllSceneNames.Count);
             Assert.Contains("Game of Life", sut.AllSceneNames);
             Assert.Contains("Starfield Parallax", sut.AllSceneNames);
             Assert.Contains("Plasma SDF", sut.AllSceneNames);
+            Assert.Contains("Matrix Rain", sut.AllSceneNames);
+            Assert.Contains("Synthwave Grid", sut.AllSceneNames);
+            Assert.Contains("Orbital", sut.AllSceneNames);
+            Assert.Contains("Warp Core", sut.AllSceneNames);
             Assert.Contains("Santa", sut.AllSceneNames);
             Assert.Equal(7, sut.AllSceneNames.Count(name => name == "Animated GIF"));
         }

@@ -34,7 +34,7 @@ namespace advent
             elapsedThisScene = TimeSpan.Zero;
             simulationAccumulator = TimeSpan.Zero;
             stableGenerations = 0;
-            HidesTime = false;
+            HidesTime = true;
             IsActive = true;
             SeedGrid();
         }
