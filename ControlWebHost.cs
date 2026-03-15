@@ -4,7 +4,6 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.FileProviders;
 
 namespace advent;
 
@@ -27,16 +26,10 @@ internal static class ControlWebHost
 
         var app = builder.Build();
 
-        if (Directory.Exists(webRoot))
+        if (hasWebUi)
         {
-            app.UseDefaultFiles(new DefaultFilesOptions
-            {
-                FileProvider = new PhysicalFileProvider(webRoot)
-            });
-            app.UseStaticFiles(new StaticFileOptions
-            {
-                FileProvider = new PhysicalFileProvider(webRoot)
-            });
+            app.MapGet("/", () => Results.File(indexPath, "text/html; charset=utf-8"));
+            app.MapGet("/index.html", () => Results.File(indexPath, "text/html; charset=utf-8"));
         }
 
         if (!string.IsNullOrWhiteSpace(options.Token))
