@@ -7,18 +7,20 @@ namespace advent;
 
 public class StaticImageScene : ISpecialScene
 {
-    private static readonly TimeSpan SceneDuration = TimeSpan.FromSeconds(6);
+    private static readonly TimeSpan DefaultSceneDuration = TimeSpan.FromSeconds(6);
     private static readonly TimeSpan FadeDuration = TimeSpan.FromSeconds(0.5);
 
     private readonly Image<Rgba32> image;
     private readonly string name;
+    private readonly TimeSpan sceneDuration;
     private readonly Point topLeft = new(0, 0);
     private TimeSpan elapsedThisScene;
 
-    public StaticImageScene(string imageFilePath, string? sceneName = null)
+    public StaticImageScene(string imageFilePath, string? sceneName = null, TimeSpan? sceneDurationOverride = null)
     {
         image = Image.Load<Rgba32>(imageFilePath);
         name = string.IsNullOrWhiteSpace(sceneName) ? "Static Image" : sceneName;
+        sceneDuration = sceneDurationOverride is { } duration && duration > TimeSpan.Zero ? duration : DefaultSceneDuration;
     }
 
     public bool IsActive { get; private set; }
@@ -36,7 +38,7 @@ public class StaticImageScene : ISpecialScene
     public void Elapsed(TimeSpan timeSpan)
     {
         elapsedThisScene += timeSpan;
-        if (elapsedThisScene > SceneDuration)
+        if (elapsedThisScene > sceneDuration)
         {
             IsActive = false;
             HidesTime = false;
@@ -50,10 +52,10 @@ public class StaticImageScene : ISpecialScene
         double fraction;
         if (elapsedThisScene < FadeDuration)
             fraction = elapsedThisScene.TotalMilliseconds / FadeDuration.TotalMilliseconds;
-        else if (elapsedThisScene < SceneDuration - FadeDuration)
+        else if (elapsedThisScene < sceneDuration - FadeDuration)
             fraction = 1.0;
         else
-            fraction = (SceneDuration - elapsedThisScene).TotalMilliseconds / FadeDuration.TotalMilliseconds;
+            fraction = (sceneDuration - elapsedThisScene).TotalMilliseconds / FadeDuration.TotalMilliseconds;
 
         fraction = Math.Min(1.0, Math.Max(0.0, fraction));
         img.Mutate(x => x.DrawImage(image, topLeft, (float)fraction));

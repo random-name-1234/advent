@@ -28,5 +28,8 @@ jobs:
       - name: Build
         run: dotnet build advent.sln -c Release --no-restore
 
+      - name: Validate Assets
+        run: ./scripts/validate-assets.sh --no-build --no-restore --verbosity normal
+
       - name: Test
         run: dotnet test advent.Tests/advent.Tests.csproj -c Release --no-build --verbosity normal

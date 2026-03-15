@@ -39,6 +39,14 @@ Optional:
 - `RGBMATRIX_REF=<branch-or-tag>` to build a specific ref
 - `RGBMATRIX_REPO_URL=<git-url>` to use a fork
 
+## Validate Assets
+
+Run this locally (and in CI) to verify required scene assets and `advent-images/manifest.json` references:
+
+```bash
+./scripts/validate-assets.sh
+```
+
 ## GitHub Actions Deploy (Pi Native)
 
 Deployment is now handled by GitHub Actions running on a self-hosted runner on the Pi.
@@ -119,6 +127,12 @@ dotnet run -c Release --no-launch-profile -- --simulator --test-mode
     - `.gif` files use animated playback scenes
     - wide images use scrolling banner scenes
     - other static images use fade-in/out scenes
+- Optional overrides are supported in `advent-images/manifest.json`:
+    - `file`: relative image path (required)
+    - `name`: scene name override
+    - `type`: `auto`, `animated`/`gif`, `static`, or `scroll`
+    - `months`: month whitelist (1-12)
+    - `durationSeconds`: custom scene duration (must be `> 0`)
 - Core scene assets (cat/error/santa/space-invaders sprites) are stored under `assets/`.
 - `--test-mode` ignores random seasonal selection and continuously cycles the full scene catalog.
 - `--simulator` renders a live ANSI/terminal preview of the 64x32 output, useful on macOS while developing.

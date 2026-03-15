@@ -86,6 +86,52 @@ public class ImageScenesTests
         }
     }
 
+    [Fact]
+    public void StaticImageScene_UsesCustomDurationOverride()
+    {
+        var tempDirectory = CreateTempDirectory();
+        var imagePath = Path.Combine(tempDirectory, "logo.png");
+
+        try
+        {
+            using (var image = new Image<Rgba32>(32, 32))
+                image.Save(imagePath);
+
+            var scene = new StaticImageScene(imagePath, "Logo", TimeSpan.FromMilliseconds(100));
+            scene.Activate();
+            scene.Elapsed(TimeSpan.FromMilliseconds(150));
+
+            Assert.False(scene.IsActive);
+        }
+        finally
+        {
+            Directory.Delete(tempDirectory, true);
+        }
+    }
+
+    [Fact]
+    public void AnimatedGifScene_UsesCustomDurationOverride()
+    {
+        var tempDirectory = CreateTempDirectory();
+        var imagePath = Path.Combine(tempDirectory, "anim.gif");
+
+        try
+        {
+            using (var image = new Image<Rgba32>(4, 4))
+                image.SaveAsGif(imagePath);
+
+            var scene = new AnimatedGifScene(imagePath, "Holiday", TimeSpan.FromMilliseconds(100));
+            scene.Activate();
+            scene.Elapsed(TimeSpan.FromMilliseconds(150));
+
+            Assert.False(scene.IsActive);
+        }
+        finally
+        {
+            Directory.Delete(tempDirectory, true);
+        }
+    }
+
     private static string CreateTempDirectory()
     {
         var directory = Path.Combine(Path.GetTempPath(), $"advent-image-scenes-{Guid.NewGuid():N}");

@@ -8,21 +8,23 @@ namespace advent;
 
 public class AnimatedGifScene : ISpecialScene
 {
-    private static readonly TimeSpan sceneDuration = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan DefaultSceneDuration = TimeSpan.FromSeconds(10);
     private readonly List<TimeSpan> frameDurations;
     private readonly Image<Rgba32> gifImage;
     private readonly string name;
+    private readonly TimeSpan sceneDuration;
     private readonly TimeSpan totalDuration;
     private TimeSpan currentFrameElapsed;
     private int currentFrameIndex;
 
     private TimeSpan elapsedThisScene;
 
-    public AnimatedGifScene(string gifFilePath, string? sceneName = null)
+    public AnimatedGifScene(string gifFilePath, string? sceneName = null, TimeSpan? sceneDurationOverride = null)
     {
         IsActive = false;
         HidesTime = false;
         name = string.IsNullOrWhiteSpace(sceneName) ? "Animated GIF" : sceneName;
+        sceneDuration = sceneDurationOverride is { } duration && duration > TimeSpan.Zero ? duration : DefaultSceneDuration;
 
         // Load the animated GIF
         gifImage = Image.Load<Rgba32>(gifFilePath);

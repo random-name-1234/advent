@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Text.Json;
 using SixLabors.ImageSharp;
 
 namespace advent;
@@ -10,6 +11,7 @@ namespace advent;
 public sealed class SceneSelector
 {
     private const string DefaultImageDirectory = "advent-images";
+    private const string ImageManifestFileName = "manifest.json";
     private const int MatrixWidth = 64;
 
     private static readonly IReadOnlySet<string> SupportedStaticImageExtensions = new HashSet<string>(
@@ -109,11 +111,48 @@ public sealed class SceneSelector
         if (string.IsNullOrWhiteSpace(imageSceneDirectory))
             return [];
 
+        var manifestOverrides = LoadManifestOverrides(imageSceneDirectory);
         var definitions = new List<SceneDefinition>();
+        var seenRelativePaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var filePath in EnumerateImageFiles(imageSceneDirectory, month))
         {
-            var definition = CreateImageSceneDefinition(filePath);
+            var relativePath = GetRelativeImagePath(imageSceneDirectory, filePath);
+            if (!seenRelativePaths.Add(relativePath))
+                continue;
+
+            manifestOverrides.TryGetValue(relativePath, out var manifestOverride);
+            if (manifestOverride is not null && !manifestOverride.AppliesToMonth(month))
+                continue;
+
+            var definition = CreateImageSceneDefinition(filePath, manifestOverride);
+            if (definition is not null)
+                definitions.Add(definition);
+        }
+
+        foreach (var manifestOverride in manifestOverrides.Values.OrderBy(static x => x.RelativePath,
+                     StringComparer.OrdinalIgnoreCase))
+        {
+            if (!manifestOverride.AppliesToMonth(month) || !seenRelativePaths.Add(manifestOverride.RelativePath))
+                continue;
+
+            var overrideFilePath = Path.Combine(imageSceneDirectory,
+                manifestOverride.RelativePath.Replace('/', Path.DirectorySeparatorChar));
+            if (!File.Exists(overrideFilePath))
+            {
+                Console.WriteLine(
+                    $"Skipping manifest image scene '{manifestOverride.RelativePath}': file does not exist.");
+                continue;
+            }
+
+            if (!IsSupportedImageFile(overrideFilePath))
+            {
+                Console.WriteLine(
+                    $"Skipping manifest image scene '{manifestOverride.RelativePath}': unsupported image extension.");
+                continue;
+            }
+
+            var definition = CreateImageSceneDefinition(overrideFilePath, manifestOverride);
             if (definition is not null)
                 definitions.Add(definition);
         }
@@ -146,13 +185,171 @@ public sealed class SceneSelector
         return SupportedStaticImageExtensions.Contains(extension) || SupportedAnimatedImageExtensions.Contains(extension);
     }
 
-    private static SceneDefinition? CreateImageSceneDefinition(string filePath)
+    private static Dictionary<string, ManifestImageOverride> LoadManifestOverrides(string imageSceneDirectory)
     {
-        var sceneName = BuildImageSceneName(filePath);
+        var overrides = new Dictionary<string, ManifestImageOverride>(StringComparer.OrdinalIgnoreCase);
+        var manifestPath = Path.Combine(imageSceneDirectory, ImageManifestFileName);
+        if (!File.Exists(manifestPath))
+            return overrides;
+
+        try
+        {
+            var manifest = JsonSerializer.Deserialize<ImageSceneManifest>(
+                File.ReadAllText(manifestPath),
+                new JsonSerializerOptions
+                {
+                    PropertyNameCaseInsensitive = true
+                });
+
+            if (manifest?.Images is null)
+                return overrides;
+
+            foreach (var entry in manifest.Images)
+            {
+                if (string.IsNullOrWhiteSpace(entry.File))
+                {
+                    Console.WriteLine("Skipping manifest image scene entry: missing 'file'.");
+                    continue;
+                }
+
+                var relativePath = NormalizeRelativePath(entry.File);
+                if (string.IsNullOrWhiteSpace(relativePath))
+                {
+                    Console.WriteLine("Skipping manifest image scene entry: invalid 'file' path.");
+                    continue;
+                }
+
+                if (Path.IsPathRooted(entry.File) ||
+                    relativePath.StartsWith("../", StringComparison.Ordinal) ||
+                    relativePath.Contains("/../", StringComparison.Ordinal))
+                {
+                    Console.WriteLine(
+                        $"Skipping manifest image scene entry '{entry.File}': path must stay within {DefaultImageDirectory}/.");
+                    continue;
+                }
+
+                if (!TryParseImageSceneKind(entry.Type, out var kind))
+                {
+                    Console.WriteLine(
+                        $"Unknown scene type '{entry.Type}' for '{relativePath}'. Falling back to auto detection.");
+                    kind = ImageSceneKind.Auto;
+                }
+
+                HashSet<int>? months = null;
+                if (entry.Months is { Length: > 0 })
+                {
+                    months = new HashSet<int>(entry.Months.Where(static month => month is >= 1 and <= 12));
+                    if (months.Count != entry.Months.Length)
+                        Console.WriteLine(
+                            $"Manifest entry '{relativePath}' contains invalid months. Only values 1-12 are used.");
+                }
+
+                TimeSpan? duration = null;
+                if (entry.DurationSeconds is { } durationSeconds)
+                {
+                    if (durationSeconds > 0)
+                    {
+                        duration = TimeSpan.FromSeconds(durationSeconds);
+                    }
+                    else
+                    {
+                        Console.WriteLine(
+                            $"Manifest entry '{relativePath}' has non-positive durationSeconds. Default duration will be used.");
+                    }
+                }
+
+                var sceneName = string.IsNullOrWhiteSpace(entry.Name) ? null : entry.Name.Trim();
+                overrides[relativePath] =
+                    new ManifestImageOverride(relativePath, sceneName, kind, duration, months);
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Skipping image scene manifest '{manifestPath}': {ex.Message}");
+        }
+
+        return overrides;
+    }
+
+    private static bool TryParseImageSceneKind(string? type, out ImageSceneKind kind)
+    {
+        if (string.IsNullOrWhiteSpace(type))
+        {
+            kind = ImageSceneKind.Auto;
+            return true;
+        }
+
+        switch (type.Trim().ToLowerInvariant())
+        {
+            case "auto":
+                kind = ImageSceneKind.Auto;
+                return true;
+            case "gif":
+            case "animated":
+            case "animation":
+                kind = ImageSceneKind.Animated;
+                return true;
+            case "static":
+                kind = ImageSceneKind.Static;
+                return true;
+            case "scroll":
+            case "scrolling":
+            case "banner":
+                kind = ImageSceneKind.Scrolling;
+                return true;
+            default:
+                kind = ImageSceneKind.Auto;
+                return false;
+        }
+    }
+
+    private static SceneDefinition? CreateImageSceneDefinition(string filePath, ManifestImageOverride? manifestOverride)
+    {
+        var sceneName = manifestOverride is { Name.Length: > 0 } ? manifestOverride.Name : BuildImageSceneName(filePath);
+        var sceneDuration = manifestOverride?.Duration;
         var extension = Path.GetExtension(filePath);
 
+        if (manifestOverride?.Kind == ImageSceneKind.Animated)
+        {
+            if (!SupportedAnimatedImageExtensions.Contains(extension))
+            {
+                Console.WriteLine(
+                    $"Skipping image scene '{filePath}': manifest type 'animated' requires a gif file.");
+                return null;
+            }
+
+            return new SceneDefinition(sceneName,
+                () => new FadingScene(new AnimatedGifScene(filePath, sceneName, sceneDuration)));
+        }
+
+        if (manifestOverride?.Kind == ImageSceneKind.Static)
+        {
+            if (!SupportedStaticImageExtensions.Contains(extension))
+            {
+                Console.WriteLine($"Skipping image scene '{filePath}': manifest type 'static' requires a static image.");
+                return null;
+            }
+
+            return new SceneDefinition(sceneName,
+                () => new FadingScene(new StaticImageScene(filePath, sceneName, sceneDuration)));
+        }
+
+        if (manifestOverride?.Kind == ImageSceneKind.Scrolling)
+        {
+            if (!SupportedStaticImageExtensions.Contains(extension))
+            {
+                Console.WriteLine(
+                    $"Skipping image scene '{filePath}': manifest type 'scroll' requires a static image.");
+                return null;
+            }
+
+            return new SceneDefinition(sceneName,
+                () => new FadingScene(new ScrollingImageScene(filePath, sceneName, sceneDuration)));
+        }
+
         if (SupportedAnimatedImageExtensions.Contains(extension))
-            return new SceneDefinition(sceneName, () => new FadingScene(new AnimatedGifScene(filePath, sceneName)));
+            return new SceneDefinition(sceneName,
+                () => new FadingScene(new AnimatedGifScene(filePath, sceneName, sceneDuration)));
 
         if (!SupportedStaticImageExtensions.Contains(extension))
             return null;
@@ -164,9 +361,11 @@ public sealed class SceneSelector
                 return null;
 
             if (info.Width > MatrixWidth && info.Width >= info.Height)
-                return new SceneDefinition(sceneName, () => new FadingScene(new ScrollingImageScene(filePath, sceneName)));
+                return new SceneDefinition(sceneName,
+                    () => new FadingScene(new ScrollingImageScene(filePath, sceneName, sceneDuration)));
 
-            return new SceneDefinition(sceneName, () => new FadingScene(new StaticImageScene(filePath, sceneName)));
+            return new SceneDefinition(sceneName,
+                () => new FadingScene(new StaticImageScene(filePath, sceneName, sceneDuration)));
         }
         catch (Exception ex)
         {
@@ -175,10 +374,56 @@ public sealed class SceneSelector
         }
     }
 
+    private static string GetRelativeImagePath(string imageSceneDirectory, string filePath)
+    {
+        var relativePath = Path.GetRelativePath(imageSceneDirectory, filePath);
+        return NormalizeRelativePath(relativePath);
+    }
+
+    private static string NormalizeRelativePath(string relativePath)
+    {
+        return relativePath.Replace('\\', '/').TrimStart('/');
+    }
+
     private static string BuildImageSceneName(string filePath)
     {
         var name = Path.GetFileNameWithoutExtension(filePath);
         return string.IsNullOrWhiteSpace(name) ? "Image Scene" : name.Replace('_', ' ');
+    }
+
+    private sealed class ImageSceneManifest
+    {
+        public ManifestImageEntry[]? Images { get; init; }
+    }
+
+    private sealed class ManifestImageEntry
+    {
+        public string? File { get; init; }
+        public string? Name { get; init; }
+        public string? Type { get; init; }
+        public double? DurationSeconds { get; init; }
+        public int[]? Months { get; init; }
+    }
+
+    private sealed record ManifestImageOverride(
+        string RelativePath,
+        string? Name,
+        ImageSceneKind Kind,
+        TimeSpan? Duration,
+        HashSet<int>? Months)
+    {
+        public bool AppliesToMonth(int month)
+        {
+            return Months is null || Months.Count == 0 || Months.Contains(month);
+        }
+    }
+
+    private enum ImageSceneKind
+    {
+        Auto,
+        Animated,
+        Static,
+        Scrolling
     }
 
     private sealed record SceneDefinition(string Name, Func<ISpecialScene> Create);

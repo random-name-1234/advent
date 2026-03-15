@@ -140,6 +140,110 @@ public class SceneSelectorTests
     }
 
     [Fact]
+    public void Constructor_AppliesManifestOverrides_ForTypeNameDurationAndMonth()
+    {
+        var imageDirectory = CreateImageDirectory();
+        try
+        {
+            CreatePng(Path.Combine(imageDirectory, "logo.png"), 32, 32);
+            WriteManifest(imageDirectory, """
+                {
+                  "images": [
+                    {
+                      "file": "logo.png",
+                      "name": "Custom Logo",
+                      "type": "scroll",
+                      "months": [11],
+                      "durationSeconds": 0.1
+                    }
+                  ]
+                }
+                """);
+
+            var sut = new SceneSelector(11, count => count - 1, imageSceneDirectory: imageDirectory);
+            Assert.Contains("Custom Logo", sut.AvailableSceneNames);
+
+            var scene = sut.GetScene();
+            var mainScene = UnwrapMainScene(scene);
+            var scrolling = Assert.IsType<ScrollingImageScene>(mainScene);
+            Assert.Equal("Custom Logo", scrolling.Name);
+
+            scrolling.Activate();
+            scrolling.Elapsed(TimeSpan.FromMilliseconds(150));
+            Assert.False(scrolling.IsActive);
+        }
+        finally
+        {
+            Directory.Delete(imageDirectory, true);
+        }
+    }
+
+    [Fact]
+    public void Constructor_RespectsManifestMonthFilter_ForRootImages()
+    {
+        var imageDirectory = CreateImageDirectory();
+        try
+        {
+            CreatePng(Path.Combine(imageDirectory, "seasonal-logo.png"), 32, 32);
+            WriteManifest(imageDirectory, """
+                {
+                  "images": [
+                    {
+                      "file": "seasonal-logo.png",
+                      "months": [12]
+                    }
+                  ]
+                }
+                """);
+
+            var sut = new SceneSelector(11, imageSceneDirectory: imageDirectory);
+
+            Assert.DoesNotContain("seasonal-logo", sut.AvailableSceneNames);
+        }
+        finally
+        {
+            Directory.Delete(imageDirectory, true);
+        }
+    }
+
+    [Fact]
+    public void Constructor_LoadsManifestOnlyNestedImages_WhenConfigured()
+    {
+        var imageDirectory = CreateImageDirectory();
+        try
+        {
+            var nestedDirectory = Path.Combine(imageDirectory, "special");
+            Directory.CreateDirectory(nestedDirectory);
+            CreateGif(Path.Combine(nestedDirectory, "extra.gif"));
+
+            WriteManifest(imageDirectory, """
+                {
+                  "images": [
+                    {
+                      "file": "special/extra.gif",
+                      "name": "Manifest Extra",
+                      "type": "animated",
+                      "months": [11]
+                    }
+                  ]
+                }
+                """);
+
+            var sut = new SceneSelector(11, count => count - 1, imageSceneDirectory: imageDirectory);
+            Assert.Contains("Manifest Extra", sut.AvailableSceneNames);
+
+            var scene = sut.GetScene();
+            var mainScene = UnwrapMainScene(scene);
+            Assert.IsType<AnimatedGifScene>(mainScene);
+            Assert.Equal("Manifest Extra", mainScene.Name);
+        }
+        finally
+        {
+            Directory.Delete(imageDirectory, true);
+        }
+    }
+
+    [Fact]
     public void GetScene_ThrowsWhenIndexProviderReturnsOutOfRange()
     {
         var imageDirectory = CreateImageDirectory();
@@ -218,6 +322,11 @@ public class SceneSelectorTests
     {
         using var image = new Image<Rgba32>(4, 4);
         image.SaveAsGif(filePath);
+    }
+
+    private static void WriteManifest(string imageDirectory, string content)
+    {
+        File.WriteAllText(Path.Combine(imageDirectory, "manifest.json"), content);
     }
 
     private static ISpecialScene UnwrapMainScene(ISpecialScene scene)

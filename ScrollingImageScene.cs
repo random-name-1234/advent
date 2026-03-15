@@ -7,16 +7,18 @@ namespace advent;
 
 public class ScrollingImageScene : ISpecialScene
 {
-    private static readonly TimeSpan SceneDuration = TimeSpan.FromSeconds(15);
+    private static readonly TimeSpan DefaultSceneDuration = TimeSpan.FromSeconds(15);
 
     private readonly Image<Rgba32> image;
     private readonly string name;
+    private readonly TimeSpan sceneDuration;
     private TimeSpan elapsedThisScene;
 
-    public ScrollingImageScene(string imageFilePath, string? sceneName = null)
+    public ScrollingImageScene(string imageFilePath, string? sceneName = null, TimeSpan? sceneDurationOverride = null)
     {
         image = Image.Load<Rgba32>(imageFilePath);
         name = string.IsNullOrWhiteSpace(sceneName) ? "Scrolling Image" : sceneName;
+        sceneDuration = sceneDurationOverride is { } duration && duration > TimeSpan.Zero ? duration : DefaultSceneDuration;
     }
 
     public bool IsActive { get; private set; }
@@ -34,7 +36,7 @@ public class ScrollingImageScene : ISpecialScene
     public void Elapsed(TimeSpan timeSpan)
     {
         elapsedThisScene += timeSpan;
-        if (elapsedThisScene > SceneDuration)
+        if (elapsedThisScene > sceneDuration)
         {
             IsActive = false;
             HidesTime = false;
@@ -47,7 +49,7 @@ public class ScrollingImageScene : ISpecialScene
 
         var startX = img.Width - 2;
         var movementDistance = startX + image.Width + 1;
-        var progress = elapsedThisScene.TotalMilliseconds / SceneDuration.TotalMilliseconds;
+        var progress = elapsedThisScene.TotalMilliseconds / sceneDuration.TotalMilliseconds;
         var position = new Point(startX - (int)(progress * movementDistance), 0);
 
         img.Mutate(x => x.DrawImage(image, position, 1f));
