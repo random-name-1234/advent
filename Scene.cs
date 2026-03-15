@@ -13,7 +13,6 @@ public class Scene
 {
     private readonly bool drawSnow;
     private readonly Font font;
-    private readonly FontFamily fontFamily = SystemFonts.Get("Arial");
 
     private readonly SnowMachine snowMachine = new();
     private bool hasPendingSceneRequest;
@@ -28,7 +27,7 @@ public class Scene
         ContinuousSceneRequests = false;
 
         Img = new Image<Rgba32>(64, 32);
-        font = new Font(fontFamily, 16);
+        font = AppFonts.Create(16);
 
         if (DateTime.Now.Month == 12 || DateTime.Now.Month == 6)
         {

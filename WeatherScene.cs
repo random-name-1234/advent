@@ -33,10 +33,9 @@ public class WeatherScene : ISpecialScene
     private static readonly double Latitude = ReadCoordinate("ADVENT_WEATHER_LATITUDE", 52.2053);
     private static readonly double Longitude = ReadCoordinate("ADVENT_WEATHER_LONGITUDE", 0.1218);
 
-    private static readonly FontFamily FontFamily = SystemFonts.Get("Arial");
-    private static readonly Font CurrentTempFont = new(FontFamily, 14f);
-    private static readonly Font DayFont = new(FontFamily, 7f);
-    private static readonly Font TempFont = new(FontFamily, 8f);
+    private static readonly Font CurrentTempFont = AppFonts.Create(14f);
+    private static readonly Font DayFont = AppFonts.Create(7f);
+    private static readonly Font TempFont = AppFonts.Create(8f);
 
     private TimeSpan elapsedThisScene;
     private Task<WeatherSnapshot>? fetchTask;
