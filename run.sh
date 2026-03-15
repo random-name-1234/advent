@@ -1,4 +1,6 @@
-export DOTNET_ROOT="/opt/dotnet"
-cd /share/advent
-sudo -E bin/Release/net6.0/advent
+#!/usr/bin/env bash
+set -euo pipefail
 
+export DOTNET_ROOT="/opt/dotnet"
+cd /share/advent/bin/Release/net10.0
+exec sudo -E ./advent "$@"
