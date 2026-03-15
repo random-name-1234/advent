@@ -51,9 +51,9 @@ internal class Program
             keepRunning = false;
         };
 
-        RGBLedMatrix matrix = null;
-        RGBLedCanvas canvas = null;
-        ConsoleMatrixSimulator simulator = null;
+        RGBLedMatrix? matrix = null;
+        RGBLedCanvas? canvas = null;
+        ConsoleMatrixSimulator? simulator = null;
 
         if (isSimulatorMode)
         {
@@ -81,11 +81,11 @@ internal class Program
             elapsed = now - prev;
             scene.Elapsed(elapsed);
 
-            if (isSimulatorMode)
+            if (simulator is not null)
             {
                 simulator.Render(scene.Img);
             }
-            else
+            else if (canvas is not null && matrix is not null)
             {
                 canvas.Clear();
 

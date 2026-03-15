@@ -22,8 +22,22 @@ Upstream source for the underlying matrix library:
 ## Requirements
 
 - Raspberry Pi with supported RGB matrix hardware
-- .NET runtime compatible with this project target (`net6.0`)
-- Native `librgbmatrix.so` available next to the app (included in this repo)
+- .NET runtime compatible with this project target (`net10.0`)
+- Native `librgbmatrix.so` available next to the app
+
+## Rebuild Native Library (Upstream Latest)
+
+Run this on the Raspberry Pi to rebuild from upstream and overwrite the vendored
+`librgbmatrix.so` in this repo:
+
+```bash
+./scripts/rebuild-librgbmatrix.sh
+```
+
+Optional:
+
+- `RGBMATRIX_REF=<branch-or-tag>` to build a specific ref
+- `RGBMATRIX_REPO_URL=<git-url>` to use a fork
 
 ## Run
 

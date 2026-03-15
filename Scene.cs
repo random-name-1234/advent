@@ -17,17 +17,14 @@ public class Scene
 
     private readonly SnowMachine snowMachine = new();
     private bool hasPendingSceneRequest;
-    private TimeSpan phaseDuration = TimeSpan.FromSeconds(8);
-    private ISpecialScene specialScene;
-    private string timeToDisplay;
+    private ISpecialScene? specialScene;
     private TimeSpan timeToNextRandomScene;
 
     public Scene()
     {
-        timeToNextRandomScene = TimeSpan.FromMinutes(new Random().NextDouble() * 1);
+        timeToNextRandomScene = TimeSpan.FromMinutes(Random.Shared.NextDouble());
         hasPendingSceneRequest = false;
         SpecialScenes = new ConcurrentQueue<ISpecialScene>();
-        specialScene = null;
         ContinuousSceneRequests = false;
 
         Img = new Image<Rgba32>(64, 32);
@@ -53,7 +50,7 @@ public class Scene
     /// </summary>
     public ConcurrentQueue<ISpecialScene> SpecialScenes { get; }
 
-    public event EventHandler NewSceneWanted;
+    public event EventHandler? NewSceneWanted;
 
     public void Elapsed(TimeSpan timeSpan)
     {
@@ -64,14 +61,13 @@ public class Scene
             x.FillPolygon(Color.Black, new PointF(0, 0), new PointF(64, 0), new PointF(64, 32), new PointF(0, 32)));
 
         // Prepare special scene.
-        if (specialScene == null)
-            if (SpecialScenes.TryDequeue(out var queuedScene))
-            {
-                Console.WriteLine("Found special scene on queue");
-                specialScene = queuedScene;
-                hasPendingSceneRequest = false;
-                specialScene.Activate();
-            }
+        if (specialScene == null && SpecialScenes.TryDequeue(out var queuedScene))
+        {
+            Console.WriteLine("Found special scene on queue");
+            specialScene = queuedScene;
+            hasPendingSceneRequest = false;
+            specialScene.Activate();
+        }
 
         if (specialScene != null)
         {
@@ -98,7 +94,7 @@ public class Scene
 
         if (!hidesTime)
         {
-            timeToDisplay = DateTime.Now.TimeOfDay.ToString("hh\\:mm\\:ss");
+            var timeToDisplay = DateTime.Now.TimeOfDay.ToString("hh\\:mm\\:ss");
             Img.Mutate(x => x.DrawText(timeToDisplay, font, Color.Aqua, new Point(0, 0)));
         }
 
@@ -106,8 +102,9 @@ public class Scene
 
         if (drawSnow)
         {
-            if (DateTime.Now.Month == 6) snowMachine.RainbowSnow = true;
-            if (DateTime.Now.Month == 12) snowMachine.RainbowSnow = false;
+            var month = DateTime.Now.Month;
+            if (month == 6) snowMachine.RainbowSnow = true;
+            if (month == 12) snowMachine.RainbowSnow = false;
             foreach (var flake in snowMachine.Flakes)
                 Img.Mutate(x => x.Fill(flake.Color,
                     new EllipsePolygon(flake.Position.X, 32f - flake.Position.Y, flake.Width, flake.Width)));

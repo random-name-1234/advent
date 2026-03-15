@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Net.Http;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 using SixLabors.Fonts;
 using SixLabors.ImageSharp;
@@ -25,9 +26,9 @@ public class WeatherScene : ISpecialScene
         Timeout = TimeSpan.FromSeconds(4)
     };
 
-    private static readonly object CacheLock = new();
+    private static readonly Lock CacheLock = new();
     private static DateTimeOffset cacheUpdatedAtUtc = DateTimeOffset.MinValue;
-    private static WeatherSnapshot cachedSnapshot;
+    private static WeatherSnapshot? cachedSnapshot;
 
     private static readonly double Latitude = ReadCoordinate("ADVENT_WEATHER_LATITUDE", 52.2053);
     private static readonly double Longitude = ReadCoordinate("ADVENT_WEATHER_LONGITUDE", 0.1218);
@@ -38,8 +39,8 @@ public class WeatherScene : ISpecialScene
     private static readonly Font TempFont = new(FontFamily, 8f);
 
     private TimeSpan elapsedThisScene;
-    private Task<WeatherSnapshot> fetchTask;
-    private WeatherSnapshot snapshot;
+    private Task<WeatherSnapshot>? fetchTask;
+    private WeatherSnapshot? snapshot;
 
     public bool IsActive { get; private set; }
     public bool HidesTime { get; private set; }
@@ -53,7 +54,7 @@ public class WeatherScene : ISpecialScene
         HidesTime = true;
 
         snapshot = TryGetCachedSnapshot();
-        var cacheIsStale = snapshot == null || IsCacheStale();
+        var cacheIsStale = snapshot is null || IsCacheStale();
         if (cacheIsStale) fetchTask = FetchWeatherAsync();
     }
 
@@ -69,7 +70,7 @@ public class WeatherScene : ISpecialScene
             return;
         }
 
-        if (fetchTask == null || !fetchTask.IsCompleted) return;
+        if (fetchTask is null || !fetchTask.IsCompleted) return;
 
         if (fetchTask.IsCompletedSuccessfully)
         {
@@ -89,17 +90,18 @@ public class WeatherScene : ISpecialScene
     {
         if (!IsActive) return;
 
-        var showDayPalette = snapshot?.IsDay ?? true;
+        var currentSnapshot = snapshot;
+        var showDayPalette = currentSnapshot?.IsDay ?? true;
         DrawBackground(img, showDayPalette);
 
-        if (snapshot == null)
+        if (currentSnapshot is null)
         {
             DrawLoadingState(img);
             return;
         }
 
-        DrawCurrentWeather(img, snapshot);
-        DrawUpcomingWeather(img, snapshot);
+        DrawCurrentWeather(img, currentSnapshot);
+        DrawUpcomingWeather(img, currentSnapshot);
     }
 
     private void DrawLoadingState(Image<Rgba32> img)
@@ -290,7 +292,7 @@ public class WeatherScene : ISpecialScene
         return coordinate;
     }
 
-    private static WeatherSnapshot TryGetCachedSnapshot()
+    private static WeatherSnapshot? TryGetCachedSnapshot()
     {
         lock (CacheLock)
         {

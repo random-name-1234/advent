@@ -11,14 +11,13 @@ public class FadingScene : ISpecialScene
     private readonly ISpecialScene fadeOut;
     private readonly ISpecialScene mainScene;
     private readonly Queue<ISpecialScene> scenes;
-    private ISpecialScene currentScene;
+    private ISpecialScene? currentScene;
 
     public FadingScene(ISpecialScene mainScene)
     {
         fadeOut = new FadeInOutScene(Fade.Out);
         this.mainScene = mainScene;
         fadeIn = new FadeInOutScene(Fade.In);
-        currentScene = null;
         scenes = new Queue<ISpecialScene>();
     }
 

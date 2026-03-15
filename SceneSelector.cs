@@ -6,8 +6,8 @@ namespace advent;
 
 public sealed class SceneSelector
 {
-    private static readonly IReadOnlyList<SceneDefinition> DefaultSceneDefinitions = new[]
-    {
+    private static readonly IReadOnlyList<SceneDefinition> DefaultSceneDefinitions =
+    [
         new SceneDefinition("Weather", static () => new FadingScene(new WeatherScene())),
         new SceneDefinition("Cat", static () => new CatScene()),
         new SceneDefinition("Rainbow", static () => new RainbowSnowScene()),
@@ -21,10 +21,10 @@ public sealed class SceneSelector
         new SceneDefinition("Space Invaders", static () => new FadingScene(new SpaceInvadersScene())),
         new SceneDefinition("CTM Logo", static () => new FadingScene(new CtmLogoScene())),
         new SceneDefinition("CTM Banner", static () => new FadingScene(new CtmBannerScene()))
-    };
+    ];
 
-    private static readonly IReadOnlyList<SceneDefinition> ChristmasSceneDefinitions = new[]
-    {
+    private static readonly IReadOnlyList<SceneDefinition> ChristmasSceneDefinitions =
+    [
         new SceneDefinition("Santa", static () => new FadingScene(new SantaScene())),
         new SceneDefinition("Animated GIF", static () => new FadingScene(new AnimatedGifScene("christmas-1.gif"))),
         new SceneDefinition("Animated GIF", static () => new FadingScene(new AnimatedGifScene("christmas-2.gif"))),
@@ -33,7 +33,7 @@ public sealed class SceneSelector
         new SceneDefinition("Animated GIF", static () => new FadingScene(new AnimatedGifScene("christmas-5.gif"))),
         new SceneDefinition("Animated GIF", static () => new FadingScene(new AnimatedGifScene("christmas-6.gif"))),
         new SceneDefinition("Animated GIF", static () => new FadingScene(new AnimatedGifScene("christmas-7.gif")))
-    };
+    ];
 
     private readonly IReadOnlyList<SceneDefinition> cycleSceneDefinitions;
     private readonly Func<int, int> nextIndex;
@@ -46,7 +46,7 @@ public sealed class SceneSelector
     {
     }
 
-    public SceneSelector(int month, Func<int, int> nextIndex = null)
+    public SceneSelector(int month, Func<int, int>? nextIndex = null)
     {
         if (month is < 1 or > 12)
             throw new ArgumentOutOfRangeException(nameof(month), month, "Month must be in the range 1-12.");
