@@ -54,6 +54,7 @@
       border-radius: 10px;
       min-width: 220px;
     }
+    input[type="number"] { min-width: 110px; width: 110px; }
     button {
       border: none;
       background: #2b3f7c;
@@ -113,6 +114,11 @@
         <button class="warn" id="testBtn">Mode Test</button>
         <button id="clearBtn">Clear Queue</button>
       </div>
+      <div class="row">
+        <input id="messageText" maxlength="120" placeholder="Type a message for the matrix">
+        <input id="messageDuration" type="number" min="1" max="60" step="1" placeholder="Sec">
+        <button class="primary" id="sendMessageBtn">Show Message</button>
+      </div>
       <div id="log"></div>
     </section>
 
@@ -129,6 +135,8 @@
     const queueEl = document.getElementById("queue");
     const scenesEl = document.getElementById("scenes");
     const logEl = document.getElementById("log");
+    const messageTextInput = document.getElementById("messageText");
+    const messageDurationInput = document.getElementById("messageDuration");
 
     const state = {
       token: localStorage.getItem("advent_token") || "",
@@ -249,6 +257,34 @@
       try {
         await api("/api/mode", "POST", { mode: "test" });
         log("Mode set to test.");
+        await refreshStatus();
+      } catch (err) {
+        log(`Error: ${err.message}`);
+      }
+    });
+
+    document.getElementById("sendMessageBtn").addEventListener("click", async () => {
+      const text = messageTextInput.value.trim();
+      if (!text) {
+        log("Enter a message first.");
+        return;
+      }
+
+      let durationSeconds = null;
+      const durationRaw = messageDurationInput.value.trim();
+      if (durationRaw) {
+        const parsed = Number(durationRaw);
+        if (!Number.isFinite(parsed) || parsed <= 0 || parsed > 60) {
+          log("Duration must be between 1 and 60 seconds.");
+          return;
+        }
+        durationSeconds = parsed;
+      }
+
+      try {
+        await api("/api/message/show", "POST", { text, durationSeconds });
+        log(`Queued message: "${text}"`);
+        messageTextInput.value = "";
         await refreshStatus();
       } catch (err) {
         log(`Error: ${err.message}`);

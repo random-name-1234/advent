@@ -79,6 +79,26 @@ internal static class ControlWebHost
             return Results.Ok(new { queued = "next-random-or-cycle" });
         });
 
+        app.MapPost("/api/message/show", (ShowMessageRequest request) =>
+        {
+            if (string.IsNullOrWhiteSpace(request.Text))
+                return Results.BadRequest(new { error = "Message text is required." });
+
+            TimeSpan? sceneDuration = null;
+            if (request.DurationSeconds is { } durationSeconds)
+            {
+                if (durationSeconds <= 0)
+                    return Results.BadRequest(new { error = "DurationSeconds must be > 0." });
+
+                sceneDuration = TimeSpan.FromSeconds(durationSeconds);
+            }
+
+            if (!controlService.EnqueueMessage(request.Text, sceneDuration, out var error))
+                return Results.BadRequest(new { error });
+
+            return Results.Ok(new { queued = "message" });
+        });
+
         app.MapPost("/api/mode", (SetModeRequest request) =>
         {
             if (string.IsNullOrWhiteSpace(request.Mode))
@@ -128,6 +148,7 @@ internal static class ControlWebHost
     }
 
     private sealed record PlaySceneRequest(string Name);
+    private sealed record ShowMessageRequest(string Text, double? DurationSeconds);
     private sealed record SetModeRequest(string Mode);
 }
 

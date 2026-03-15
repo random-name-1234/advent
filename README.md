@@ -102,6 +102,7 @@ Supported API endpoints:
 - `GET /api/status`
 - `POST /api/scene/play` with `{ "name": "Fireworks" }`
 - `POST /api/scene/next`
+- `POST /api/message/show` with `{ "text": "Dinner in 5", "durationSeconds": 8 }`
 - `POST /api/mode` with `{ "mode": "normal" | "test" }`
 - `POST /api/queue/clear`
 

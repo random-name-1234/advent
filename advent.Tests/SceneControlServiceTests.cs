@@ -73,6 +73,51 @@ public class SceneControlServiceTests
         }
     }
 
+    [Fact]
+    public void EnqueueMessage_QueuesMessageScene()
+    {
+        var imageDirectory = CreateImageDirectory();
+        try
+        {
+            var scene = new Scene();
+            var selector = new SceneSelector(11, imageSceneDirectory: imageDirectory);
+            var control = new SceneControlService(scene, selector, isTestMode: false);
+
+            var queued = control.EnqueueMessage("Hello house!", TimeSpan.FromSeconds(8), out var error);
+
+            Assert.True(queued);
+            Assert.True(string.IsNullOrEmpty(error));
+            Assert.True(scene.SpecialScenes.TryPeek(out var queuedScene));
+            Assert.IsType<MessageScene>(queuedScene);
+            Assert.Equal("Message: Hello house!", queuedScene.Name);
+        }
+        finally
+        {
+            Directory.Delete(imageDirectory, true);
+        }
+    }
+
+    [Fact]
+    public void EnqueueMessage_ReturnsFalse_ForInvalidInputs()
+    {
+        var imageDirectory = CreateImageDirectory();
+        try
+        {
+            var scene = new Scene();
+            var selector = new SceneSelector(11, imageSceneDirectory: imageDirectory);
+            var control = new SceneControlService(scene, selector, isTestMode: false);
+
+            Assert.False(control.EnqueueMessage("", null, out _));
+            Assert.False(control.EnqueueMessage("ok", TimeSpan.FromSeconds(0), out _));
+            Assert.False(control.EnqueueMessage("ok", TimeSpan.FromSeconds(61), out _));
+            Assert.Empty(scene.SpecialScenes);
+        }
+        finally
+        {
+            Directory.Delete(imageDirectory, true);
+        }
+    }
+
     private static string CreateImageDirectory()
     {
         var directory = Path.Combine(Path.GetTempPath(), $"advent-scene-control-{Guid.NewGuid():N}");

@@ -5,6 +5,7 @@ namespace advent;
 
 public sealed class SceneControlService
 {
+    private const int MaxMessageLength = 120;
     private readonly object gate = new();
     private readonly Scene scene;
     private readonly SceneSelector sceneSelector;
@@ -50,6 +51,40 @@ public sealed class SceneControlService
 
         scene.SpecialScenes.Enqueue(requestedScene);
         Console.WriteLine($"Enqueued scene: {requestedScene.Name}");
+        error = string.Empty;
+        return true;
+    }
+
+    public bool EnqueueMessage(string message, TimeSpan? sceneDuration, out string error)
+    {
+        if (string.IsNullOrWhiteSpace(message))
+        {
+            error = "Message text is required.";
+            return false;
+        }
+
+        var normalizedMessage = message.Replace('\r', ' ').Replace('\n', ' ').Trim();
+        if (normalizedMessage.Length == 0)
+        {
+            error = "Message text is required.";
+            return false;
+        }
+
+        if (normalizedMessage.Length > MaxMessageLength)
+        {
+            error = $"Message too long. Maximum is {MaxMessageLength} characters.";
+            return false;
+        }
+
+        if (sceneDuration is { } duration && (duration <= TimeSpan.Zero || duration > TimeSpan.FromSeconds(60)))
+        {
+            error = "Duration must be between 0 and 60 seconds.";
+            return false;
+        }
+
+        var messageScene = new MessageScene(normalizedMessage, sceneDuration);
+        scene.SpecialScenes.Enqueue(messageScene);
+        Console.WriteLine($"Enqueued message: {normalizedMessage}");
         error = string.Empty;
         return true;
     }
