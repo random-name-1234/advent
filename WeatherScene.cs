@@ -35,7 +35,7 @@ public class WeatherScene : ISpecialScene
 
     private static readonly Font CurrentTempFont = AppFonts.Create(13f);
     private static readonly Font DayFont = AppFonts.Create(7f);
-    private static readonly Font TempFont = AppFonts.Create(7f);
+    private static readonly Font TempFont = AppFonts.Create(8f);
     private static readonly Font MetaFont = AppFonts.Create(6f);
 
     private TimeSpan elapsedThisScene;
@@ -132,21 +132,24 @@ public class WeatherScene : ISpecialScene
 
     private static void DrawUpcomingWeather(Image<Rgba32> img, WeatherSnapshot weather)
     {
-        FillRect(img, 0, 18, Width, 14, new Rgba32(8, 14, 30));
+        FillRect(img, 0, 18, Width, 14, new Rgba32(4, 8, 18));
 
         for (var i = 0; i < weather.Upcoming.Length && i < 2; i++)
         {
             var forecast = weather.Upcoming[i];
             var x = i == 0 ? 1 : 32;
 
-            FillRect(img, x, 19, 31, 12, new Rgba32(16, 26, 52));
-            img.Mutate(ctx => ctx.DrawText(forecast.DayLabel, DayFont, new Rgba32(214, 229, 245), new PointF(x + 2, 19)));
+            FillRect(img, x, 19, 31, 12, new Rgba32(24, 38, 74));
+            FillRect(img, x + 1, 20, 29, 10, new Rgba32(6, 14, 31));
+
+            img.Mutate(ctx => ctx.DrawText(forecast.DayLabel, DayFont, new Rgba32(236, 244, 255), new PointF(x + 2, 19)));
             DrawWeatherIcon(img, x + 2, 24, 7, forecast.WeatherCode, weather.IsDay);
 
             var highTemp = $"{Math.Round(forecast.MaxTempC, MidpointRounding.AwayFromZero):0}";
             var lowTemp = $"{Math.Round(forecast.MinTempC, MidpointRounding.AwayFromZero):0}";
             var rangeLabel = $"{highTemp}/{lowTemp}";
-            img.Mutate(ctx => ctx.DrawText(rangeLabel, TempFont, new Rgba32(239, 226, 176), new PointF(x + 12, 24)));
+            img.Mutate(ctx => ctx.DrawText(rangeLabel, TempFont, new Rgba32(0, 0, 0), new PointF(x + 13, 24)));
+            img.Mutate(ctx => ctx.DrawText(rangeLabel, TempFont, new Rgba32(246, 238, 200), new PointF(x + 12, 23)));
         }
     }
 
