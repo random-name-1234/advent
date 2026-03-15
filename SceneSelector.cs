@@ -26,13 +26,11 @@ public sealed class SceneSelector
     [
         new SceneDefinition("Weather", static () => new FadingScene(new WeatherScene())),
         new SceneDefinition("Cat", static () => new CatScene()),
-        new SceneDefinition("Rainbow", static () => new RainbowSnowScene()),
         new SceneDefinition("Game of Life", static () => new FadingScene(new GameOfLifeScene())),
         new SceneDefinition("Starfield Parallax", static () => new FadingScene(new StarfieldParallaxScene())),
         new SceneDefinition("Plasma SDF", static () => new FadingScene(new PlasmaSdfScene())),
         new SceneDefinition("Metaballs", static () => new FadingScene(new MetaballsScene())),
         new SceneDefinition("Donkey Kong", static () => new FadingScene(new DonkeyKongScene())),
-        new SceneDefinition("Matrix Rain", static () => new FadingScene(new MatrixRainScene())),
         new SceneDefinition("Synthwave Grid", static () => new FadingScene(new SynthwaveGridScene())),
         new SceneDefinition("Orbital", static () => new FadingScene(new OrbitalScene())),
         new SceneDefinition("Fireworks", static () => new FadingScene(new FireworksScene())),
