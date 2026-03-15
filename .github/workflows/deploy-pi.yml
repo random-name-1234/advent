@@ -10,10 +10,10 @@ on:
       led_args:
         description: LED runtime args passed to advent
         required: false
-        default: --led-gpio-mapping=adafruit-hat-pwm --led-slowdown-gpio=4
-  push:
-    branches:
-      - main
+        default: ""
+
+permissions:
+  contents: read
 
 concurrency:
   group: deploy-pi
@@ -26,12 +26,14 @@ jobs:
       - linux
       - arm64
       - advent
+    environment:
+      name: advent-pi
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.inputs.ref || github.sha }}
+          ref: ${{ inputs.ref || github.sha }}
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
@@ -41,7 +43,7 @@ jobs:
       - name: Deploy on Pi
         run: ./scripts/deploy-on-pi.sh
         env:
-          LED_ARGS: ${{ github.event.inputs.led_args || vars.ADVENT_LED_ARGS || '--led-gpio-mapping=adafruit-hat-pwm --led-slowdown-gpio=4' }}
+          LED_ARGS: ${{ inputs.led_args != '' && inputs.led_args || vars.ADVENT_LED_ARGS || '--led-gpio-mapping=adafruit-hat-pwm --led-slowdown-gpio=4' }}
           ADVENT_SERVICE_UNIT: ${{ vars.ADVENT_SERVICE_UNIT || 'advent.service' }}
           ADVENT_STABLE_APP_DIR: ${{ vars.ADVENT_STABLE_APP_DIR || '/home/pi/advent-app' }}
           ADVENT_STABLE_SRC_DIR: ${{ vars.ADVENT_STABLE_SRC_DIR || '/home/pi/advent-src' }}

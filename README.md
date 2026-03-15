@@ -46,7 +46,7 @@ Deployment is now handled by GitHub Actions running on a self-hosted runner on t
 Included workflows:
 
 - `.github/workflows/ci.yml`: build + test on PRs and pushes to `main`
-- `.github/workflows/deploy-pi.yml`: deploy on push to `main` and manual dispatch
+- `.github/workflows/deploy-pi.yml`: deploy by manual dispatch only
 
 One-time Pi setup:
 
@@ -54,6 +54,15 @@ One-time Pi setup:
    `self-hosted`, `linux`, `arm64`, `advent`.
 2. Ensure runner user can run passwordless sudo for `systemctl` and writing unit files.
 3. Ensure `dotnet` and `git` are installed on the Pi.
+4. In GitHub, create environment `advent-pi` and require reviewer approval before deploy.
+5. In GitHub Actions settings, keep workflow permissions at `Read repository contents`.
+
+Public repo hardening notes:
+
+- Avoid automatic deploy-on-push to self-hosted runners in public repos.
+- Never store Pi SSH password in Actions secrets; this deploy path runs directly on the Pi runner and does not need SSH.
+- Protect `main` with PR reviews and required status checks (`CI`).
+- Keep `deploy-pi.yml` restricted to `workflow_dispatch` + protected environment approval.
 
 Deploy behavior (from `scripts/deploy-on-pi.sh`):
 
