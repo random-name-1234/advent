@@ -16,8 +16,8 @@ for cmd in dotnet git tar sudo systemctl; do
   fi
 done
 
-if ! sudo -n true >/dev/null 2>&1; then
-  echo "Passwordless sudo is required for the runner user (for systemd install/restart)." >&2
+if ! sudo -n systemctl --version >/dev/null 2>&1; then
+  echo "Passwordless sudo for systemctl is required for the runner user." >&2
   exit 1
 fi
 
