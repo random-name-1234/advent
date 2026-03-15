@@ -8,21 +8,25 @@ public class ProceduralScenesTests
 {
     public static IEnumerable<object[]> SceneCases()
     {
-        yield return new object[] { new GameOfLifeScene(), true };
-        yield return new object[] { new StarfieldParallaxScene(), true };
-        yield return new object[] { new PlasmaSdfScene(), true };
-        yield return new object[] { new MetaballsScene(), true };
-        yield return new object[] { new MatrixRainScene(), true };
-        yield return new object[] { new SynthwaveGridScene(), true };
-        yield return new object[] { new OrbitalScene(), true };
-        yield return new object[] { new FireworksScene(), true };
-        yield return new object[] { new WarpCoreScene(), false };
-        yield return new object[] { new WarpCoreScene(WarpCorePalettePreset.RedAlert), false };
+        yield return new object[] { new GameOfLifeScene(), true, 30d };
+        yield return new object[] { new StarfieldParallaxScene(), true, 30d };
+        yield return new object[] { new PlasmaSdfScene(), true, 30d };
+        yield return new object[] { new MetaballsScene(), true, 30d };
+        yield return new object[] { new DonkeyKongScene(), true, 70d };
+        yield return new object[] { new MatrixRainScene(), true, 30d };
+        yield return new object[] { new SynthwaveGridScene(), true, 30d };
+        yield return new object[] { new OrbitalScene(), true, 30d };
+        yield return new object[] { new FireworksScene(), true, 30d };
+        yield return new object[] { new WarpCoreScene(), false, 30d };
+        yield return new object[] { new WarpCoreScene(WarpCorePalettePreset.RedAlert), false, 30d };
     }
 
     [Theory]
     [MemberData(nameof(SceneCases))]
-    public void Scene_Activates_Draws_AndExpires(ISpecialScene scene, bool hidesTimeWhileActive)
+    public void Scene_Activates_Draws_AndExpires(
+        ISpecialScene scene,
+        bool hidesTimeWhileActive,
+        double expirationSeconds)
     {
         scene.Activate();
 
@@ -36,7 +40,7 @@ public class ProceduralScenesTests
 
         Assert.True(scene.IsActive);
 
-        scene.Elapsed(TimeSpan.FromSeconds(30));
+        scene.Elapsed(TimeSpan.FromSeconds(expirationSeconds));
 
         Assert.False(scene.IsActive);
         Assert.False(scene.HidesTime);
