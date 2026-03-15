@@ -45,6 +45,7 @@ public sealed class SceneSelector
 
     private readonly IReadOnlyList<SceneDefinition> sceneDefinitions;
     private readonly IReadOnlyList<SceneDefinition> cycleSceneDefinitions;
+    private readonly IReadOnlyDictionary<string, SceneDefinition> sceneDefinitionsByName;
     private readonly Func<int, int> nextIndex;
     private int cycleIndex;
 
@@ -65,6 +66,7 @@ public sealed class SceneSelector
 
         sceneDefinitions = monthSceneDefinitions.ToArray();
         cycleSceneDefinitions = sceneDefinitions;
+        sceneDefinitionsByName = BuildSceneDefinitionsByName(sceneDefinitions);
 
         this.nextIndex = nextIndex ?? Random.Shared.Next;
         AvailableSceneNames = sceneDefinitions.Select(static x => x.Name).ToArray();
@@ -83,6 +85,24 @@ public sealed class SceneSelector
                 $"Scene index provider returned {index}, but valid range is 0..{sceneDefinitions.Count - 1}.");
 
         return sceneDefinitions[index].Create();
+    }
+
+    public bool TryGetSceneByName(string sceneName, out ISpecialScene scene)
+    {
+        if (string.IsNullOrWhiteSpace(sceneName))
+        {
+            scene = default!;
+            return false;
+        }
+
+        if (sceneDefinitionsByName.TryGetValue(sceneName.Trim(), out var definition))
+        {
+            scene = definition.Create();
+            return true;
+        }
+
+        scene = default!;
+        return false;
     }
 
     public string GetNextSceneNameInCycle()
@@ -390,6 +410,19 @@ public sealed class SceneSelector
     {
         var name = Path.GetFileNameWithoutExtension(filePath);
         return string.IsNullOrWhiteSpace(name) ? "Image Scene" : name.Replace('_', ' ');
+    }
+
+    private static IReadOnlyDictionary<string, SceneDefinition> BuildSceneDefinitionsByName(
+        IReadOnlyList<SceneDefinition> definitions)
+    {
+        var byName = new Dictionary<string, SceneDefinition>(StringComparer.OrdinalIgnoreCase);
+        foreach (var definition in definitions)
+        {
+            if (!byName.TryAdd(definition.Name, definition))
+                Console.WriteLine($"Duplicate scene name detected: '{definition.Name}'. First definition is used.");
+        }
+
+        return byName;
     }
 
     private sealed class ImageSceneManifest

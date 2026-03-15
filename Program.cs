@@ -2,6 +2,7 @@ using System;
 using System.Linq;
 using System.Threading;
 using MatrixApi;
+using Microsoft.AspNetCore.Builder;
 
 namespace advent;
 
@@ -30,19 +31,9 @@ internal class Program
         };
 
         var sceneSelector = new SceneSelector();
-
-        void EnqueueNextScene()
-        {
-            var specialScene = isTestMode
-                ? sceneSelector.GetNextSceneInCycle()
-                : sceneSelector.GetScene();
-            scene.SpecialScenes.Enqueue(specialScene);
-            Console.WriteLine($"Enqueued scene: {specialScene.Name}");
-        }
-
-        scene.NewSceneWanted += (_, _) => EnqueueNextScene();
-
-        if (isTestMode) EnqueueNextScene();
+        var sceneControl = new SceneControlService(scene, sceneSelector, isTestMode);
+        scene.NewSceneWanted += (_, _) => sceneControl.EnqueueNextScene();
+        if (isTestMode) sceneControl.EnqueueNextScene();
 
         var keepRunning = true;
         Console.CancelKeyPress += (_, eventArgs) =>
@@ -54,6 +45,18 @@ internal class Program
         RGBLedMatrix? matrix = null;
         RGBLedCanvas? canvas = null;
         ConsoleMatrixSimulator? simulator = null;
+        WebApplication? webApp = null;
+
+        var webControlOptions = WebControlOptions.FromEnvironment();
+        if (webControlOptions.Enabled)
+        {
+            webApp = ControlWebHost.Build(sceneControl, webControlOptions);
+            webApp.StartAsync().GetAwaiter().GetResult();
+        }
+        else
+        {
+            Console.WriteLine("Control web UI disabled via ADVENT_WEB_ENABLED.");
+        }
 
         if (isSimulatorMode)
         {
@@ -105,5 +108,10 @@ internal class Program
 
         simulator?.Dispose();
         matrix?.Dispose();
+        if (webApp is not null)
+        {
+            webApp.StopAsync().GetAwaiter().GetResult();
+            webApp.DisposeAsync().AsTask().GetAwaiter().GetResult();
+        }
     }
 }

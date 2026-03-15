@@ -1,0 +1,267 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Advent Matrix Control</title>
+  <style>
+    :root {
+      --bg: #0b1020;
+      --panel: #121a33;
+      --panel-2: #1b264a;
+      --text: #e8eeff;
+      --muted: #94a4d6;
+      --accent: #3fd0ff;
+      --ok: #56f39a;
+      --warn: #ffcc66;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Avenir Next", "Segoe UI", sans-serif;
+      color: var(--text);
+      background: radial-gradient(circle at 20% 0%, #1a2a55 0%, var(--bg) 55%);
+      min-height: 100vh;
+    }
+    .wrap {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 16px;
+      display: grid;
+      gap: 14px;
+    }
+    .card {
+      background: linear-gradient(180deg, var(--panel-2), var(--panel));
+      border: 1px solid #2c3c74;
+      border-radius: 14px;
+      padding: 14px;
+      box-shadow: 0 10px 22px rgba(0, 0, 0, 0.3);
+    }
+    h1 { margin: 0 0 10px; font-size: 1.2rem; letter-spacing: 0.3px; }
+    .meta { color: var(--muted); font-size: 0.92rem; }
+    .row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items: center;
+      margin-top: 10px;
+    }
+    input {
+      background: #0d1530;
+      border: 1px solid #334a8e;
+      color: var(--text);
+      padding: 8px 10px;
+      border-radius: 10px;
+      min-width: 220px;
+    }
+    button {
+      border: none;
+      background: #2b3f7c;
+      color: var(--text);
+      border-radius: 10px;
+      padding: 8px 12px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    button:hover { background: #35509a; }
+    button.primary { background: #227eb8; }
+    button.good { background: #207950; }
+    button.warn { background: #8a5d1a; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      gap: 8px;
+      margin-top: 10px;
+    }
+    .scene { text-align: left; }
+    .badge {
+      display: inline-block;
+      border-radius: 999px;
+      padding: 4px 10px;
+      font-size: 0.78rem;
+      margin-right: 6px;
+      background: #273a73;
+      color: var(--muted);
+    }
+    .badge.ok { color: #062613; background: var(--ok); }
+    .badge.warn { color: #3a2400; background: var(--warn); }
+    #log {
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 0.88rem;
+      min-height: 1.2em;
+    }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <section class="card">
+      <h1>Advent Matrix Control</h1>
+      <div class="meta">Control scenes from your LAN. Current status updates every 2 seconds.</div>
+      <div class="row">
+        <span class="badge" id="mode">mode: ?</span>
+        <span class="badge" id="queue">queue: ?</span>
+        <span class="badge" id="tokenState">token: off</span>
+      </div>
+      <div class="row">
+        <input id="token" placeholder="Optional API token">
+        <button id="saveToken">Save Token</button>
+      </div>
+      <div class="row">
+        <button class="primary" id="nextBtn">Queue Next</button>
+        <button class="good" id="normalBtn">Mode Normal</button>
+        <button class="warn" id="testBtn">Mode Test</button>
+        <button id="clearBtn">Clear Queue</button>
+      </div>
+      <div id="log"></div>
+    </section>
+
+    <section class="card">
+      <h1>Scenes</h1>
+      <div id="scenes" class="grid"></div>
+    </section>
+  </main>
+
+  <script>
+    const tokenInput = document.getElementById("token");
+    const tokenState = document.getElementById("tokenState");
+    const modeEl = document.getElementById("mode");
+    const queueEl = document.getElementById("queue");
+    const scenesEl = document.getElementById("scenes");
+    const logEl = document.getElementById("log");
+
+    const state = {
+      token: localStorage.getItem("advent_token") || "",
+      scenes: []
+    };
+
+    tokenInput.value = state.token;
+    updateTokenState();
+
+    function headers(includeJson = true) {
+      const h = {};
+      if (includeJson) h["Content-Type"] = "application/json";
+      if (state.token) h["X-Advent-Token"] = state.token;
+      return h;
+    }
+
+    async function api(path, method = "GET", body = null) {
+      const options = {
+        method,
+        headers: headers(body !== null || method !== "GET")
+      };
+      if (body !== null) options.body = JSON.stringify(body);
+      const res = await fetch(path, options);
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || `${res.status} ${res.statusText}`);
+      return json;
+    }
+
+    function log(message) {
+      logEl.textContent = message;
+    }
+
+    function updateTokenState() {
+      tokenState.textContent = state.token ? "token: on" : "token: off";
+      tokenState.className = state.token ? "badge warn" : "badge";
+    }
+
+    function renderScenes() {
+      scenesEl.innerHTML = "";
+      for (const name of state.scenes) {
+        const button = document.createElement("button");
+        button.className = "scene";
+        button.textContent = name;
+        button.addEventListener("click", async () => {
+          try {
+            await api("/api/scene/play", "POST", { name });
+            log(`Queued scene: ${name}`);
+            await refreshStatus();
+          } catch (err) {
+            log(`Error: ${err.message}`);
+          }
+        });
+        scenesEl.appendChild(button);
+      }
+    }
+
+    async function refreshScenes() {
+      try {
+        const data = await api("/api/scenes");
+        state.scenes = data.available || [];
+        renderScenes();
+      } catch (err) {
+        log(`Error loading scenes: ${err.message}`);
+      }
+    }
+
+    async function refreshStatus() {
+      try {
+        const data = await api("/api/status");
+        modeEl.textContent = `mode: ${data.mode}`;
+        modeEl.className = data.mode === "test" ? "badge warn" : "badge ok";
+        queueEl.textContent = `queue: ${data.queueLength}`;
+      } catch (err) {
+        log(`Error loading status: ${err.message}`);
+      }
+    }
+
+    document.getElementById("saveToken").addEventListener("click", async () => {
+      state.token = tokenInput.value.trim();
+      localStorage.setItem("advent_token", state.token);
+      updateTokenState();
+      await refreshScenes();
+      await refreshStatus();
+      log("Token saved.");
+    });
+
+    document.getElementById("nextBtn").addEventListener("click", async () => {
+      try {
+        await api("/api/scene/next", "POST", {});
+        log("Queued next scene.");
+        await refreshStatus();
+      } catch (err) {
+        log(`Error: ${err.message}`);
+      }
+    });
+
+    document.getElementById("clearBtn").addEventListener("click", async () => {
+      try {
+        await api("/api/queue/clear", "POST", {});
+        log("Queue cleared.");
+        await refreshStatus();
+      } catch (err) {
+        log(`Error: ${err.message}`);
+      }
+    });
+
+    document.getElementById("normalBtn").addEventListener("click", async () => {
+      try {
+        await api("/api/mode", "POST", { mode: "normal" });
+        log("Mode set to normal.");
+        await refreshStatus();
+      } catch (err) {
+        log(`Error: ${err.message}`);
+      }
+    });
+
+    document.getElementById("testBtn").addEventListener("click", async () => {
+      try {
+        await api("/api/mode", "POST", { mode: "test" });
+        log("Mode set to test.");
+        await refreshStatus();
+      } catch (err) {
+        log(`Error: ${err.message}`);
+      }
+    });
+
+    async function bootstrap() {
+      await refreshScenes();
+      await refreshStatus();
+      setInterval(refreshStatus, 2000);
+    }
+
+    bootstrap();
+  </script>
+</body>
+</html>

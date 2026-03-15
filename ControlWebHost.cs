@@ -1,0 +1,189 @@
+using System;
+using System.IO;
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.FileProviders;
+
+namespace advent;
+
+internal static class ControlWebHost
+{
+    public static WebApplication Build(SceneControlService controlService, WebControlOptions options)
+    {
+        var contentRoot = AppContext.BaseDirectory;
+
+        var builder = WebApplication.CreateBuilder(new WebApplicationOptions
+        {
+            Args = [],
+            ContentRootPath = contentRoot
+        });
+        builder.WebHost.UseUrls($"http://{options.BindAddress}:{options.Port}");
+        builder.Services.AddRouting();
+
+        var app = builder.Build();
+
+        if (Directory.Exists(Path.Combine(contentRoot, "wwwroot")))
+        {
+            app.UseDefaultFiles(new DefaultFilesOptions
+            {
+                FileProvider = new PhysicalFileProvider(Path.Combine(contentRoot, "wwwroot"))
+            });
+            app.UseStaticFiles(new StaticFileOptions
+            {
+                FileProvider = new PhysicalFileProvider(Path.Combine(contentRoot, "wwwroot"))
+            });
+        }
+
+        if (!string.IsNullOrWhiteSpace(options.Token))
+        {
+            app.Use(async (context, next) =>
+            {
+                if (!context.Request.Path.StartsWithSegments("/api"))
+                {
+                    await next();
+                    return;
+                }
+
+                var suppliedToken = context.Request.Headers["X-Advent-Token"].ToString();
+                if (string.Equals(suppliedToken, options.Token, StringComparison.Ordinal))
+                {
+                    await next();
+                    return;
+                }
+
+                context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                await context.Response.WriteAsJsonAsync(new { error = "Missing or invalid token." });
+            });
+        }
+
+        app.MapGet("/api/scenes", () => Results.Ok(new
+        {
+            available = controlService.AvailableSceneNames,
+            all = controlService.AllSceneNames
+        }));
+
+        app.MapGet("/api/status", () => Results.Ok(controlService.GetStatus()));
+
+        app.MapPost("/api/scene/play", (PlaySceneRequest request) =>
+        {
+            if (string.IsNullOrWhiteSpace(request.Name))
+                return Results.BadRequest(new { error = "Scene name is required." });
+
+            if (!controlService.EnqueueSceneByName(request.Name, out var error))
+                return Results.NotFound(new { error });
+
+            return Results.Ok(new { queued = request.Name });
+        });
+
+        app.MapPost("/api/scene/next", () =>
+        {
+            controlService.EnqueueNextScene();
+            return Results.Ok(new { queued = "next-random-or-cycle" });
+        });
+
+        app.MapPost("/api/mode", (SetModeRequest request) =>
+        {
+            if (string.IsNullOrWhiteSpace(request.Mode))
+                return Results.BadRequest(new { error = "Mode is required." });
+
+            var normalized = request.Mode.Trim().ToLowerInvariant();
+            bool testMode;
+            switch (normalized)
+            {
+                case "normal":
+                    testMode = false;
+                    break;
+                case "test":
+                    testMode = true;
+                    break;
+                default:
+                    return Results.BadRequest(new { error = "Mode must be 'normal' or 'test'." });
+            }
+
+            var changed = controlService.SetMode(testMode);
+            return Results.Ok(new { mode = normalized, changed });
+        });
+
+        app.MapPost("/api/queue/clear", () =>
+        {
+            controlService.ClearQueue();
+            return Results.Ok(new { cleared = true });
+        });
+
+        app.MapGet("/health", () => Results.Ok(new { ok = true }));
+
+        app.MapFallback(async context =>
+        {
+            context.Response.Redirect("/", false);
+            await Task.CompletedTask;
+        });
+
+        Console.WriteLine(
+            $"Control web UI listening on http://{options.BindAddress}:{options.Port} (token {(string.IsNullOrWhiteSpace(options.Token) ? "disabled" : "enabled")}).");
+        if (!string.IsNullOrWhiteSpace(options.Token))
+            Console.WriteLine($"Use header X-Advent-Token to call API endpoints: {contextlessApiHint(options.Port)}");
+
+        return app;
+    }
+
+    private static string contextlessApiHint(int port)
+    {
+        return $"curl -H 'X-Advent-Token: <token>' http://<pi-ip>:{port}/api/status";
+    }
+
+    private sealed record PlaySceneRequest(string Name);
+    private sealed record SetModeRequest(string Mode);
+}
+
+internal sealed record WebControlOptions(bool Enabled, string BindAddress, int Port, string? Token)
+{
+    private const string DefaultBindAddress = "0.0.0.0";
+    private const int DefaultPort = 8080;
+
+    public static WebControlOptions FromEnvironment()
+    {
+        var enabled = ReadBool("ADVENT_WEB_ENABLED", true);
+        var bindAddress = ReadString("ADVENT_WEB_BIND", DefaultBindAddress);
+        var port = ReadPort("ADVENT_WEB_PORT", DefaultPort);
+        var token = ReadString("ADVENT_WEB_TOKEN", string.Empty);
+        if (string.IsNullOrWhiteSpace(token))
+            token = null;
+
+        return new WebControlOptions(enabled, bindAddress, port, token);
+    }
+
+    private static bool ReadBool(string envName, bool defaultValue)
+    {
+        var raw = Environment.GetEnvironmentVariable(envName);
+        if (string.IsNullOrWhiteSpace(raw))
+            return defaultValue;
+
+        if (bool.TryParse(raw, out var parsedBool))
+            return parsedBool;
+
+        return raw.Trim() switch
+        {
+            "1" => true,
+            "0" => false,
+            _ => defaultValue
+        };
+    }
+
+    private static string ReadString(string envName, string defaultValue)
+    {
+        var raw = Environment.GetEnvironmentVariable(envName);
+        return string.IsNullOrWhiteSpace(raw) ? defaultValue : raw.Trim();
+    }
+
+    private static int ReadPort(string envName, int defaultValue)
+    {
+        var raw = Environment.GetEnvironmentVariable(envName);
+        if (!int.TryParse(raw, out var port) || port is < 1 or > 65535)
+            return defaultValue;
+
+        return port;
+    }
+}

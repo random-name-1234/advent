@@ -259,6 +259,43 @@ public class SceneSelectorTests
     }
 
     [Fact]
+    public void TryGetSceneByName_ReturnsScene_ForKnownName()
+    {
+        var imageDirectory = CreateImageDirectory();
+        try
+        {
+            CreatePng(Path.Combine(imageDirectory, "always-logo.png"), 32, 32);
+            var sut = new SceneSelector(11, imageSceneDirectory: imageDirectory);
+
+            var found = sut.TryGetSceneByName("Fireworks", out var scene);
+
+            Assert.True(found);
+            Assert.NotNull(scene);
+            Assert.Equal("Fireworks", scene.Name);
+        }
+        finally
+        {
+            Directory.Delete(imageDirectory, true);
+        }
+    }
+
+    [Fact]
+    public void TryGetSceneByName_ReturnsFalse_ForUnknownName()
+    {
+        var imageDirectory = CreateImageDirectory();
+        try
+        {
+            var sut = new SceneSelector(11, imageSceneDirectory: imageDirectory);
+            var found = sut.TryGetSceneByName("does-not-exist", out _);
+            Assert.False(found);
+        }
+        finally
+        {
+            Directory.Delete(imageDirectory, true);
+        }
+    }
+
+    [Fact]
     public void AllSceneNames_ContainsLoadedScenes()
     {
         var imageDirectory = CreateImageDirectory();

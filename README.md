@@ -90,6 +90,28 @@ Optional repo variables for deploy customization:
 - `ADVENT_NEXT_APP_DIR`
 - `ADVENT_NEXT_SRC_DIR`
 
+## LAN Control Web UI
+
+The app now serves a simple control page from the Pi on:
+
+- `http://<pi-hostname-or-ip>:8080`
+
+Supported API endpoints:
+
+- `GET /api/scenes`
+- `GET /api/status`
+- `POST /api/scene/play` with `{ "name": "Fireworks" }`
+- `POST /api/scene/next`
+- `POST /api/mode` with `{ "mode": "normal" | "test" }`
+- `POST /api/queue/clear`
+
+Web control environment variables:
+
+- `ADVENT_WEB_ENABLED` (`true` by default)
+- `ADVENT_WEB_BIND` (`0.0.0.0` by default)
+- `ADVENT_WEB_PORT` (`8080` by default)
+- `ADVENT_WEB_TOKEN` (optional; if set, API requires `X-Advent-Token` header)
+
 ## Run
 
 Important: pass app args after `--` so they are forwarded to the program/native matrix options.
