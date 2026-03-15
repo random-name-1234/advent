@@ -3,109 +3,107 @@ using System.Linq;
 using System.Threading;
 using MatrixApi;
 
-namespace advent
+namespace advent;
+
+internal class Program
 {
-    class Program
+    private const int MatrixWidth = 64;
+    private const int MatrixHeight = 32;
+    private const int HardwareFrameDelayMs = 20;
+    private const int SimulatorFrameDelayMs = 66;
+
+    private static void Main(string[] args)
     {
-        private const int MatrixWidth = 64;
-        private const int MatrixHeight = 32;
-        private const int HardwareFrameDelayMs = 20;
-        private const int SimulatorFrameDelayMs = 66;
+        var isTestMode = args.Any(static arg => string.Equals(arg, "--test-mode", StringComparison.OrdinalIgnoreCase));
+        var isSimulatorMode =
+            args.Any(static arg => string.Equals(arg, "--simulator", StringComparison.OrdinalIgnoreCase));
 
-        static void Main(string[] args)
+        Console.WriteLine("Starting meerkats...");
+        Console.WriteLine(isSimulatorMode ? "Output mode: SIMULATOR" : "Output mode: LED MATRIX");
+        Console.WriteLine(isTestMode
+            ? "Scene mode: TEST (cycle all scenes)."
+            : "Scene mode: NORMAL (random seasonal scenes).");
+
+        var scene = new Scene
         {
-            var isTestMode = args.Any(static arg => string.Equals(arg, "--test-mode", StringComparison.OrdinalIgnoreCase));
-            var isSimulatorMode = args.Any(static arg => string.Equals(arg, "--simulator", StringComparison.OrdinalIgnoreCase));
+            ContinuousSceneRequests = isTestMode
+        };
 
-            Console.WriteLine("Starting meerkats...");
-            Console.WriteLine(isSimulatorMode ? "Output mode: SIMULATOR" : "Output mode: LED MATRIX");
-            Console.WriteLine(isTestMode ? "Scene mode: TEST (cycle all scenes)." : "Scene mode: NORMAL (random seasonal scenes).");
+        var sceneSelector = new SceneSelector();
 
-            var scene = new Scene
+        void EnqueueNextScene()
+        {
+            var specialScene = isTestMode
+                ? sceneSelector.GetNextSceneInCycle()
+                : sceneSelector.GetScene();
+            scene.SpecialScenes.Enqueue(specialScene);
+            Console.WriteLine($"Enqueued scene: {specialScene.Name}");
+        }
+
+        scene.NewSceneWanted += (_, _) => EnqueueNextScene();
+
+        if (isTestMode) EnqueueNextScene();
+
+        var keepRunning = true;
+        Console.CancelKeyPress += (_, eventArgs) =>
+        {
+            eventArgs.Cancel = true;
+            keepRunning = false;
+        };
+
+        RGBLedMatrix matrix = null;
+        RGBLedCanvas canvas = null;
+        ConsoleMatrixSimulator simulator = null;
+
+        if (isSimulatorMode)
+        {
+            simulator = new ConsoleMatrixSimulator(MatrixWidth, MatrixHeight);
+        }
+        else
+        {
+            matrix = new RGBLedMatrix(new RGBLedMatrixOptions
             {
-                ContinuousSceneRequests = isTestMode
-            };
+                ChainLength = 1,
+                HardwareMapping = "adafruit-hat-pwm",
+                Rows = MatrixHeight,
+                Cols = MatrixWidth
+            });
+            canvas = matrix.CreateOffscreenCanvas();
+        }
 
-            var sceneSelector = new SceneSelector();
-            void EnqueueNextScene()
-            {
-                var specialScene = isTestMode
-                    ? sceneSelector.GetNextSceneInCycle()
-                    : sceneSelector.GetScene();
-                scene.SpecialScenes.Enqueue(specialScene);
-                Console.WriteLine($"Enqueued scene: {specialScene.Name}");
-            }
+        var now = DateTime.UtcNow;
+        var prev = now;
+        var elapsed = now - prev;
 
-            scene.NewSceneWanted += (_, _) => EnqueueNextScene();
-
-            if (isTestMode)
-            {
-                EnqueueNextScene();
-            }
-
-            var keepRunning = true;
-            Console.CancelKeyPress += (_, eventArgs) =>
-            {
-                eventArgs.Cancel = true;
-                keepRunning = false;
-            };
-
-            RGBLedMatrix matrix = null;
-            RGBLedCanvas canvas = null;
-            ConsoleMatrixSimulator simulator = null;
+        while (keepRunning)
+        {
+            now = DateTime.UtcNow;
+            elapsed = now - prev;
+            scene.Elapsed(elapsed);
 
             if (isSimulatorMode)
             {
-                simulator = new ConsoleMatrixSimulator(MatrixWidth, MatrixHeight);
+                simulator.Render(scene.Img);
             }
             else
             {
-                matrix = new RGBLedMatrix(new RGBLedMatrixOptions
+                canvas.Clear();
+
+                for (var y = 0; y < MatrixHeight; y++)
+                for (var x = 0; x < MatrixWidth; x++)
                 {
-                    ChainLength = 1,
-                    HardwareMapping = "adafruit-hat-pwm",
-                    Rows = MatrixHeight,
-                    Cols = MatrixWidth
-                });
-                canvas = matrix.CreateOffscreenCanvas();
-            }
-
-            var now = DateTime.UtcNow;
-            var prev = now;
-            var elapsed = now - prev;
-
-            while (keepRunning)
-            {
-                now = DateTime.UtcNow;
-                elapsed = now - prev;
-                scene.Elapsed(elapsed);
-
-                if (isSimulatorMode)
-                {
-                    simulator.Render(scene.Img);
-                }
-                else
-                {
-                    canvas.Clear();
-
-                    for (var y = 0; y < MatrixHeight; y++)
-                    {
-                        for (var x = 0; x < MatrixWidth; x++)
-                        {
-                            var pixel = scene.Img[x, y];
-                            canvas.SetPixel(x, y, new Color(pixel.R, pixel.G, pixel.B));
-                        }
-                    }
-
-                    matrix.SwapOnVsync(canvas);
+                    var pixel = scene.Img[x, y];
+                    canvas.SetPixel(x, y, new Color(pixel.R, pixel.G, pixel.B));
                 }
 
-                prev = now;
-                Thread.Sleep(isSimulatorMode ? SimulatorFrameDelayMs : HardwareFrameDelayMs);
+                matrix.SwapOnVsync(canvas);
             }
 
-            simulator?.Dispose();
-            matrix?.Dispose();
+            prev = now;
+            Thread.Sleep(isSimulatorMode ? SimulatorFrameDelayMs : HardwareFrameDelayMs);
         }
+
+        simulator?.Dispose();
+        matrix?.Dispose();
     }
 }

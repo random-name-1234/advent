@@ -3,101 +3,97 @@ using System.Collections.Generic;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
 using SixLabors.ImageSharp.Processing;
-using SixLabors.ImageSharp.Formats.Gif;
 
-namespace advent
+namespace advent;
+
+public class AnimatedGifScene : ISpecialScene
 {
-    public class AnimatedGifScene : ISpecialScene
+    private static readonly TimeSpan sceneDuration = TimeSpan.FromSeconds(10);
+    private readonly List<TimeSpan> frameDurations;
+    private readonly Image<Rgba32> gifImage;
+    private readonly TimeSpan totalDuration;
+    private TimeSpan currentFrameElapsed;
+    private int currentFrameIndex;
+
+    private TimeSpan elapsedThisScene;
+
+    public AnimatedGifScene(string gifFilePath)
     {
-        public bool IsActive { get; private set; }
+        IsActive = false;
+        HidesTime = false;
 
-        public bool HidesTime { get; private set; }
+        // Load the animated GIF
+        gifImage = Image.Load<Rgba32>(gifFilePath);
 
-        public bool RainbowSnow => false;
-        public string Name => "Animated GIF";
+        // Extract frame durations
+        frameDurations = new List<TimeSpan>();
+        foreach (var frame in gifImage.Frames)
+        {
+            var metadata = frame.Metadata.GetGifMetadata();
+            var frameDelay = metadata.FrameDelay;
+            // FrameDelay is in hundredths of a second
+            var delay = TimeSpan.FromMilliseconds(frameDelay * 10);
+            frameDurations.Add(delay);
+            totalDuration += delay;
+        }
+    }
 
-        private TimeSpan elapsedThisScene;
-        private TimeSpan totalDuration;
-        private Image<Rgba32> gifImage;
-        private List<TimeSpan> frameDurations;
-        private int currentFrameIndex;
-        private TimeSpan currentFrameElapsed;
+    public bool IsActive { get; private set; }
 
-        private static TimeSpan sceneDuration = TimeSpan.FromSeconds(10);
+    public bool HidesTime { get; private set; }
 
-        public AnimatedGifScene(string gifFilePath)
+    public bool RainbowSnow => false;
+    public string Name => "Animated GIF";
+
+    public void Activate()
+    {
+        elapsedThisScene = TimeSpan.Zero;
+        currentFrameIndex = 0;
+        currentFrameElapsed = TimeSpan.Zero;
+        IsActive = true;
+        HidesTime = true;
+    }
+
+    public void Elapsed(TimeSpan timeSpan)
+    {
+        if (!IsActive)
+            return;
+
+        elapsedThisScene += timeSpan;
+        currentFrameElapsed += timeSpan;
+
+        if (elapsedThisScene > sceneDuration)
         {
             IsActive = false;
             HidesTime = false;
-
-            // Load the animated GIF
-            gifImage = Image.Load<Rgba32>(gifFilePath);
-
-            // Extract frame durations
-            frameDurations = new List<TimeSpan>();
-            foreach (var frame in gifImage.Frames)
-            {
-                var metadata = frame.Metadata.GetGifMetadata();
-                var frameDelay = metadata.FrameDelay;
-                // FrameDelay is in hundredths of a second
-                var delay = TimeSpan.FromMilliseconds(frameDelay * 10);
-                frameDurations.Add(delay);
-                totalDuration += delay;
-            }
+            return;
         }
 
-        public void Activate()
+        // Advance to the next frame if necessary
+        if (currentFrameElapsed >= frameDurations[currentFrameIndex])
         {
-            elapsedThisScene = TimeSpan.Zero;
-            currentFrameIndex = 0;
-            currentFrameElapsed = TimeSpan.Zero;
-            IsActive = true;
-            HidesTime = true;
+            currentFrameElapsed -= frameDurations[currentFrameIndex];
+            currentFrameIndex = (currentFrameIndex + 1) % gifImage.Frames.Count;
         }
+    }
 
-        public void Elapsed(TimeSpan timeSpan)
-        {
-            if (!IsActive)
-                return;
+    public void Draw(Image<Rgba32> img)
+    {
+        if (!IsActive)
+            return;
 
-            elapsedThisScene += timeSpan;
-            currentFrameElapsed += timeSpan;
+        // Get the current frame
+        var frame = gifImage.Frames.CloneFrame(currentFrameIndex);
 
-            if (elapsedThisScene > sceneDuration)
+        // Resize the frame to fit the display while maintaining aspect ratio
+        if (frame.Width != img.Width || frame.Height != img.Height)
+            frame.Mutate(x => x.Resize(new ResizeOptions
             {
-                IsActive = false;
-                HidesTime = false;
-                return;
-            }
+                Size = new Size(img.Width, img.Height), // Target display size
+                Mode = ResizeMode.Pad // Maintain aspect ratio, pad to fit
+            }));
 
-            // Advance to the next frame if necessary
-            if (currentFrameElapsed >= frameDurations[currentFrameIndex])
-            {
-                currentFrameElapsed -= frameDurations[currentFrameIndex];
-                currentFrameIndex = (currentFrameIndex + 1) % gifImage.Frames.Count;
-            }
-        }
-
-        public void Draw(Image<Rgba32> img)
-        {
-            if (!IsActive)
-                return;
-
-            // Get the current frame
-            var frame = gifImage.Frames.CloneFrame(currentFrameIndex);
-
-            // Resize the frame to fit the display while maintaining aspect ratio
-            if (frame.Width != img.Width || frame.Height != img.Height)
-            {
-                frame.Mutate(x => x.Resize(new ResizeOptions
-                {
-                    Size = new Size(img.Width, img.Height), // Target display size
-                    Mode = ResizeMode.Pad // Maintain aspect ratio, pad to fit
-                }));
-            }
-
-            // Draw the frame onto the provided image
-            img.Mutate(x => x.DrawImage(frame, new Point(0, 0), 1f));
-        }
+        // Draw the frame onto the provided image
+        img.Mutate(x => x.DrawImage(frame, new Point(0, 0), 1f));
     }
 }

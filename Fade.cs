@@ -1,8 +1,7 @@
-﻿namespace advent
+﻿namespace advent;
+
+public enum Fade
 {
-    public enum Fade
-    {
-        In,
-        Out
-    }
+    In,
+    Out
 }

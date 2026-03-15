@@ -3,6 +3,7 @@
 `advent` is a .NET LED matrix scene runner for Raspberry Pi (64x32 panel setup in the current defaults).
 
 It renders:
+
 - a clock overlay
 - snow/rainbow effects by season
 - special scenes (static + animated + procedural), including a full-cycle `--test-mode`
@@ -11,9 +12,11 @@ It renders:
 
 ## Matrix Library / Bindings Source
 
-This project uses local C# bindings in [`MatrixApi/`](MatrixApi/) to call the native RGB matrix library (`librgbmatrix.so`).
+This project uses local C# bindings in [`MatrixApi/`](MatrixApi/) to call the native RGB matrix library (
+`librgbmatrix.so`).
 
 Upstream source for the underlying matrix library:
+
 - https://github.com/hzeller/rpi-rgb-led-matrix
 
 ## Requirements
@@ -57,5 +60,5 @@ dotnet run -c Release --no-launch-profile -- --simulator --test-mode
 - `--simulator` renders a live ANSI/terminal preview of the 64x32 output, useful on macOS while developing.
 - Hardware/driver flag details (`--led-*`) are defined by `rpi-rgb-led-matrix`; refer to upstream docs for full options.
 - Weather scene configuration is optional via env vars:
-  - `ADVENT_WEATHER_LATITUDE` (default `52.2053`, Cambridge UK)
-  - `ADVENT_WEATHER_LONGITUDE` (default `0.1218`, Cambridge UK)
+    - `ADVENT_WEATHER_LATITUDE` (default `52.2053`, Cambridge UK)
+    - `ADVENT_WEATHER_LONGITUDE` (default `0.1218`, Cambridge UK)

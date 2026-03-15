@@ -6,88 +6,71 @@ using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
 using SixLabors.ImageSharp.Processing;
 
-namespace advent
+namespace advent;
+
+public class SlideshowScene : ISpecialScene
 {
-    public class SlideshowScene : ISpecialScene
+    private static readonly TimeSpan sceneDuration = TimeSpan.FromSeconds(6);
+    private static readonly TimeSpan fadeDuration = TimeSpan.FromSeconds(0.5);
+    private readonly List<Image<Rgba32>> slides;
+    private readonly Point topLeft = new(0, 0);
+
+    private TimeSpan elapsedThisScene;
+    private int slideIndex;
+
+    public SlideshowScene()
     {
-        private Point topLeft = new Point(0, 0);
-        public bool IsActive { get; private set; }
+        IsActive = false;
+        HidesTime = false;
+        slides = new List<Image<Rgba32>>();
+        slideIndex = 0;
 
-        public bool HidesTime { get; private set; }
+        if (Directory.Exists("slides"))
+            foreach (var filename in Directory.GetFiles("slides", "*.png"))
+                slides.Add(Image.Load<Rgba32>(filename));
+    }
 
-        public bool RainbowSnow => false;
-        public string Name => "Santa";
+    public bool IsActive { get; private set; }
 
-        private TimeSpan elapsedThisScene;
-        private List<Image<Rgba32>> slides;
-        private int slideIndex;
+    public bool HidesTime { get; private set; }
 
-        private static TimeSpan sceneDuration = TimeSpan.FromSeconds(6);
-        private static TimeSpan fadeDuration = TimeSpan.FromSeconds(0.5);
+    public bool RainbowSnow => false;
+    public string Name => "Santa";
 
-        public SlideshowScene()
+    public void Activate()
+    {
+        if (slides.Any())
+        {
+            slideIndex++;
+            if (slideIndex >= slides.Count - 1) slideIndex = 0;
+
+            elapsedThisScene = TimeSpan.Zero;
+            IsActive = true;
+            HidesTime = true;
+        }
+    }
+
+    public void Elapsed(TimeSpan timeSpan)
+    {
+        elapsedThisScene += timeSpan;
+        if (elapsedThisScene > sceneDuration)
         {
             IsActive = false;
             HidesTime = false;
-            slides = new List<Image<Rgba32>>();
-            slideIndex = 0;
-
-            if (Directory.Exists("slides"))
-            {
-                foreach (var filename in Directory.GetFiles("slides", "*.png"))
-                {
-                    slides.Add(Image.Load<Rgba32>(filename));
-                }
-            }
         }
+    }
 
-        public void Activate()
-        {
-            if (slides.Any())
-            {
-                slideIndex++;
-                if (slideIndex >= slides.Count - 1)
-                {
-                    slideIndex = 0;
-                }
+    public void Draw(Image<Rgba32> img)
+    {
+        double fraction;
+        if (elapsedThisScene < fadeDuration)
+            fraction = elapsedThisScene.TotalMilliseconds / fadeDuration.TotalMilliseconds;
+        else if (elapsedThisScene < sceneDuration - fadeDuration)
+            fraction = 1.0;
+        else
+            fraction = (sceneDuration - elapsedThisScene).TotalMilliseconds / fadeDuration.TotalMilliseconds;
 
-                elapsedThisScene = TimeSpan.Zero;
-                IsActive = true;
-                HidesTime = true;
-            }
-        }
-
-        public void Elapsed(TimeSpan timeSpan)
-        {
-            elapsedThisScene += timeSpan;
-            if (elapsedThisScene > sceneDuration)
-            {
-                IsActive = false;
-                HidesTime = false;
-            }
-        }
-
-        public void Draw(Image<Rgba32> img)
-        {
-            double fraction;
-            if (elapsedThisScene < fadeDuration)
-            {
-                fraction = elapsedThisScene.TotalMilliseconds / fadeDuration.TotalMilliseconds;
-            }
-            else if (elapsedThisScene < sceneDuration - fadeDuration)
-            {
-                fraction = 1.0;
-            }
-            else
-            {
-                fraction = (sceneDuration - elapsedThisScene).TotalMilliseconds / fadeDuration.TotalMilliseconds;
-            }
-
-            fraction = Math.Min(1.0, Math.Max(0.0, fraction));
-            if (IsActive)
-            {
-                img.Mutate(x => x.DrawImage(slides[slideIndex], topLeft, (float)fraction));
-            }
-        }
+        fraction = Math.Min(1.0, Math.Max(0.0, fraction));
+        if (IsActive) img.Mutate(x => x.DrawImage(slides[slideIndex], topLeft, (float)fraction));
     }
 }
