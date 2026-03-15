@@ -13,7 +13,8 @@ namespace advent
 
         private TimeSpan totalElapsed;
         private TimeSpan nextFlakeAt = TimeSpan.Zero;
-        private static readonly Rgba32[] rainbow = new[]
+        private Random random;
+        private static readonly List<Rgba32> rainbow = new List<Rgba32>
         {
             new Rgba32(1, 0, 0, 0.33f),
             new Rgba32(1, 0.65f, 0, 0.33f),
@@ -26,6 +27,7 @@ namespace advent
         public SnowMachine()
         {
             Flakes = new List<Flake>();
+            random = new Random();
             RainbowSnow = false;
         }
 
@@ -34,21 +36,21 @@ namespace advent
             totalElapsed += timeSpan;
             if (totalElapsed >= nextFlakeAt)
             {
-                nextFlakeAt += TimeSpan.FromSeconds(2.0 / FlakesPerSecond * Random.Shared.NextDouble());
+                nextFlakeAt += TimeSpan.FromSeconds(2.0 / FlakesPerSecond * random.NextDouble());
                 if (nextFlakeAt < totalElapsed)
                 {
                     nextFlakeAt = totalElapsed;
                 }
 
-                var position = new Vector2((float)(Random.Shared.NextDouble() * 64.0), 32f);
-                var speed = (float)(8.0 + (Random.Shared.NextDouble() * 2.0));
+                var position = new Vector2((float)(random.NextDouble() * 64.0), (float)32);
+                var speed = (float)(8.0 + (random.NextDouble() * 2.0));
                 if (!RainbowSnow)
                 {
                     Flakes.Add(new Flake(position, speed, Color.White, 1.0f));
                 }
                 else
                 {
-                    var colour = rainbow[Random.Shared.Next(rainbow.Length)];
+                    var colour = rainbow[random.Next(0, rainbow.Count - 1)];
                     Flakes.Add(new Flake(position, speed, colour, 3.0f));
                 }
             }

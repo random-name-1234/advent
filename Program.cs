@@ -1,17 +1,12 @@
-﻿using System;
-using System.Diagnostics;
+﻿﻿using System;
 using System.Linq;
 using System.Threading;
 using MatrixApi;
-using SixLabors.ImageSharp.PixelFormats;
 
 namespace advent
 {
     class Program
     { 
-        private const int MatrixWidth = 64;
-        private const int MatrixHeight = 32;
-        private const int FrameDelayMs = 20;
 
         static void Main(string[] args)
         {
@@ -55,45 +50,34 @@ namespace advent
                 EnqueueNextScene();
             }
 
-            var previousFrame = new Rgba32[MatrixWidth * MatrixHeight];
-            var hasPreviousFrame = false;
-            var previousTimestamp = Stopwatch.GetTimestamp();
-            var stopwatchFrequency = Stopwatch.Frequency;
+            var now = DateTime.UtcNow;
+            var prev = now;
+            var elapsed = now - prev;
 
 
             while (true)
 
             {
-                var nowTimestamp = Stopwatch.GetTimestamp();
-                var elapsed = TimeSpan.FromSeconds((nowTimestamp - previousTimestamp) / (double)stopwatchFrequency);
-                previousTimestamp = nowTimestamp;
+                canvas.Clear();
+                now = DateTime.UtcNow;
+                elapsed = now - prev;
                 scene.Elapsed(elapsed);
 
-                var frame = scene.Img;
-                for (var y = 0; y < MatrixHeight; y++)
+                for (int y = 0; y < 32; y++)
                 {
-                    var rowOffset = y * MatrixWidth;
-                    for (var x = 0; x < MatrixWidth; x++)
+                    for (int x = 0; x < 64; x++)
                     {
-                        var pixel = frame[x, y];
-                        var index = rowOffset + x;
-                        var previous = previousFrame[index];
-                        if (hasPreviousFrame &&
-                            previous.R == pixel.R &&
-                            previous.G == pixel.G &&
-                            previous.B == pixel.B)
-                        {
-                            continue;
-                        }
-
-                        previousFrame[index] = pixel;
-                        canvas.SetPixel(x, y, new Color(pixel.R, pixel.G, pixel.B));
+                        canvas.SetPixel(x, y, new Color(
+                            (int)scene.Img[x, y].R,
+                            (int)scene.Img[x, y].G,
+                            (int)scene.Img[x, y].B));
                     }
                 }
-                hasPreviousFrame = true;
+
+                prev = now;
 
                 matrix.SwapOnVsync(canvas);
-                Thread.Sleep(FrameDelayMs);
+                Thread.Sleep(20);
             }
         }
     }
