@@ -1,0 +1,658 @@
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.Net.Http;
+using System.Text.Json;
+using System.Threading.Tasks;
+using SixLabors.Fonts;
+using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.Drawing.Processing;
+using SixLabors.ImageSharp.PixelFormats;
+using SixLabors.ImageSharp.Processing;
+
+namespace advent
+{
+    public class WeatherScene : ISpecialScene
+    {
+        private const int Width = 64;
+        private const int Height = 32;
+
+        private static readonly TimeSpan SceneDuration = TimeSpan.FromSeconds(22);
+        private static readonly TimeSpan CacheLifetime = TimeSpan.FromMinutes(10);
+
+        private static readonly HttpClient HttpClient = new HttpClient
+        {
+            Timeout = TimeSpan.FromSeconds(4)
+        };
+
+        private static readonly object CacheLock = new();
+        private static DateTimeOffset cacheUpdatedAtUtc = DateTimeOffset.MinValue;
+        private static WeatherSnapshot cachedSnapshot;
+
+        private static readonly double Latitude = ReadCoordinate("ADVENT_WEATHER_LATITUDE", 52.2053);
+        private static readonly double Longitude = ReadCoordinate("ADVENT_WEATHER_LONGITUDE", 0.1218);
+
+        private static readonly FontFamily FontFamily = SystemFonts.Get("Arial");
+        private static readonly Font CurrentTempFont = new Font(FontFamily, 14f);
+        private static readonly Font ConditionFont = new Font(FontFamily, 7f);
+        private static readonly Font DayFont = new Font(FontFamily, 7f);
+        private static readonly Font TempFont = new Font(FontFamily, 8f);
+
+        private TimeSpan elapsedThisScene;
+        private Task<WeatherSnapshot> fetchTask;
+        private WeatherSnapshot snapshot;
+
+        public bool IsActive { get; private set; }
+        public bool HidesTime { get; private set; }
+        public bool RainbowSnow => false;
+        public string Name => "Weather";
+
+        public void Activate()
+        {
+            elapsedThisScene = TimeSpan.Zero;
+            IsActive = true;
+            HidesTime = true;
+
+            snapshot = TryGetCachedSnapshot();
+            var cacheIsStale = snapshot == null || IsCacheStale();
+            if (cacheIsStale)
+            {
+                fetchTask = FetchWeatherAsync();
+            }
+        }
+
+        public void Elapsed(TimeSpan timeSpan)
+        {
+            if (!IsActive)
+            {
+                return;
+            }
+
+            elapsedThisScene += timeSpan;
+            if (elapsedThisScene > SceneDuration)
+            {
+                IsActive = false;
+                HidesTime = false;
+                return;
+            }
+
+            if (fetchTask == null || !fetchTask.IsCompleted)
+            {
+                return;
+            }
+
+            if (fetchTask.IsCompletedSuccessfully)
+            {
+                snapshot = fetchTask.Result;
+                UpdateCache(snapshot);
+            }
+            else
+            {
+                var baseException = fetchTask.Exception?.GetBaseException();
+                Console.WriteLine($"Weather fetch failed: {baseException?.Message ?? "Unknown error"}");
+            }
+
+            fetchTask = null;
+        }
+
+        public void Draw(Image<Rgba32> img)
+        {
+            if (!IsActive)
+            {
+                return;
+            }
+
+            var showDayPalette = snapshot?.IsDay ?? true;
+            DrawBackground(img, showDayPalette);
+
+            if (snapshot == null)
+            {
+                DrawLoadingState(img);
+                return;
+            }
+
+            DrawCurrentWeather(img, snapshot);
+            DrawUpcomingWeather(img, snapshot);
+        }
+
+        private void DrawLoadingState(Image<Rgba32> img)
+        {
+            DrawWeatherIcon(img, 24, 6, 14, 3, true);
+
+            var phase = (int)(elapsedThisScene.TotalMilliseconds / 180) % 4;
+            for (var i = 0; i < 4; i++)
+            {
+                var color = i <= phase ? new Rgba32(250, 250, 250) : new Rgba32(90, 105, 130);
+                FillCircle(img, 20 + i * 8, 27, 2, color);
+            }
+        }
+
+        private static void DrawCurrentWeather(Image<Rgba32> img, WeatherSnapshot weather)
+        {
+            FillRect(img, 0, 0, Width, 17, weather.IsDay ? new Rgba32(36, 73, 116) : new Rgba32(20, 28, 58));
+
+            DrawWeatherIcon(img, 2, 1, 14, weather.CurrentWeatherCode, weather.IsDay);
+
+            var currentTemp = $"{Math.Round(weather.CurrentTemperatureC, MidpointRounding.AwayFromZero):0}C";
+            img.Mutate(ctx => ctx.DrawText(currentTemp, CurrentTempFont, Color.White, new PointF(18, 0)));
+            img.Mutate(ctx => ctx.DrawText(GetConditionLabel(weather.CurrentWeatherCode), ConditionFont, new Rgba32(220, 236, 255), new PointF(20, 12)));
+        }
+
+        private static void DrawUpcomingWeather(Image<Rgba32> img, WeatherSnapshot weather)
+        {
+            FillRect(img, 0, 17, Width, 15, new Rgba32(12, 18, 38));
+
+            for (var i = 0; i < weather.Upcoming.Length && i < 3; i++)
+            {
+                var forecast = weather.Upcoming[i];
+                var x = 1 + (i * 21);
+
+                FillRect(img, x, 18, 20, 13, new Rgba32(22, 32, 63));
+                img.Mutate(ctx => ctx.DrawText(forecast.DayLabel, DayFont, Color.White, new PointF(x + 1, 18)));
+                DrawWeatherIcon(img, x + 1, 22, 8, forecast.WeatherCode, true);
+
+                var highTemp = $"{Math.Round(forecast.MaxTempC, MidpointRounding.AwayFromZero):0}";
+                var lowTemp = $"{Math.Round(forecast.MinTempC, MidpointRounding.AwayFromZero):0}";
+                img.Mutate(ctx => ctx.DrawText(highTemp, TempFont, new Rgba32(255, 235, 150), new PointF(x + 11, 22)));
+                img.Mutate(ctx => ctx.DrawText(lowTemp, TempFont, new Rgba32(165, 210, 255), new PointF(x + 11, 26)));
+            }
+        }
+
+        private static async Task<WeatherSnapshot> FetchWeatherAsync()
+        {
+            var lat = Latitude.ToString("0.####", CultureInfo.InvariantCulture);
+            var lon = Longitude.ToString("0.####", CultureInfo.InvariantCulture);
+            var url =
+                $"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current=temperature_2m,weather_code,is_day&daily=weather_code,temperature_2m_max,temperature_2m_min&timezone=auto&forecast_days=4";
+
+            using var response = await HttpClient.GetAsync(url).ConfigureAwait(false);
+            response.EnsureSuccessStatusCode();
+
+            await using var stream = await response.Content.ReadAsStreamAsync().ConfigureAwait(false);
+            using var json = await JsonDocument.ParseAsync(stream).ConfigureAwait(false);
+
+            var root = json.RootElement;
+            if (root.TryGetProperty("error", out var hasError) &&
+                hasError.ValueKind == JsonValueKind.True)
+            {
+                var reason = root.TryGetProperty("reason", out var reasonEl)
+                    ? reasonEl.GetString()
+                    : "Unknown weather API error.";
+                throw new InvalidOperationException(reason);
+            }
+
+            var current = root.GetProperty("current");
+            var currentTemperature = ReadRequiredFloat(current, "temperature_2m");
+            var currentWeatherCode = ReadRequiredInt(current, "weather_code");
+            var isDay = ReadRequiredInt(current, "is_day") == 1;
+
+            var daily = root.GetProperty("daily");
+            var time = ReadStringArray(daily, "time");
+            var codes = ReadIntArray(daily, "weather_code");
+            var maxTemps = ReadFloatArray(daily, "temperature_2m_max");
+            var minTemps = ReadFloatArray(daily, "temperature_2m_min");
+
+            var count = Math.Min(time.Length, Math.Min(codes.Length, Math.Min(maxTemps.Length, minTemps.Length)));
+            var upcoming = new List<DailyForecast>(3);
+
+            for (var i = 1; i < count && upcoming.Count < 3; i++)
+            {
+                var dayLabel = BuildDayLabel(time[i], i);
+                upcoming.Add(new DailyForecast(dayLabel, codes[i], maxTemps[i], minTemps[i]));
+            }
+
+            if (upcoming.Count == 0 && count > 0)
+            {
+                upcoming.Add(new DailyForecast(BuildDayLabel(time[0], 0), codes[0], maxTemps[0], minTemps[0]));
+            }
+
+            return new WeatherSnapshot(currentTemperature, currentWeatherCode, isDay, upcoming.ToArray());
+        }
+
+        private static string BuildDayLabel(string isoDate, int fallbackOffset)
+        {
+            if (DateTime.TryParseExact(
+                    isoDate,
+                    "yyyy-MM-dd",
+                    CultureInfo.InvariantCulture,
+                    DateTimeStyles.None,
+                    out var parsedDate))
+            {
+                var dayName = parsedDate.ToString("ddd", CultureInfo.InvariantCulture);
+                return dayName.Substring(0, Math.Min(2, dayName.Length)).ToUpperInvariant();
+            }
+
+            var fallback = DateTime.UtcNow.Date.AddDays(fallbackOffset).ToString("ddd", CultureInfo.InvariantCulture);
+            return fallback.Substring(0, Math.Min(2, fallback.Length)).ToUpperInvariant();
+        }
+
+        private static float ReadRequiredFloat(JsonElement parent, string propertyName)
+        {
+            if (!parent.TryGetProperty(propertyName, out var element) ||
+                !element.TryGetDouble(out var value))
+            {
+                throw new InvalidOperationException($"Weather API response missing '{propertyName}'.");
+            }
+
+            return (float)value;
+        }
+
+        private static int ReadRequiredInt(JsonElement parent, string propertyName)
+        {
+            if (!parent.TryGetProperty(propertyName, out var element) ||
+                !element.TryGetInt32(out var value))
+            {
+                throw new InvalidOperationException($"Weather API response missing '{propertyName}'.");
+            }
+
+            return value;
+        }
+
+        private static string[] ReadStringArray(JsonElement parent, string propertyName)
+        {
+            if (!parent.TryGetProperty(propertyName, out var element) ||
+                element.ValueKind != JsonValueKind.Array)
+            {
+                return Array.Empty<string>();
+            }
+
+            var values = new string[element.GetArrayLength()];
+            var i = 0;
+            foreach (var item in element.EnumerateArray())
+            {
+                values[i++] = item.GetString() ?? string.Empty;
+            }
+
+            return values;
+        }
+
+        private static int[] ReadIntArray(JsonElement parent, string propertyName)
+        {
+            if (!parent.TryGetProperty(propertyName, out var element) ||
+                element.ValueKind != JsonValueKind.Array)
+            {
+                return Array.Empty<int>();
+            }
+
+            var values = new int[element.GetArrayLength()];
+            var i = 0;
+            foreach (var item in element.EnumerateArray())
+            {
+                values[i++] = item.TryGetInt32(out var value) ? value : 0;
+            }
+
+            return values;
+        }
+
+        private static float[] ReadFloatArray(JsonElement parent, string propertyName)
+        {
+            if (!parent.TryGetProperty(propertyName, out var element) ||
+                element.ValueKind != JsonValueKind.Array)
+            {
+                return Array.Empty<float>();
+            }
+
+            var values = new float[element.GetArrayLength()];
+            var i = 0;
+            foreach (var item in element.EnumerateArray())
+            {
+                values[i++] = item.TryGetDouble(out var value) ? (float)value : 0f;
+            }
+
+            return values;
+        }
+
+        private static double ReadCoordinate(string environmentVariable, double fallback)
+        {
+            var value = Environment.GetEnvironmentVariable(environmentVariable);
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return fallback;
+            }
+
+            if (!double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var coordinate))
+            {
+                return fallback;
+            }
+
+            return coordinate;
+        }
+
+        private static WeatherSnapshot TryGetCachedSnapshot()
+        {
+            lock (CacheLock)
+            {
+                if (cachedSnapshot == null)
+                {
+                    return null;
+                }
+
+                if (DateTimeOffset.UtcNow - cacheUpdatedAtUtc > CacheLifetime)
+                {
+                    return null;
+                }
+
+                return cachedSnapshot;
+            }
+        }
+
+        private static bool IsCacheStale()
+        {
+            lock (CacheLock)
+            {
+                return cachedSnapshot == null || DateTimeOffset.UtcNow - cacheUpdatedAtUtc > CacheLifetime;
+            }
+        }
+
+        private static void UpdateCache(WeatherSnapshot weatherSnapshot)
+        {
+            lock (CacheLock)
+            {
+                cachedSnapshot = weatherSnapshot;
+                cacheUpdatedAtUtc = DateTimeOffset.UtcNow;
+            }
+        }
+
+        private static string GetConditionLabel(int weatherCode)
+        {
+            return weatherCode switch
+            {
+                0 => "Clear",
+                1 or 2 => "Partly",
+                3 => "Cloudy",
+                45 or 48 => "Fog",
+                51 or 53 or 55 or 56 or 57 => "Drizzle",
+                61 or 63 or 65 or 66 or 67 or 80 or 81 or 82 => "Rain",
+                71 or 73 or 75 or 77 or 85 or 86 => "Snow",
+                95 or 96 or 99 => "Storm",
+                _ => "Unknown"
+            };
+        }
+
+        private static void DrawBackground(Image<Rgba32> img, bool isDay)
+        {
+            var top = isDay ? new Rgba32(32, 112, 178) : new Rgba32(8, 16, 44);
+            var bottom = isDay ? new Rgba32(14, 58, 108) : new Rgba32(14, 20, 66);
+
+            for (var y = 0; y < Height; y++)
+            {
+                var t = y / (float)(Height - 1);
+                var r = Lerp(top.R, bottom.R, t);
+                var g = Lerp(top.G, bottom.G, t);
+                var b = Lerp(top.B, bottom.B, t);
+
+                for (var x = 0; x < Width; x++)
+                {
+                    img[x, y] = new Rgba32(r, g, b);
+                }
+            }
+        }
+
+        private static byte Lerp(byte start, byte end, float t)
+        {
+            return (byte)Math.Clamp((int)Math.Round(start + ((end - start) * t)), 0, 255);
+        }
+
+        private static void DrawWeatherIcon(Image<Rgba32> img, int x, int y, int size, int weatherCode, bool isDay)
+        {
+            var icon = MapWeatherType(weatherCode);
+            switch (icon)
+            {
+                case WeatherType.Clear:
+                    if (isDay)
+                    {
+                        DrawSun(img, x, y, size);
+                    }
+                    else
+                    {
+                        DrawMoon(img, x, y, size);
+                    }
+
+                    break;
+
+                case WeatherType.PartlyCloudy:
+                    if (isDay)
+                    {
+                        DrawSun(img, x, y, size);
+                    }
+                    else
+                    {
+                        DrawMoon(img, x, y, size);
+                    }
+
+                    DrawCloud(img, x + (size / 4), y + (size / 3), size - 2, new Rgba32(212, 220, 238));
+                    break;
+
+                case WeatherType.Cloudy:
+                    DrawCloud(img, x + 1, y + (size / 3), size - 1, new Rgba32(205, 215, 233));
+                    break;
+
+                case WeatherType.Fog:
+                    DrawCloud(img, x + 1, y + (size / 3), size - 1, new Rgba32(200, 208, 228));
+                    DrawFogLines(img, x + 1, y + size - 2, size - 2);
+                    break;
+
+                case WeatherType.Drizzle:
+                    DrawCloud(img, x + 1, y + (size / 3), size - 1, new Rgba32(205, 215, 233));
+                    DrawRainDrops(img, x + 2, y + size - 1, size - 4, 2);
+                    break;
+
+                case WeatherType.Rain:
+                    DrawCloud(img, x + 1, y + (size / 3), size - 1, new Rgba32(205, 215, 233));
+                    DrawRainDrops(img, x + 2, y + size - 1, size - 4, 3);
+                    break;
+
+                case WeatherType.Snow:
+                    DrawCloud(img, x + 1, y + (size / 3), size - 1, new Rgba32(220, 230, 245));
+                    DrawSnowFlakes(img, x + 2, y + size - 1, size - 4);
+                    break;
+
+                case WeatherType.Thunder:
+                    DrawCloud(img, x + 1, y + (size / 3), size - 1, new Rgba32(205, 215, 233));
+                    DrawThunderBolt(img, x + (size / 2), y + (size / 2) + 1);
+                    break;
+
+                default:
+                    DrawCloud(img, x + 1, y + (size / 3), size - 1, new Rgba32(205, 215, 233));
+                    break;
+            }
+        }
+
+        private static WeatherType MapWeatherType(int weatherCode)
+        {
+            return weatherCode switch
+            {
+                0 => WeatherType.Clear,
+                1 or 2 => WeatherType.PartlyCloudy,
+                3 => WeatherType.Cloudy,
+                45 or 48 => WeatherType.Fog,
+                51 or 53 or 55 or 56 or 57 => WeatherType.Drizzle,
+                61 or 63 or 65 or 66 or 67 or 80 or 81 or 82 => WeatherType.Rain,
+                71 or 73 or 75 or 77 or 85 or 86 => WeatherType.Snow,
+                95 or 96 or 99 => WeatherType.Thunder,
+                _ => WeatherType.Unknown
+            };
+        }
+
+        private static void DrawSun(Image<Rgba32> img, int x, int y, int size)
+        {
+            var centerX = x + (size / 2);
+            var centerY = y + (size / 2);
+            var coreRadius = Math.Max(2, size / 4);
+
+            var rayColor = new Rgba32(255, 208, 84);
+            var coreColor = new Rgba32(255, 236, 120);
+
+            DrawLine(img, centerX - coreRadius - 2, centerY, centerX - coreRadius - 1, centerY, rayColor);
+            DrawLine(img, centerX + coreRadius + 1, centerY, centerX + coreRadius + 2, centerY, rayColor);
+            DrawLine(img, centerX, centerY - coreRadius - 2, centerX, centerY - coreRadius - 1, rayColor);
+            DrawLine(img, centerX, centerY + coreRadius + 1, centerX, centerY + coreRadius + 2, rayColor);
+
+            DrawLine(img, centerX - coreRadius - 1, centerY - coreRadius - 1, centerX - coreRadius, centerY - coreRadius, rayColor);
+            DrawLine(img, centerX + coreRadius, centerY - coreRadius, centerX + coreRadius + 1, centerY - coreRadius - 1, rayColor);
+            DrawLine(img, centerX - coreRadius - 1, centerY + coreRadius + 1, centerX - coreRadius, centerY + coreRadius, rayColor);
+            DrawLine(img, centerX + coreRadius, centerY + coreRadius, centerX + coreRadius + 1, centerY + coreRadius + 1, rayColor);
+
+            FillCircle(img, centerX, centerY, coreRadius, coreColor);
+        }
+
+        private static void DrawMoon(Image<Rgba32> img, int x, int y, int size)
+        {
+            var centerX = x + (size / 2);
+            var centerY = y + (size / 2);
+            var radius = Math.Max(2, size / 4);
+
+            FillCircle(img, centerX, centerY, radius, new Rgba32(244, 246, 255));
+            FillCircle(img, centerX + 1, centerY - 1, radius, new Rgba32(10, 20, 52));
+        }
+
+        private static void DrawCloud(Image<Rgba32> img, int x, int y, int size, Rgba32 color)
+        {
+            var width = Math.Max(6, size);
+            var baseY = y + (size / 3);
+
+            FillCircle(img, x + (width / 4), baseY, 2, color);
+            FillCircle(img, x + (width / 2), baseY - 1, 3, color);
+            FillCircle(img, x + (3 * width / 4), baseY, 2, color);
+            FillRect(img, x + 1, baseY, width - 2, 3, color);
+        }
+
+        private static void DrawRainDrops(Image<Rgba32> img, int x, int y, int width, int drops)
+        {
+            var color = new Rgba32(120, 188, 255);
+            for (var i = 0; i < drops; i++)
+            {
+                var dropX = x + (i * Math.Max(3, width / Math.Max(1, drops - 1)));
+                DrawLine(img, dropX, y, dropX - 1, y + 2, color);
+            }
+        }
+
+        private static void DrawSnowFlakes(Image<Rgba32> img, int x, int y, int width)
+        {
+            var color = new Rgba32(235, 245, 255);
+            var firstX = x + 1;
+            var secondX = x + Math.Max(4, width - 1);
+
+            DrawSnowFlake(img, firstX, y + 1, color);
+            DrawSnowFlake(img, secondX, y + 2, color);
+        }
+
+        private static void DrawSnowFlake(Image<Rgba32> img, int x, int y, Rgba32 color)
+        {
+            SetPixel(img, x, y, color);
+            SetPixel(img, x - 1, y, color);
+            SetPixel(img, x + 1, y, color);
+            SetPixel(img, x, y - 1, color);
+            SetPixel(img, x, y + 1, color);
+        }
+
+        private static void DrawThunderBolt(Image<Rgba32> img, int x, int y)
+        {
+            var color = new Rgba32(255, 219, 106);
+            DrawLine(img, x, y, x - 2, y + 2, color);
+            DrawLine(img, x - 2, y + 2, x, y + 2, color);
+            DrawLine(img, x, y + 2, x - 1, y + 4, color);
+        }
+
+        private static void DrawFogLines(Image<Rgba32> img, int x, int y, int width)
+        {
+            var color = new Rgba32(175, 188, 205);
+            FillRect(img, x, y, width, 1, color);
+            FillRect(img, x + 1, y + 2, Math.Max(2, width - 2), 1, color);
+        }
+
+        private static void DrawLine(Image<Rgba32> img, int x0, int y0, int x1, int y1, Rgba32 color)
+        {
+            var dx = Math.Abs(x1 - x0);
+            var sx = x0 < x1 ? 1 : -1;
+            var dy = -Math.Abs(y1 - y0);
+            var sy = y0 < y1 ? 1 : -1;
+            var err = dx + dy;
+
+            while (true)
+            {
+                SetPixel(img, x0, y0, color);
+                if (x0 == x1 && y0 == y1)
+                {
+                    break;
+                }
+
+                var e2 = 2 * err;
+                if (e2 >= dy)
+                {
+                    err += dy;
+                    x0 += sx;
+                }
+
+                if (e2 <= dx)
+                {
+                    err += dx;
+                    y0 += sy;
+                }
+            }
+        }
+
+        private static void FillCircle(Image<Rgba32> img, int centerX, int centerY, int radius, Rgba32 color)
+        {
+            var radiusSquared = radius * radius;
+            for (var y = centerY - radius; y <= centerY + radius; y++)
+            {
+                for (var x = centerX - radius; x <= centerX + radius; x++)
+                {
+                    var dx = x - centerX;
+                    var dy = y - centerY;
+                    if (dx * dx + dy * dy <= radiusSquared)
+                    {
+                        SetPixel(img, x, y, color);
+                    }
+                }
+            }
+        }
+
+        private static void FillRect(Image<Rgba32> img, int x, int y, int width, int height, Rgba32 color)
+        {
+            for (var yy = y; yy < y + height; yy++)
+            {
+                for (var xx = x; xx < x + width; xx++)
+                {
+                    SetPixel(img, xx, yy, color);
+                }
+            }
+        }
+
+        private static void SetPixel(Image<Rgba32> img, int x, int y, Rgba32 color)
+        {
+            if ((uint)x >= Width || (uint)y >= Height)
+            {
+                return;
+            }
+
+            img[x, y] = color;
+        }
+
+        private sealed record WeatherSnapshot(
+            float CurrentTemperatureC,
+            int CurrentWeatherCode,
+            bool IsDay,
+            DailyForecast[] Upcoming);
+
+        private readonly record struct DailyForecast(
+            string DayLabel,
+            int WeatherCode,
+            float MaxTempC,
+            float MinTempC);
+
+        private enum WeatherType
+        {
+            Unknown,
+            Clear,
+            PartlyCloudy,
+            Cloudy,
+            Fog,
+            Drizzle,
+            Rain,
+            Snow,
+            Thunder
+        }
+    }
+}

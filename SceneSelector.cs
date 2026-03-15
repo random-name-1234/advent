@@ -8,15 +8,15 @@ namespace advent
     {
         private static readonly IReadOnlyList<SceneDefinition> DefaultSceneDefinitions = new[]
         {
+            new SceneDefinition("Weather", static () => new FadingScene(new WeatherScene())),
             new SceneDefinition("Cat", static () => new CatScene()),
             new SceneDefinition("Rainbow", static () => new RainbowSnowScene()),
             new SceneDefinition("Game of Life", static () => new FadingScene(new GameOfLifeScene())),
             new SceneDefinition("Starfield Parallax", static () => new FadingScene(new StarfieldParallaxScene())),
             new SceneDefinition("Plasma SDF", static () => new FadingScene(new PlasmaSdfScene())),
             new SceneDefinition("Matrix Rain", static () => new FadingScene(new MatrixRainScene())),
-            new SceneDefinition("Synthwave Grid", static () => new FadingScene(new SynthwaveGridScene())),
+           new SceneDefinition("Synthwave Grid", static () => new FadingScene(new SynthwaveGridScene())),
             new SceneDefinition("Orbital", static () => new FadingScene(new OrbitalScene())),
-            new SceneDefinition("Warp Core", static () => new FadingScene(new WarpCoreScene())),
             new SceneDefinition("Error", static () => new FadingScene(new ErrorScene())),
             new SceneDefinition("Space Invaders", static () => new FadingScene(new SpaceInvadersScene())),
             new SceneDefinition("CTM Logo", static () => new FadingScene(new CtmLogoScene())),

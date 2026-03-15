@@ -8,6 +8,7 @@ namespace advent
     {
         public Vector2 Position { get; set; }
         public float Speed { get; }
+        private Random random;
         private Vector2 offsetFrom;
         private Vector2 offsetTo;
         private TimeSpan offsetTransitionTime;
@@ -17,6 +18,7 @@ namespace advent
 
         public Flake(Vector2 startPosition, float speed, Rgba32 color, float width)
         {
+            random = new Random();
             offsetTo = new Vector2(0, 0);
             ResetOffset();
             Position = startPosition;
@@ -39,13 +41,14 @@ namespace advent
             }
 
             Position += delta + currentOffset;
+            var v = new Vector2(1, 1);
         }
 
         private void ResetOffset()
         {
             offsetFrom = offsetTo;
-            offsetTo = new Vector2((float)Random.Shared.NextDouble() * 0.25f - 0.125f, (float)Random.Shared.NextDouble() * 0.25f - 0.125f);
-            offsetTransitionTime = TimeSpan.FromSeconds(0.5 + (0.5 * Random.Shared.NextDouble()));
+            offsetTo = new Vector2((float)random.NextDouble() * 0.25f - 0.125f, (float)random.NextDouble() * 0.25f - 0.125f);
+            offsetTransitionTime = TimeSpan.FromSeconds(0.5 + (0.5 * random.NextDouble()));
             offsetElapsed = TimeSpan.Zero;
         }
 

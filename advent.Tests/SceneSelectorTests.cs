@@ -31,6 +31,7 @@ namespace advent.Tests
 
             var expected = new[]
             {
+                "Weather",
                 "Cat",
                 "Rainbow",
                 "Game of Life",
@@ -39,7 +40,6 @@ namespace advent.Tests
                 "Matrix Rain",
                 "Synthwave Grid",
                 "Orbital",
-                "Warp Core",
                 "Error",
                 "Space Invaders",
                 "CTM Logo",
@@ -67,9 +67,9 @@ namespace advent.Tests
             Assert.Contains("Starfield Parallax", sut.AllSceneNames);
             Assert.Contains("Plasma SDF", sut.AllSceneNames);
             Assert.Contains("Matrix Rain", sut.AllSceneNames);
+            Assert.Contains("Weather", sut.AllSceneNames);
             Assert.Contains("Synthwave Grid", sut.AllSceneNames);
             Assert.Contains("Orbital", sut.AllSceneNames);
-            Assert.Contains("Warp Core", sut.AllSceneNames);
             Assert.Contains("Santa", sut.AllSceneNames);
             Assert.Equal(7, sut.AllSceneNames.Count(name => name == "Animated GIF"));
         }

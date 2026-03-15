@@ -1,34 +1,25 @@
-﻿using System;
-using System.Diagnostics;
+using System;
 using System.Linq;
 using System.Threading;
 using MatrixApi;
-using SixLabors.ImageSharp.PixelFormats;
 
 namespace advent
 {
     class Program
-    { 
+    {
         private const int MatrixWidth = 64;
         private const int MatrixHeight = 32;
-        private const int FrameDelayMs = 20;
+        private const int HardwareFrameDelayMs = 20;
+        private const int SimulatorFrameDelayMs = 66;
 
         static void Main(string[] args)
         {
             var isTestMode = args.Any(static arg => string.Equals(arg, "--test-mode", StringComparison.OrdinalIgnoreCase));
+            var isSimulatorMode = args.Any(static arg => string.Equals(arg, "--simulator", StringComparison.OrdinalIgnoreCase));
+
             Console.WriteLine("Starting meerkats...");
+            Console.WriteLine(isSimulatorMode ? "Output mode: SIMULATOR" : "Output mode: LED MATRIX");
             Console.WriteLine(isTestMode ? "Scene mode: TEST (cycle all scenes)." : "Scene mode: NORMAL (random seasonal scenes).");
-
-            var matrix = new RGBLedMatrix(new RGBLedMatrixOptions
-            {
-                ChainLength = 1,
-                HardwareMapping = "adafruit-hat-pwm",
-                Rows = 32,
-                Cols = 64
-            });
-
-            var canvas = matrix.CreateOffscreenCanvas();
-
 
             var scene = new Scene
             {
@@ -45,56 +36,76 @@ namespace advent
                 Console.WriteLine($"Enqueued scene: {specialScene.Name}");
             }
 
-            scene.NewSceneWanted += (s, e) =>
-            {
-                EnqueueNextScene();
-            };
+            scene.NewSceneWanted += (_, _) => EnqueueNextScene();
 
             if (isTestMode)
             {
                 EnqueueNextScene();
             }
 
-            var previousFrame = new Rgba32[MatrixWidth * MatrixHeight];
-            var hasPreviousFrame = false;
-            var previousTimestamp = Stopwatch.GetTimestamp();
-            var stopwatchFrequency = Stopwatch.Frequency;
-
-
-            while (true)
-
+            var keepRunning = true;
+            Console.CancelKeyPress += (_, eventArgs) =>
             {
-                var nowTimestamp = Stopwatch.GetTimestamp();
-                var elapsed = TimeSpan.FromSeconds((nowTimestamp - previousTimestamp) / (double)stopwatchFrequency);
-                previousTimestamp = nowTimestamp;
+                eventArgs.Cancel = true;
+                keepRunning = false;
+            };
+
+            RGBLedMatrix matrix = null;
+            RGBLedCanvas canvas = null;
+            ConsoleMatrixSimulator simulator = null;
+
+            if (isSimulatorMode)
+            {
+                simulator = new ConsoleMatrixSimulator(MatrixWidth, MatrixHeight);
+            }
+            else
+            {
+                matrix = new RGBLedMatrix(new RGBLedMatrixOptions
+                {
+                    ChainLength = 1,
+                    HardwareMapping = "adafruit-hat-pwm",
+                    Rows = MatrixHeight,
+                    Cols = MatrixWidth
+                });
+                canvas = matrix.CreateOffscreenCanvas();
+            }
+
+            var now = DateTime.UtcNow;
+            var prev = now;
+            var elapsed = now - prev;
+
+            while (keepRunning)
+            {
+                now = DateTime.UtcNow;
+                elapsed = now - prev;
                 scene.Elapsed(elapsed);
 
-                var frame = scene.Img;
-                for (var y = 0; y < MatrixHeight; y++)
+                if (isSimulatorMode)
                 {
-                    var rowOffset = y * MatrixWidth;
-                    for (var x = 0; x < MatrixWidth; x++)
-                    {
-                        var pixel = frame[x, y];
-                        var index = rowOffset + x;
-                        var previous = previousFrame[index];
-                        if (hasPreviousFrame &&
-                            previous.R == pixel.R &&
-                            previous.G == pixel.G &&
-                            previous.B == pixel.B)
-                        {
-                            continue;
-                        }
-
-                        previousFrame[index] = pixel;
-                        canvas.SetPixel(x, y, new Color(pixel.R, pixel.G, pixel.B));
-                    }
+                    simulator.Render(scene.Img);
                 }
-                hasPreviousFrame = true;
+                else
+                {
+                    canvas.Clear();
 
-                matrix.SwapOnVsync(canvas);
-                Thread.Sleep(FrameDelayMs);
+                    for (var y = 0; y < MatrixHeight; y++)
+                    {
+                        for (var x = 0; x < MatrixWidth; x++)
+                        {
+                            var pixel = scene.Img[x, y];
+                            canvas.SetPixel(x, y, new Color(pixel.R, pixel.G, pixel.B));
+                        }
+                    }
+
+                    matrix.SwapOnVsync(canvas);
+                }
+
+                prev = now;
+                Thread.Sleep(isSimulatorMode ? SimulatorFrameDelayMs : HardwareFrameDelayMs);
             }
+
+            simulator?.Dispose();
+            matrix?.Dispose();
         }
     }
 }

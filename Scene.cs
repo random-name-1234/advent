@@ -4,27 +4,25 @@ using SixLabors.Fonts;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
 using SixLabors.ImageSharp.Processing;
+using SixLabors.ImageSharp.Drawing;
 using SixLabors.ImageSharp.Drawing.Processing;
 
 namespace advent
 {
     public class Scene
     {
-        private const int Width = 64;
-        private const int Height = 32;
-        private static readonly Rgba32 BlackBackground = new Rgba32(0, 0, 0, 255);
-
         private TimeSpan timeToNextRandomScene;
         private bool hasPendingSceneRequest;
 
         public Image<Rgba32> Img { get; set; }
 
-        private readonly SnowMachine snowMachine = new SnowMachine();
+        private SnowMachine snowMachine = new SnowMachine();
+        private TimeSpan phaseDuration = TimeSpan.FromSeconds(8);
         private ISpecialScene specialScene;
-        private readonly Font font;
-        private readonly Image<Rgba32> timeOverlay;
-        private string lastRenderedTime = string.Empty;
-        private readonly bool drawSnow;
+        private FontFamily fontFamily = SixLabors.Fonts.SystemFonts.Get("Arial");
+        private Font font;
+        private String timeToDisplay;
+        private bool drawSnow;
         public bool ContinuousSceneRequests { get; set; }
 
         public event EventHandler NewSceneWanted;
@@ -36,15 +34,13 @@ namespace advent
 
         public Scene()
         {
-            timeToNextRandomScene = TimeSpan.FromMinutes(Random.Shared.NextDouble());
+            timeToNextRandomScene = TimeSpan.FromMinutes(new Random().NextDouble() * 1);
             hasPendingSceneRequest = false;
             SpecialScenes = new ConcurrentQueue<ISpecialScene>();
             specialScene = null;
             ContinuousSceneRequests = false;
 
-            Img = new Image<Rgba32>(Width, Height);
-            timeOverlay = new Image<Rgba32>(Width, Height);
-            var fontFamily = SixLabors.Fonts.SystemFonts.Get("Arial");
+            Img = new Image<Rgba32>(64, 32);
             font = new Font(fontFamily, 16);
 
             if (DateTime.Now.Month == 12 || DateTime.Now.Month == 6)
@@ -62,10 +58,9 @@ namespace advent
         public void Elapsed(TimeSpan timeSpan)
         {
             snowMachine.Elapsed(timeSpan);
-            var hidesTime = false;
-            var now = DateTime.Now;
+            bool hidesTime = false;
 
-            ClearImage();
+            Img.Mutate(x => x.FillPolygon(Color.Black, new PointF(0, 0), new PointF(64, 0), new PointF(64, 32), new PointF(0, 32)));
 
             // Prepare special scene.
             if (specialScene == null)
@@ -101,14 +96,15 @@ namespace advent
                 timeToNextRandomScene -= timeSpan;
                 if (timeToNextRandomScene < TimeSpan.Zero)
                 {
-                    timeToNextRandomScene = TimeSpan.FromMinutes(Random.Shared.NextDouble() * 2.0);
+                    timeToNextRandomScene = TimeSpan.FromMinutes(Random.Shared.NextDouble() * 2);
                     NewSceneWanted?.Invoke(this, EventArgs.Empty);
                 }
             }
 
             if (!hidesTime)
             {
-                DrawClock(now);
+                timeToDisplay = DateTime.Now.TimeOfDay.ToString("hh\\:mm\\:ss");
+                Img.Mutate(x => x.DrawText(timeToDisplay, font, Color.Aqua, new Point(0, 0)));
             }
 
             if (specialScene != null)
@@ -119,10 +115,17 @@ namespace advent
 
             if (drawSnow)
             {
-                snowMachine.RainbowSnow = now.Month == 6;
+                if (DateTime.Now.Month == 6)
+                {
+                    snowMachine.RainbowSnow = true;
+                }
+                if (DateTime.Now.Month == 12)
+                {
+                    snowMachine.RainbowSnow = false;
+                }
                 foreach (Flake flake in snowMachine.Flakes)
                 {
-                    DrawFlake(flake);
+                    Img.Mutate(x => x.Fill(flake.Color, new EllipsePolygon(flake.Position.X, 32f - flake.Position.Y, flake.Width, flake.Width)));
                 }
             }
         }
@@ -142,71 +145,6 @@ namespace advent
 
             hasPendingSceneRequest = true;
             NewSceneWanted?.Invoke(this, EventArgs.Empty);
-        }
-
-        private void ClearImage()
-        {
-            for (var y = 0; y < Height; y++)
-            {
-                for (var x = 0; x < Width; x++)
-                {
-                    Img[x, y] = BlackBackground;
-                }
-            }
-        }
-
-        private void DrawClock(DateTime now)
-        {
-            var timeToDisplay = now.TimeOfDay.ToString("hh\\:mm\\:ss");
-            if (!string.Equals(lastRenderedTime, timeToDisplay, StringComparison.Ordinal))
-            {
-                lastRenderedTime = timeToDisplay;
-                timeOverlay.Mutate(x => x.Clear(Color.Transparent));
-                timeOverlay.Mutate(x => x.DrawText(timeToDisplay, font, Color.Aqua, new Point(0, 0)));
-            }
-
-            for (var y = 0; y < Height; y++)
-            {
-                for (var x = 0; x < Width; x++)
-                {
-                    var pixel = timeOverlay[x, y];
-                    if (pixel.A != 0)
-                    {
-                        Img[x, y] = pixel;
-                    }
-                }
-            }
-        }
-
-        private void DrawFlake(Flake flake)
-        {
-            var radius = Math.Max(1, (int)Math.Ceiling(flake.Width));
-            var centerX = (int)Math.Round(flake.Position.X);
-            var centerY = (int)Math.Round(Height - flake.Position.Y);
-            var radiusSquared = radius * radius;
-
-            for (var y = centerY - radius; y <= centerY + radius; y++)
-            {
-                if (y < 0 || y >= Height)
-                {
-                    continue;
-                }
-
-                var dy = y - centerY;
-                for (var x = centerX - radius; x <= centerX + radius; x++)
-                {
-                    if (x < 0 || x >= Width)
-                    {
-                        continue;
-                    }
-
-                    var dx = x - centerX;
-                    if ((dx * dx) + (dy * dy) <= radiusSquared)
-                    {
-                        Img[x, y] = flake.Color;
-                    }
-                }
-            }
         }
     }
 }
