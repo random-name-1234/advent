@@ -11,6 +11,7 @@ public class ProceduralScenesTests
         yield return new object[] { new GameOfLifeScene(), true };
         yield return new object[] { new StarfieldParallaxScene(), true };
         yield return new object[] { new PlasmaSdfScene(), true };
+        yield return new object[] { new MetaballsScene(), true };
         yield return new object[] { new MatrixRainScene(), true };
         yield return new object[] { new SynthwaveGridScene(), true };
         yield return new object[] { new OrbitalScene(), true };
