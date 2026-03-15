@@ -33,9 +33,10 @@ public class WeatherScene : ISpecialScene
     private static readonly double Latitude = ReadCoordinate("ADVENT_WEATHER_LATITUDE", 52.2053);
     private static readonly double Longitude = ReadCoordinate("ADVENT_WEATHER_LONGITUDE", 0.1218);
 
-    private static readonly Font CurrentTempFont = AppFonts.Create(14f);
+    private static readonly Font CurrentTempFont = AppFonts.Create(13f);
     private static readonly Font DayFont = AppFonts.Create(7f);
-    private static readonly Font TempFont = AppFonts.Create(8f);
+    private static readonly Font TempFont = AppFonts.Create(7f);
+    private static readonly Font MetaFont = AppFonts.Create(6f);
 
     private TimeSpan elapsedThisScene;
     private Task<WeatherSnapshot>? fetchTask;
@@ -99,7 +100,8 @@ public class WeatherScene : ISpecialScene
             return;
         }
 
-        DrawCurrentWeather(img, currentSnapshot);
+        var ageLabel = BuildSnapshotAgeLabel();
+        DrawCurrentWeather(img, currentSnapshot, ageLabel);
         DrawUpcomingWeather(img, currentSnapshot);
     }
 
@@ -110,38 +112,41 @@ public class WeatherScene : ISpecialScene
         var phase = (int)(elapsedThisScene.TotalMilliseconds / 180) % 4;
         for (var i = 0; i < 4; i++)
         {
-            var color = i <= phase ? new Rgba32(250, 250, 250) : new Rgba32(90, 105, 130);
+            var color = i <= phase ? new Rgba32(220, 232, 248) : new Rgba32(75, 92, 128);
             FillCircle(img, 20 + i * 8, 27, 2, color);
         }
     }
 
-    private static void DrawCurrentWeather(Image<Rgba32> img, WeatherSnapshot weather)
+    private static void DrawCurrentWeather(Image<Rgba32> img, WeatherSnapshot weather, string? ageLabel)
     {
-        FillRect(img, 0, 0, Width, 17, weather.IsDay ? new Rgba32(36, 73, 116) : new Rgba32(20, 28, 58));
+        FillRect(img, 0, 0, Width, 18, weather.IsDay ? new Rgba32(24, 60, 96) : new Rgba32(13, 20, 48));
 
-        DrawWeatherIcon(img, 2, 1, 14, weather.CurrentWeatherCode, weather.IsDay);
+        DrawWeatherIcon(img, 2, 2, 12, weather.CurrentWeatherCode, weather.IsDay);
 
         var currentTemp = $"{Math.Round(weather.CurrentTemperatureC, MidpointRounding.AwayFromZero):0}C";
-        img.Mutate(ctx => ctx.DrawText(currentTemp, CurrentTempFont, Color.White, new PointF(18, 1)));
+        img.Mutate(ctx => ctx.DrawText(currentTemp, CurrentTempFont, new Rgba32(225, 239, 252), new PointF(16, 1)));
+
+        if (!string.IsNullOrWhiteSpace(ageLabel))
+            img.Mutate(ctx => ctx.DrawText(ageLabel, MetaFont, new Rgba32(145, 178, 214), new PointF(50, 1)));
     }
 
     private static void DrawUpcomingWeather(Image<Rgba32> img, WeatherSnapshot weather)
     {
-        FillRect(img, 0, 17, Width, 15, new Rgba32(12, 18, 38));
+        FillRect(img, 0, 18, Width, 14, new Rgba32(8, 14, 30));
 
-        for (var i = 0; i < weather.Upcoming.Length && i < 3; i++)
+        for (var i = 0; i < weather.Upcoming.Length && i < 2; i++)
         {
             var forecast = weather.Upcoming[i];
-            var x = 1 + i * 21;
+            var x = i == 0 ? 1 : 32;
 
-            FillRect(img, x, 18, 20, 13, new Rgba32(22, 32, 63));
-            img.Mutate(ctx => ctx.DrawText(forecast.DayLabel, DayFont, Color.White, new PointF(x + 1, 18)));
-            DrawWeatherIcon(img, x + 1, 22, 8, forecast.WeatherCode, true);
+            FillRect(img, x, 19, 31, 12, new Rgba32(16, 26, 52));
+            img.Mutate(ctx => ctx.DrawText(forecast.DayLabel, DayFont, new Rgba32(214, 229, 245), new PointF(x + 2, 19)));
+            DrawWeatherIcon(img, x + 2, 24, 7, forecast.WeatherCode, weather.IsDay);
 
             var highTemp = $"{Math.Round(forecast.MaxTempC, MidpointRounding.AwayFromZero):0}";
             var lowTemp = $"{Math.Round(forecast.MinTempC, MidpointRounding.AwayFromZero):0}";
-            img.Mutate(ctx => ctx.DrawText(highTemp, TempFont, new Rgba32(255, 235, 150), new PointF(x + 11, 22)));
-            img.Mutate(ctx => ctx.DrawText(lowTemp, TempFont, new Rgba32(165, 210, 255), new PointF(x + 11, 26)));
+            var rangeLabel = $"{highTemp}/{lowTemp}";
+            img.Mutate(ctx => ctx.DrawText(rangeLabel, TempFont, new Rgba32(239, 226, 176), new PointF(x + 12, 24)));
         }
     }
 
@@ -322,8 +327,8 @@ public class WeatherScene : ISpecialScene
 
     private static void DrawBackground(Image<Rgba32> img, bool isDay)
     {
-        var top = isDay ? new Rgba32(32, 112, 178) : new Rgba32(8, 16, 44);
-        var bottom = isDay ? new Rgba32(14, 58, 108) : new Rgba32(14, 20, 66);
+        var top = isDay ? new Rgba32(20, 70, 122) : new Rgba32(7, 14, 34);
+        var bottom = isDay ? new Rgba32(10, 38, 78) : new Rgba32(11, 16, 48);
 
         for (var y = 0; y < Height; y++)
         {
@@ -557,6 +562,27 @@ public class WeatherScene : ISpecialScene
         if ((uint)x >= Width || (uint)y >= Height) return;
 
         img[x, y] = color;
+    }
+
+    private static string? BuildSnapshotAgeLabel()
+    {
+        DateTimeOffset updatedAt;
+        lock (CacheLock)
+        {
+            if (cacheUpdatedAtUtc == DateTimeOffset.MinValue)
+                return null;
+
+            updatedAt = cacheUpdatedAtUtc;
+        }
+
+        var age = DateTimeOffset.UtcNow - updatedAt;
+        if (age < TimeSpan.FromMinutes(1.5))
+            return "now";
+
+        if (age < TimeSpan.FromHours(1))
+            return $"{Math.Max(1, (int)Math.Round(age.TotalMinutes))}m";
+
+        return $"{Math.Max(1, (int)Math.Round(age.TotalHours))}h";
     }
 
     private sealed record WeatherSnapshot(
