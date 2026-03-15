@@ -1,6 +1,5 @@
 using System;
 using System.IO;
-using System.Threading.Tasks;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
@@ -14,6 +13,9 @@ internal static class ControlWebHost
     public static WebApplication Build(SceneControlService controlService, WebControlOptions options)
     {
         var contentRoot = AppContext.BaseDirectory;
+        var webRoot = Path.Combine(contentRoot, "wwwroot");
+        var indexPath = Path.Combine(webRoot, "index.html");
+        var hasWebUi = File.Exists(indexPath);
 
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions
         {
@@ -25,15 +27,15 @@ internal static class ControlWebHost
 
         var app = builder.Build();
 
-        if (Directory.Exists(Path.Combine(contentRoot, "wwwroot")))
+        if (Directory.Exists(webRoot))
         {
             app.UseDefaultFiles(new DefaultFilesOptions
             {
-                FileProvider = new PhysicalFileProvider(Path.Combine(contentRoot, "wwwroot"))
+                FileProvider = new PhysicalFileProvider(webRoot)
             });
             app.UseStaticFiles(new StaticFileOptions
             {
-                FileProvider = new PhysicalFileProvider(Path.Combine(contentRoot, "wwwroot"))
+                FileProvider = new PhysicalFileProvider(webRoot)
             });
         }
 
@@ -115,14 +117,12 @@ internal static class ControlWebHost
 
         app.MapGet("/health", () => Results.Ok(new { ok = true }));
 
-        app.MapFallback(async context =>
-        {
-            context.Response.Redirect("/", false);
-            await Task.CompletedTask;
-        });
+        app.MapFallback(() => Results.NotFound(new { error = "Not found." }));
 
         Console.WriteLine(
             $"Control web UI listening on http://{options.BindAddress}:{options.Port} (token {(string.IsNullOrWhiteSpace(options.Token) ? "disabled" : "enabled")}).");
+        if (!hasWebUi)
+            Console.WriteLine($"Warning: control UI file not found at '{indexPath}'. API is still available.");
         if (!string.IsNullOrWhiteSpace(options.Token))
             Console.WriteLine($"Use header X-Advent-Token to call API endpoints: {contextlessApiHint(options.Port)}");
 
