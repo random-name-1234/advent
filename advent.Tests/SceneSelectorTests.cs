@@ -53,7 +53,7 @@ public class SceneSelectorTests
             Assert.Contains("always-logo", sut.AvailableSceneNames);
             Assert.DoesNotContain("december-gif", sut.AvailableSceneNames);
             Assert.DoesNotContain("Santa", sut.AvailableSceneNames);
-            Assert.Equal(13, sut.AvailableSceneNames.Count);
+            Assert.Equal(14, sut.AvailableSceneNames.Count);
         }
         finally
         {
@@ -310,6 +310,7 @@ public class SceneSelectorTests
             Assert.Contains("Plasma SDF", sut.AllSceneNames);
             Assert.Contains("Metaballs", sut.AllSceneNames);
             Assert.Contains("Donkey Kong", sut.AllSceneNames);
+            Assert.Contains("Bonkers Parade", sut.AllSceneNames);
             Assert.Contains("Weather", sut.AllSceneNames);
             Assert.Contains("Synthwave Grid", sut.AllSceneNames);
             Assert.Contains("Orbital", sut.AllSceneNames);

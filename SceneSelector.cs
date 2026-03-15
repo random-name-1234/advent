@@ -31,6 +31,7 @@ public sealed class SceneSelector
         new SceneDefinition("Plasma SDF", static () => new FadingScene(new PlasmaSdfScene())),
         new SceneDefinition("Metaballs", static () => new FadingScene(new MetaballsScene())),
         new SceneDefinition("Donkey Kong", static () => new FadingScene(new DonkeyKongScene())),
+        new SceneDefinition("Bonkers Parade", static () => new FadingScene(new BonkersParadeScene())),
         new SceneDefinition("Synthwave Grid", static () => new FadingScene(new SynthwaveGridScene())),
         new SceneDefinition("Orbital", static () => new FadingScene(new OrbitalScene())),
         new SceneDefinition("Fireworks", static () => new FadingScene(new FireworksScene())),

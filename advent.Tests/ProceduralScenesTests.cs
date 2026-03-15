@@ -13,6 +13,7 @@ public class ProceduralScenesTests
         yield return new object[] { new PlasmaSdfScene(), true, 30d };
         yield return new object[] { new MetaballsScene(), true, 30d };
         yield return new object[] { new DonkeyKongScene(), true, 70d };
+        yield return new object[] { new BonkersParadeScene(), true, 30d };
         yield return new object[] { new MatrixRainScene(), true, 30d };
         yield return new object[] { new SynthwaveGridScene(), true, 30d };
         yield return new object[] { new OrbitalScene(), true, 30d };
