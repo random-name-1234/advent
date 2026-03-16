@@ -70,7 +70,7 @@ public class BonkersParadeScene : ISpecialScene
         DrawRibbons(img, t);
         DrawSparks(img);
         DrawBlobs(img, t);
-        DrawStrobe(img, t);
+        DrawWarpCells(img, t);
     }
 
     private void UpdateBlobs(float dt)
@@ -238,16 +238,36 @@ public class BonkersParadeScene : ISpecialScene
         }
     }
 
-    private static void DrawStrobe(Image<Rgba32> img, float time)
+    private static void DrawWarpCells(Image<Rgba32> img, float time)
     {
-        var pulse = 0.5f + 0.5f * MathF.Sin(time * 11f);
-        if (pulse < 0.97f) return;
-
-        var strength = (pulse - 0.97f) / 0.03f;
-        var flash = new Rgba32(ToByte(120f * strength), ToByte(90f * strength), ToByte(130f * strength));
-        for (var y = 0; y < Height; y += 2)
+        for (var y = 0; y < Height; y++)
         for (var x = 0; x < Width; x++)
-            BlendPixel(img, x, y, flash);
+        {
+            var wave = MathF.Sin(x * 0.42f + time * 2.1f) +
+                       MathF.Cos(y * 0.53f - time * 2.8f) +
+                       MathF.Sin((x - y) * 0.21f + time * 1.3f);
+            var edge = 1f - Math.Clamp(MathF.Abs(wave) / 0.17f, 0f, 1f);
+            if (edge <= 0.01f) continue;
+
+            var phase = time * 0.85f + x * 0.05f - y * 0.04f;
+            BlendPixel(img, x, y, Scale(Palette(phase, 1f), edge * 0.35f));
+        }
+
+        for (var portal = 0; portal < 3; portal++)
+        {
+            var centerX = 12f + portal * 20f + MathF.Sin(time * (0.8f + portal * 0.17f) + portal) * 5.5f;
+            var centerY = 7f + portal * 8f + MathF.Cos(time * (1.1f + portal * 0.11f) + portal * 0.4f) * 2.8f;
+            var radius = 2.8f + 1.3f * MathF.Sin(time * 2.6f + portal);
+            var ringColor = Scale(Palette(time * 1.1f + portal * 1.7f, 1f), 0.45f);
+
+            for (var deg = 0; deg < 360; deg += 30)
+            {
+                var theta = deg * MathF.PI / 180f;
+                var px = (int)MathF.Round(centerX + MathF.Cos(theta) * radius);
+                var py = (int)MathF.Round(centerY + MathF.Sin(theta) * radius);
+                BlendPixel(img, px, py, ringColor);
+            }
+        }
     }
 
     private static Rgba32 Palette(float phase, float saturation)
