@@ -116,7 +116,7 @@
       </div>
       <div class="row">
         <input id="messageText" maxlength="120" placeholder="Type a message for the matrix">
-        <input id="messageDuration" type="number" min="1" max="60" step="1" placeholder="Sec">
+        <input id="messageDuration" type="number" min="1" max="20" step="1" placeholder="Sec">
         <button class="primary" id="sendMessageBtn">Show Message</button>
       </div>
       <div id="log"></div>
@@ -274,8 +274,8 @@
       const durationRaw = messageDurationInput.value.trim();
       if (durationRaw) {
         const parsed = Number(durationRaw);
-        if (!Number.isFinite(parsed) || parsed <= 0 || parsed > 60) {
-          log("Duration must be between 1 and 60 seconds.");
+        if (!Number.isFinite(parsed) || parsed <= 0 || parsed > 20) {
+          log("Duration must be between 1 and 20 seconds.");
           return;
         }
         durationSeconds = parsed;

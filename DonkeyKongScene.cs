@@ -16,13 +16,13 @@ public class DonkeyKongScene : ISpecialScene
     private const int GoalX = 56;
 
     private const float SimulationStepSeconds = 1f / 30f;
-    private const float PlayerRunSpeed = 8.8f;
-    private const float PlayerClimbSpeed = 6.4f;
-    private const float PlayerJumpDuration = 0.42f;
-    private const float BarrelRollSpeed = 8.1f;
-    private const float BarrelFallSpeed = 13.2f;
+    private const float PlayerRunSpeed = 11.4f;
+    private const float PlayerClimbSpeed = 8.1f;
+    private const float PlayerJumpDuration = 0.34f;
+    private const float BarrelRollSpeed = 10.2f;
+    private const float BarrelFallSpeed = 15.4f;
 
-    private static readonly TimeSpan SceneDuration = TimeSpan.FromSeconds(56);
+    private static readonly TimeSpan SceneDuration = TimeSpan.FromSeconds(18);
 
     private static readonly Girder[] Girders =
     [
@@ -297,14 +297,14 @@ public class DonkeyKongScene : ISpecialScene
         if (player.State == PlayerState.Dead)
         {
             player.StateTime += dt;
-            if (player.StateTime >= 1.15f) resetBeatSeconds = 0.45f;
+            if (player.StateTime >= 0.82f) resetBeatSeconds = 0.28f;
             return;
         }
 
         if (player.State == PlayerState.Celebrating)
         {
             player.StateTime += dt;
-            if (player.StateTime >= 1.45f) resetBeatSeconds = 0.5f;
+            if (player.StateTime >= 0.95f) resetBeatSeconds = 0.32f;
             return;
         }
 
@@ -718,32 +718,32 @@ public class DonkeyKongScene : ISpecialScene
 
         runElapsedSeconds = 0f;
         resetBeatSeconds = 0f;
-        runLimitSeconds = RandomBetween(45f, 60f);
+        runLimitSeconds = RandomBetween(13.2f, 15.8f);
 
         luckyRun = random.NextDouble() < 0.24;
         doomedRun = !luckyRun && random.NextDouble() < 0.38;
 
         routeRightBias = luckyRun
-            ? RandomBetween(0.74f, 0.92f)
+            ? RandomBetween(0.76f, 0.92f)
             : doomedRun
-                ? RandomBetween(0.55f, 0.71f)
-                : RandomBetween(0.63f, 0.84f);
+                ? RandomBetween(0.58f, 0.73f)
+                : RandomBetween(0.66f, 0.86f);
 
         hesitationChancePerSecond = luckyRun
-            ? RandomBetween(0.05f, 0.11f)
+            ? RandomBetween(0.03f, 0.08f)
             : doomedRun
-                ? RandomBetween(0.14f, 0.24f)
-                : RandomBetween(0.08f, 0.16f);
+                ? RandomBetween(0.08f, 0.16f)
+                : RandomBetween(0.05f, 0.11f);
 
         jumpConfidence = luckyRun
-            ? RandomBetween(0.84f, 0.95f)
+            ? RandomBetween(0.86f, 0.95f)
             : doomedRun
-                ? RandomBetween(0.57f, 0.75f)
-                : RandomBetween(0.69f, 0.88f);
+                ? RandomBetween(0.59f, 0.77f)
+                : RandomBetween(0.72f, 0.89f);
 
-        barrelIntervalMin = luckyRun ? 2.2f : doomedRun ? 1.45f : 1.75f;
-        barrelIntervalMax = luckyRun ? 3.1f : doomedRun ? 2.35f : 2.75f;
-        ape.ThrowCooldown = firstRun ? 1.15f : RandomBetween(0.85f, 1.55f);
+        barrelIntervalMin = luckyRun ? 1.65f : doomedRun ? 1.05f : 1.25f;
+        barrelIntervalMax = luckyRun ? 2.3f : doomedRun ? 1.75f : 2.0f;
+        ape.ThrowCooldown = firstRun ? 0.6f : RandomBetween(0.45f, 0.95f);
         ape.ThrowPoseSeconds = 0f;
         goal.BlinkClock = 0;
 
@@ -757,7 +757,7 @@ public class DonkeyKongScene : ISpecialScene
             StateDuration = 0f,
             TargetLadderIndex = -1,
             AnimationClock = 0f,
-            HesitationCooldown = RandomBetween(0.15f, 0.42f)
+            HesitationCooldown = RandomBetween(0.06f, 0.18f)
         };
         player.Y = FloorY(player.Level, player.X) - 1f;
     }

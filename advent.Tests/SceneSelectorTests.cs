@@ -53,7 +53,7 @@ public class SceneSelectorTests
             Assert.Contains("always-logo", sut.AvailableSceneNames);
             Assert.DoesNotContain("december-gif", sut.AvailableSceneNames);
             Assert.DoesNotContain("Santa", sut.AvailableSceneNames);
-            Assert.Equal(14, sut.AvailableSceneNames.Count);
+            Assert.Equal(12, sut.AvailableSceneNames.Count);
         }
         finally
         {
@@ -329,17 +329,18 @@ public class SceneSelectorTests
             var sut = new SceneSelector(11, imageSceneDirectory: imageDirectory);
 
             Assert.Equal(sut.AvailableSceneNames, sut.AllSceneNames);
-            Assert.Contains("Game of Life", sut.AllSceneNames);
             Assert.Contains("Starfield Parallax", sut.AllSceneNames);
-            Assert.Contains("Plasma SDF", sut.AllSceneNames);
             Assert.Contains("Metaballs", sut.AllSceneNames);
             Assert.Contains("Donkey Kong", sut.AllSceneNames);
+            Assert.Contains("Space Invaders", sut.AllSceneNames);
             Assert.Contains("Bonkers Parade", sut.AllSceneNames);
             Assert.Contains("Weather", sut.AllSceneNames);
             Assert.Contains("Synthwave Grid", sut.AllSceneNames);
             Assert.Contains("Orbital", sut.AllSceneNames);
             Assert.Contains("Fireworks", sut.AllSceneNames);
             Assert.Contains("always-logo", sut.AllSceneNames);
+            Assert.DoesNotContain("Game of Life", sut.AllSceneNames);
+            Assert.DoesNotContain("Plasma SDF", sut.AllSceneNames);
         }
         finally
         {

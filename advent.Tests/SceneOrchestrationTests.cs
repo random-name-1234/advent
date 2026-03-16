@@ -101,6 +101,40 @@ public class SceneOrchestrationTests
     }
 
     [Fact]
+    public void QueuedScene_DrawsClockOverlayAfterScene_WhenSceneDoesNotHideTime()
+    {
+        var scene = new Scene(img => img[4, 4] = new Rgba32(0, 255, 0));
+        var special = new TestSpecialScene
+        {
+            IsActive = true,
+            HidesTime = false,
+            OnDraw = img => img[4, 4] = new Rgba32(255, 0, 0)
+        };
+        scene.SpecialScenes.Enqueue(special);
+
+        scene.Elapsed(TimeSpan.FromMilliseconds(20));
+
+        Assert.Equal(new Rgba32(0, 255, 0), scene.Img[4, 4]);
+    }
+
+    [Fact]
+    public void QueuedScene_SuppressesClockOverlay_WhenSceneHidesTime()
+    {
+        var scene = new Scene(img => img[5, 5] = new Rgba32(0, 255, 0));
+        var special = new TestSpecialScene
+        {
+            IsActive = true,
+            HidesTime = true,
+            OnDraw = img => img[5, 5] = new Rgba32(255, 0, 0)
+        };
+        scene.SpecialScenes.Enqueue(special);
+
+        scene.Elapsed(TimeSpan.FromMilliseconds(20));
+
+        Assert.Equal(new Rgba32(255, 0, 0), scene.Img[5, 5]);
+    }
+
+    [Fact]
     public void QueuedScene_NotDrawn_WhenItBecomesInactiveDuringElapsed()
     {
         var scene = new Scene();

@@ -136,20 +136,22 @@ public class SceneLifecycleTests
     [Fact]
     public void SpaceInvadersScene_ActivatesDrawsAndExpires()
     {
-        RunInProjectRoot(() =>
+        var scene = new SpaceInvadersScene();
+        scene.Activate();
+
+        using var canvas = new Image<Rgba32>(64, 32);
+        scene.Elapsed(TimeSpan.FromMilliseconds(250));
+        scene.Draw(canvas);
+
+        Assert.True(scene.IsActive);
+
+        for (var i = 0; i < 240 && scene.IsActive; i++)
         {
-            var scene = new SpaceInvadersScene();
-            scene.Activate();
+            scene.Elapsed(TimeSpan.FromMilliseconds(100));
+            scene.Draw(canvas);
+        }
 
-            using var canvas = new Image<Rgba32>(64, 32);
-            for (var i = 0; i < 700 && scene.IsActive; i++)
-            {
-                scene.Elapsed(TimeSpan.FromMilliseconds(100));
-                scene.Draw(canvas);
-            }
-
-            Assert.False(scene.IsActive);
-        });
+        Assert.False(scene.IsActive);
     }
 
     private static void RunInProjectRoot(Action testAction)

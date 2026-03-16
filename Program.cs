@@ -47,71 +47,81 @@ internal class Program
         ConsoleMatrixSimulator? simulator = null;
         WebApplication? webApp = null;
 
-        var webControlOptions = WebControlOptions.FromEnvironment();
-        if (webControlOptions.Enabled)
+        try
         {
-            webApp = ControlWebHost.Build(sceneControl, webControlOptions);
-            webApp.StartAsync().GetAwaiter().GetResult();
-        }
-        else
-        {
-            Console.WriteLine("Control web UI disabled via ADVENT_WEB_ENABLED.");
-        }
-
-        if (isSimulatorMode)
-        {
-            simulator = new ConsoleMatrixSimulator(MatrixWidth, MatrixHeight);
-        }
-        else
-        {
-            matrix = new RGBLedMatrix(new RGBLedMatrixOptions
+            var webControlOptions = WebControlOptions.FromEnvironment();
+            if (webControlOptions.Enabled)
             {
-                ChainLength = 1,
-                HardwareMapping = "adafruit-hat-pwm",
-                Rows = MatrixHeight,
-                Cols = MatrixWidth
-            });
-            canvas = matrix.CreateOffscreenCanvas();
-        }
-
-        var now = DateTime.UtcNow;
-        var prev = now;
-        var elapsed = now - prev;
-
-        while (keepRunning)
-        {
-            now = DateTime.UtcNow;
-            elapsed = now - prev;
-            scene.Elapsed(elapsed);
-
-            if (simulator is not null)
-            {
-                simulator.Render(scene.Img);
+                webApp = ControlWebHost.Build(sceneControl, webControlOptions);
+                webApp.StartAsync().GetAwaiter().GetResult();
             }
-            else if (canvas is not null && matrix is not null)
+            else
             {
-                canvas.Clear();
+                Console.WriteLine("Control web UI disabled via ADVENT_WEB_ENABLED.");
+            }
 
-                for (var y = 0; y < MatrixHeight; y++)
-                for (var x = 0; x < MatrixWidth; x++)
+            if (isSimulatorMode)
+            {
+                simulator = new ConsoleMatrixSimulator(MatrixWidth, MatrixHeight);
+            }
+            else
+            {
+                matrix = new RGBLedMatrix(new RGBLedMatrixOptions
                 {
-                    var pixel = scene.Img[x, y];
-                    canvas.SetPixel(x, y, new Color(pixel.R, pixel.G, pixel.B));
+                    ChainLength = 1,
+                    HardwareMapping = "adafruit-hat-pwm",
+                    Rows = MatrixHeight,
+                    Cols = MatrixWidth
+                });
+                canvas = matrix.CreateOffscreenCanvas();
+            }
+
+            var now = DateTime.UtcNow;
+            var prev = now;
+
+            while (keepRunning)
+            {
+                now = DateTime.UtcNow;
+                var elapsed = now - prev;
+                scene.Elapsed(elapsed);
+
+                if (simulator is not null)
+                {
+                    simulator.Render(scene.Img);
+                }
+                else if (canvas is not null && matrix is not null)
+                {
+                    canvas.Clear();
+
+                    for (var y = 0; y < MatrixHeight; y++)
+                    for (var x = 0; x < MatrixWidth; x++)
+                    {
+                        var pixel = scene.Img[x, y];
+                        canvas.SetPixel(x, y, new Color(pixel.R, pixel.G, pixel.B));
+                    }
+
+                    matrix.SwapOnVsync(canvas);
                 }
 
-                matrix.SwapOnVsync(canvas);
+                prev = now;
+                Thread.Sleep(isSimulatorMode ? SimulatorFrameDelayMs : HardwareFrameDelayMs);
             }
-
-            prev = now;
-            Thread.Sleep(isSimulatorMode ? SimulatorFrameDelayMs : HardwareFrameDelayMs);
         }
-
-        simulator?.Dispose();
-        matrix?.Dispose();
-        if (webApp is not null)
+        finally
         {
-            webApp.StopAsync().GetAwaiter().GetResult();
-            webApp.DisposeAsync().AsTask().GetAwaiter().GetResult();
+            simulator?.Dispose();
+            matrix?.Dispose();
+            if (webApp is not null)
+            {
+                try
+                {
+                    webApp.StopAsync().GetAwaiter().GetResult();
+                }
+                finally
+                {
+                    webApp.DisposeAsync().AsTask().GetAwaiter().GetResult();
+                }
+            }
         }
     }
 }

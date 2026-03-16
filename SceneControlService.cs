@@ -78,7 +78,7 @@ public sealed class SceneControlService
 
         if (sceneDuration is { } duration && (duration <= TimeSpan.Zero || duration > SceneTiming.MaxSceneDuration))
         {
-            error = $"Duration must be between 0 and {SceneTiming.MaxSceneDuration.TotalSeconds:0} seconds.";
+            error = $"Duration must be between 1 and {SceneTiming.MaxSceneDuration.TotalSeconds:0} seconds.";
             return false;
         }
 

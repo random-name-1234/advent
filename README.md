@@ -7,7 +7,7 @@ It renders:
 - a clock overlay
 - snow/rainbow effects by season
 - special scenes (static + animated + procedural), including a full-cycle `--test-mode`
-- live weather scene powered by Open-Meteo (current conditions + 3-day outlook)
+- live weather scene powered by Open-Meteo (three full-screen forecast cards)
 - optional terminal simulator mode for development on macOS/Linux (`--simulator`)
 
 ## Matrix Library / Bindings Source
@@ -102,7 +102,7 @@ Supported API endpoints:
 - `GET /api/status`
 - `POST /api/scene/play` with `{ "name": "Fireworks" }`
 - `POST /api/scene/next`
-- `POST /api/message/show` with `{ "text": "Dinner in 5", "durationSeconds": 8 }`
+- `POST /api/message/show` with `{ "text": "Dinner in 5", "durationSeconds": 8 }` (`durationSeconds` max `20`)
 - `POST /api/mode` with `{ "mode": "normal" | "test" }`
 - `POST /api/queue/clear`
 
@@ -155,11 +155,12 @@ dotnet run -c Release --no-launch-profile -- --simulator --test-mode
     - `name`: scene name override
     - `type`: `auto`, `animated`/`gif`, `static`, or `scroll`
     - `months`: month whitelist (1-12)
-    - `durationSeconds`: custom scene duration (must be `> 0`)
+    - `durationSeconds`: custom scene duration (must be `> 0`; runtime capped to `20` seconds)
 - Core scene assets (cat/error/santa/space-invaders sprites) are stored under `assets/`.
 - `--test-mode` ignores random seasonal selection and continuously cycles the full scene catalog.
 - `--simulator` renders a live ANSI/terminal preview of the 64x32 output, useful on macOS while developing.
 - Hardware/driver flag details (`--led-*`) are defined by `rpi-rgb-led-matrix`; refer to upstream docs for full options.
+- Random scene requests in normal mode are capped at two per rolling minute.
 - Weather scene configuration is optional via env vars:
     - `ADVENT_WEATHER_LATITUDE` (default `52.2053`, Cambridge UK)
     - `ADVENT_WEATHER_LONGITUDE` (default `0.1218`, Cambridge UK)

@@ -1,421 +1,795 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
-using System.Linq;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
-using SixLabors.ImageSharp.Processing;
 
 namespace advent;
 
 public class SpaceInvadersScene : ISpecialScene
 {
-    private const int PlayerTop = 29;
-    private const double PlayerSpeed = 15;
-    private static readonly TimeSpan sceneDuration = TimeSpan.FromSeconds(60);
-    private static readonly TimeSpan explodeDuration = TimeSpan.FromSeconds(0.5);
-    private static readonly List<Point> invaderPositionSequence;
-    private static readonly int maxInvaderPositionIndex;
-    private readonly Image<Rgba32> blocksTemplate;
-    private readonly Image<Rgba32> exploding1;
-    private readonly Image<Rgba32> invader1;
-    private readonly List<Invader> invaders;
-    private readonly List<Missile> missiles;
-    private readonly Image<Rgba32> player;
-    private readonly Random random;
+    private const int Width = 64;
+    private const int Height = 32;
+    private const int FormationRows = 3;
+    private const int FormationCols = 7;
+    private const int FormationSpacingX = 7;
+    private const int FormationSpacingY = 5;
+    private const int PlayerY = 28;
+    private const float SimulationStepSeconds = 1f / 30f;
+    private const float PlayerSpeed = 19f;
 
-    private bool[,] blocks;
+    private static readonly TimeSpan SceneDuration = TimeSpan.FromSeconds(18);
+
+    private static readonly string[] InvaderTopFrameA =
+    [
+        ".X.X.",
+        "XXXXX",
+        "X.X.X",
+        ".X.X."
+    ];
+
+    private static readonly string[] InvaderTopFrameB =
+    [
+        ".X.X.",
+        "XXXXX",
+        ".XXX.",
+        "X...X"
+    ];
+
+    private static readonly string[] InvaderMidFrameA =
+    [
+        "..X..",
+        ".XXX.",
+        "XXXXX",
+        "X.X.X"
+    ];
+
+    private static readonly string[] InvaderMidFrameB =
+    [
+        "..X..",
+        "XXXXX",
+        ".XXX.",
+        "X.X.X"
+    ];
+
+    private static readonly string[] InvaderLowFrameA =
+    [
+        ".XXX.",
+        "X.X.X",
+        "XXXXX",
+        "..X.."
+    ];
+
+    private static readonly string[] InvaderLowFrameB =
+    [
+        ".XXX.",
+        "XXXXX",
+        "X.X.X",
+        ".X.X."
+    ];
+
+    private static readonly string[] PlayerSprite =
+    [
+        "...X...",
+        "..XXX..",
+        ".XX.XX.",
+        "XXXXXXX"
+    ];
+
+    private static readonly string[] ExplosionSprite =
+    [
+        "X...X",
+        ".X.X.",
+        "..X..",
+        ".X.X.",
+        "X...X"
+    ];
+
+    private static readonly string[] ShieldMask =
+    [
+        ".XXXXXX.",
+        "XXXXXXXX",
+        "XXX..XXX",
+        "XX....XX"
+    ];
+
+    private static readonly Rgba32[] RowColors =
+    [
+        new(124, 255, 210),
+        new(255, 164, 112),
+        new(196, 146, 255)
+    ];
+
+    private readonly Random random = new();
+    private readonly List<InvaderActor> invaders = new(FormationRows * FormationCols);
+    private readonly List<BoltActor> bolts = new(24);
+    private readonly bool[,] shields = new bool[Width, Height];
 
     private TimeSpan elapsedThisScene;
-    private int invaderPositionIndex;
-    private bool isPlayerAlive;
-    private bool isPlayerWaiting;
-    private double playerActualX;
-    private TimeSpan playerExplodeTimeLeft;
-    private int playerLastTarget;
-
-    private int playerTargetX;
-
-    //private bool isPlayerAvoiding;
-    private TimeSpan playerTimeToFire;
-    private TimeSpan playerWaitTimeLeft;
-
-    private int playerX;
-    private TimeSpan timePerInvaderStep;
-    private TimeSpan timeUntilInvaderStep;
-
-    static SpaceInvadersScene()
-    {
-        invaderPositionSequence = new List<Point>();
-        var y = 0;
-        var goingRight = true;
-        while (y < 10)
-        {
-            for (var x = 0; x < 17; x++)
-                if (goingRight)
-                    invaderPositionSequence.Add(new Point(x, y));
-                else
-                    invaderPositionSequence.Add(new Point(16 - x, y));
-
-            goingRight = !goingRight;
-            y++;
-        }
-
-        maxInvaderPositionIndex = invaderPositionSequence.Count - 2;
-    }
-
-    public SpaceInvadersScene()
-    {
-        random = new Random();
-        blocks = new bool[64, 32];
-
-        IsActive = false;
-        player = Image.Load<Rgba32>(AssetPaths.SpaceInvaders("space-invaders-player.png"));
-        invader1 = Image.Load<Rgba32>(AssetPaths.SpaceInvaders("space-invaders-invader1.png"));
-        exploding1 = Image.Load<Rgba32>(AssetPaths.SpaceInvaders("space-invaders-exploding1.png"));
-        blocksTemplate = Image.Load<Rgba32>(AssetPaths.SpaceInvaders("space-invaders-blocks.png"));
-        invaders = new List<Invader>();
-        missiles = new List<Missile>();
-
-        ResetScene();
-    }
+    private float animationClock;
+    private float enemyFireCooldown;
+    private float formationDirection;
+    private float formationStepCooldown;
+    private float formationX;
+    private float formationY;
+    private float playerDecisionCooldown;
+    private float playerExplosionSeconds;
+    private float playerFireCooldown;
+    private float playerTargetX;
+    private float playerX;
+    private float resetBeatSeconds;
+    private float simulationAccumulator;
+    private int waveNumber;
 
     public bool IsActive { get; private set; }
-
-    public bool HidesTime { get; } = true;
-
+    public bool HidesTime { get; private set; }
     public bool RainbowSnow => false;
     public string Name => "Space Invaders";
 
     public void Activate()
     {
         elapsedThisScene = TimeSpan.Zero;
+        simulationAccumulator = 0f;
+        animationClock = 0f;
+        waveNumber = 0;
         IsActive = true;
-        ResetScene();
+        HidesTime = true;
+        ResetWave(true);
     }
 
     public void Elapsed(TimeSpan timeSpan)
     {
+        if (!IsActive) return;
+
         elapsedThisScene += timeSpan;
-        if (elapsedThisScene > sceneDuration) IsActive = false;
-
-        if (!isPlayerAlive)
+        if (elapsedThisScene > SceneDuration)
         {
-            playerExplodeTimeLeft -= timeSpan;
-
-            if (playerExplodeTimeLeft < TimeSpan.Zero) IsActive = false;
-        }
-        else
-        {
-            if (isPlayerWaiting)
-            {
-                playerWaitTimeLeft -= timeSpan;
-                if (playerWaitTimeLeft < TimeSpan.Zero)
-                {
-                    isPlayerWaiting = false;
-                    SelectNextPlayerTarget();
-                }
-            }
-
-            if (!isPlayerWaiting)
-            {
-                double direction = playerTargetX < playerX ? -1 : 1;
-                //int searchOffset = (int)direction * 4;
-                //int searchX1 = Math.Max(0, playerX - 3 + searchOffset)
-
-                if (playerX != playerTargetX)
-                {
-                    playerActualX += direction * timeSpan.TotalSeconds * PlayerSpeed;
-                    playerX = (int)playerActualX;
-                }
-                else
-                {
-                    isPlayerWaiting = true;
-                    playerWaitTimeLeft = TimeSpan.FromSeconds(random.NextDouble() * 1.0);
-                }
-            }
-
-            playerTimeToFire -= timeSpan;
-            if (playerTimeToFire < TimeSpan.Zero)
-            {
-                playerTimeToFire += TimeSpan.FromSeconds(0.5);
-                double chance = 1;
-                for (var y = 0; y < 31; y++)
-                    if (blocks[playerX, y])
-                    {
-                        chance = random.NextDouble();
-                        break;
-                    }
-
-                if (chance > 0.8) missiles.Add(new Missile(new Point(playerX, PlayerTop), true));
-            }
+            IsActive = false;
+            HidesTime = false;
+            return;
         }
 
-        // Invaders
-        timeUntilInvaderStep -= timeSpan;
-        if (timeUntilInvaderStep < TimeSpan.Zero)
+        simulationAccumulator += Math.Clamp((float)timeSpan.TotalSeconds, 0f, 0.25f);
+        while (simulationAccumulator >= SimulationStepSeconds)
         {
-            timeUntilInvaderStep += timePerInvaderStep;
-            if (invaderPositionIndex < maxInvaderPositionIndex)
-            {
-                invaderPositionIndex++;
-                var invaderDelta = invaderPositionSequence[invaderPositionIndex];
-                timePerInvaderStep = TimeSpan.FromSeconds(0.6 - 0.05 * invaderDelta.Y);
-                foreach (var invader in invaders.Where(i => i.IsAlive)) invader.Offset = invaderDelta;
-            }
+            simulationAccumulator -= SimulationStepSeconds;
+            UpdateSimulation(SimulationStepSeconds);
         }
-
-        foreach (var invader in invaders)
-        {
-            invader.Elapsed(timeSpan);
-            if (invader.ReadyToFire)
-            {
-                invader.ReadyToFire = false;
-                missiles.Add(new Missile(new Point(invader.Position.X + 3, invader.Position.Y + 3), false));
-            }
-        }
-
-        // Missiles
-        foreach (var missile in missiles)
-        {
-            missile.Elapsed(timeSpan, playerX, invaders, ref blocks, out var isPlayerHit);
-            if (isPlayerHit && isPlayerAlive)
-            {
-                playerExplodeTimeLeft = explodeDuration;
-                isPlayerAlive = false;
-            }
-        }
-
-        missiles.RemoveAll(x => !x.IsActive);
-        invaders.RemoveAll(x => x.CanBeRemoved);
-        if (invaders.Count == 0) IsActive = false;
     }
 
     public void Draw(Image<Rgba32> img)
     {
-        if (IsActive)
+        if (!IsActive) return;
+
+        DrawBackground(img);
+        DrawShields(img);
+        DrawInvaders(img);
+        DrawBolts(img);
+        DrawPlayer(img);
+    }
+
+    private void UpdateSimulation(float dt)
+    {
+        animationClock += dt;
+
+        if (resetBeatSeconds > 0f)
         {
-            foreach (var invader in invaders)
-                if (invader.IsAlive)
-                    img.Mutate(x => x.DrawImage(invader1, invader.Position, 1f));
-                else
-                    img.Mutate(x => x.DrawImage(exploding1, invader.Position, 1f));
+            resetBeatSeconds = MathF.Max(0f, resetBeatSeconds - dt);
+            if (resetBeatSeconds <= 0f)
+                ResetWave(false);
+            return;
+        }
 
-            foreach (var missile in missiles)
-            {
-                Rgba32 colour = missile.IsPlayer ? Color.LightGreen : Color.Red;
-                img[missile.X, missile.Y - 1] = colour;
-                img[missile.X, missile.Y] = colour;
-                img[missile.X, missile.Y + 1] = colour;
-            }
+        UpdateFormation(dt);
+        UpdateEnemyFire(dt);
+        UpdatePlayer(dt);
+        UpdateBolts(dt);
+        UpdateInvaderExplosions(dt);
 
-            // Draw blocks
-            for (var y = 0; y < 32; y++)
-            for (var x = 0; x < 64; x++)
-                if (blocks[x, y])
-                    img[x, y] = Color.DarkSeaGreen;
+        if (CountAliveInvaders() == 0)
+            resetBeatSeconds = 0.42f;
+    }
 
-            // Draw player
-            if (isPlayerAlive)
+    private void UpdateFormation(float dt)
+    {
+        formationStepCooldown -= dt;
+        if (formationStepCooldown > 0f)
+            return;
+
+        formationStepCooldown += ComputeFormationStepInterval();
+
+        var nextX = formationX + formationDirection * 2f;
+        var left = nextX;
+        var right = nextX + (FormationCols - 1) * FormationSpacingX + 4f;
+        if (left < 6f || right > Width - 7f)
+        {
+            formationDirection *= -1f;
+            formationY += 2f;
+            formationX += formationDirection * 1.5f;
+        }
+        else
+        {
+            formationX = nextX;
+        }
+
+        var formationBottom = formationY + (FormationRows - 1) * FormationSpacingY + 3f;
+        if (formationBottom >= 20f && playerExplosionSeconds <= 0f)
+            TriggerPlayerHit();
+    }
+
+    private void UpdateEnemyFire(float dt)
+    {
+        enemyFireCooldown -= dt;
+        if (enemyFireCooldown > 0f || CountAliveInvaders() == 0)
+            return;
+
+        enemyFireCooldown = MathF.Max(0.22f, 0.52f - waveNumber * 0.04f) + (float)random.NextDouble() * 0.18f;
+        SpawnEnemyBolt();
+    }
+
+    private void UpdatePlayer(float dt)
+    {
+        if (playerExplosionSeconds > 0f)
+        {
+            playerExplosionSeconds = MathF.Max(0f, playerExplosionSeconds - dt);
+            if (playerExplosionSeconds <= 0f)
+                resetBeatSeconds = 0.32f;
+            return;
+        }
+
+        playerDecisionCooldown = MathF.Max(0f, playerDecisionCooldown - dt);
+        playerFireCooldown = MathF.Max(0f, playerFireCooldown - dt);
+
+        if (TryChooseDodgeTarget())
+        {
+            playerDecisionCooldown = 0.06f;
+        }
+        else if (playerDecisionCooldown <= 0f)
+        {
+            playerTargetX = ChooseAttackTargetX();
+            playerDecisionCooldown = 0.14f + (float)random.NextDouble() * 0.1f;
+        }
+
+        var delta = playerTargetX - playerX;
+        var maxStep = PlayerSpeed * dt;
+        if (MathF.Abs(delta) <= maxStep)
+            playerX = playerTargetX;
+        else
+            playerX += MathF.Sign(delta) * maxStep;
+
+        if (playerFireCooldown <= 0f && !HasActivePlayerBolt() && CanTakeShot())
+        {
+            bolts.Add(new BoltActor
             {
-                img.Mutate(x => x.DrawImage(player, new Point(playerX - 3, PlayerTop), 1f));
-            }
-            else
-            {
-                if (playerExplodeTimeLeft > TimeSpan.Zero)
-                    img.Mutate(x => x.DrawImage(exploding1, new Point(playerX - 3, PlayerTop - 1), 1f));
-            }
+                X = playerX,
+                Y = PlayerY - 1,
+                VelocityY = -24f,
+                IsPlayer = true,
+                Color = new Rgba32(138, 255, 184)
+            });
+
+            playerFireCooldown = 0.28f + (float)random.NextDouble() * 0.16f;
         }
     }
 
-    private void ResetScene()
+    private bool TryChooseDodgeTarget()
     {
-        isPlayerAlive = true;
-        playerX = 35;
-        playerActualX = 35.0;
-        timePerInvaderStep = TimeSpan.FromSeconds(0.6);
-        timeUntilInvaderStep = timePerInvaderStep;
-        invaderPositionIndex = 0;
+        var bestThreatDistance = float.MaxValue;
+        BoltActor? threat = null;
+
+        for (var i = 0; i < bolts.Count; i++)
+        {
+            var bolt = bolts[i];
+            if (bolt.IsPlayer || bolt.VelocityY <= 0f)
+                continue;
+
+            var dx = MathF.Abs(bolt.X - playerX);
+            var dy = PlayerY - bolt.Y;
+            if (dy < 0f || dy > 11f || dx > 3.2f)
+                continue;
+
+            if (dy < bestThreatDistance)
+            {
+                bestThreatDistance = dy;
+                threat = bolt;
+            }
+        }
+
+        if (threat is null)
+            return false;
+
+        var dodgeDirection = threat.Value.X <= playerX ? 1f : -1f;
+        playerTargetX = Math.Clamp(playerX + dodgeDirection * (7f + (float)random.NextDouble() * 3f), 4f, 59f);
+        return true;
+    }
+
+    private float ChooseAttackTargetX()
+    {
+        var candidates = new List<(float X, float Weight)>();
+        for (var col = 0; col < FormationCols; col++)
+        {
+            var invader = GetLowestAliveInvaderInColumn(col);
+            if (invader is null)
+                continue;
+
+            var (x, _) = GetInvaderPosition(invader.Value.Row, invader.Value.Col);
+            var distanceWeight = 1.3f - MathF.Min(1f, MathF.Abs(playerX - x) / 24f) * 0.5f;
+            var rowWeight = 1.2f + invader.Value.Row * 0.18f;
+            candidates.Add((x, distanceWeight * rowWeight));
+        }
+
+        if (candidates.Count == 0)
+            return Width / 2f;
+
+        if (random.NextDouble() < 0.12)
+            return candidates[random.Next(candidates.Count)].X;
+
+        var total = 0f;
+        for (var i = 0; i < candidates.Count; i++)
+            total += candidates[i].Weight;
+
+        var pick = (float)random.NextDouble() * total;
+        var cumulative = 0f;
+        for (var i = 0; i < candidates.Count; i++)
+        {
+            cumulative += candidates[i].Weight;
+            if (pick <= cumulative)
+                return candidates[i].X;
+        }
+
+        return candidates[^1].X;
+    }
+
+    private bool CanTakeShot()
+    {
+        for (var i = 0; i < invaders.Count; i++)
+        {
+            var invader = invaders[i];
+            if (!invader.IsAlive)
+                continue;
+
+            var (x, y) = GetInvaderPosition(invader.Row, invader.Col);
+            if (MathF.Abs(x - playerX) > 1.4f || y >= PlayerY)
+                continue;
+
+            return true;
+        }
+
+        return false;
+    }
+
+    private void UpdateBolts(float dt)
+    {
+        for (var i = bolts.Count - 1; i >= 0; i--)
+        {
+            var bolt = bolts[i];
+            var oldY = bolt.Y;
+            bolt.Y += bolt.VelocityY * dt;
+
+            var startY = (int)MathF.Round(oldY);
+            var endY = (int)MathF.Round(bolt.Y);
+            var step = endY >= startY ? 1 : -1;
+            var currentY = startY;
+            var hitSomething = false;
+
+            while (true)
+            {
+                if (!HandleBoltAt(bolt, (int)MathF.Round(bolt.X), currentY))
+                {
+                    hitSomething = true;
+                    break;
+                }
+
+                if (currentY == endY)
+                    break;
+
+                currentY += step;
+            }
+
+            if (hitSomething || bolt.Y < -2f || bolt.Y > Height + 2f)
+            {
+                bolts.RemoveAt(i);
+                continue;
+            }
+
+            bolts[i] = bolt;
+        }
+    }
+
+    private bool HandleBoltAt(BoltActor bolt, int x, int y)
+    {
+        if ((uint)x >= Width || (uint)y >= Height)
+            return true;
+
+        if (shields[x, y])
+        {
+            DamageShield(x, y);
+            return false;
+        }
+
+        if (bolt.IsPlayer)
+        {
+            for (var i = 0; i < invaders.Count; i++)
+            {
+                var invader = invaders[i];
+                if (!invader.IsAlive)
+                    continue;
+
+                var (ix, iy) = GetInvaderPosition(invader.Row, invader.Col);
+                if (x < ix - 2 || x > ix + 2 || y < iy - 1 || y > iy + 2)
+                    continue;
+
+                invader.IsAlive = false;
+                invader.ExplosionTime = 0.24f;
+                invaders[i] = invader;
+                return false;
+            }
+
+            return true;
+        }
+
+        if (playerExplosionSeconds > 0f)
+            return true;
+
+        var playerCenterX = (int)MathF.Round(playerX);
+        if (x >= playerCenterX - 3 && x <= playerCenterX + 3 && y >= PlayerY - 2 && y <= PlayerY + 1)
+        {
+            TriggerPlayerHit();
+            return false;
+        }
+
+        return true;
+    }
+
+    private void UpdateInvaderExplosions(float dt)
+    {
+        for (var i = 0; i < invaders.Count; i++)
+        {
+            var invader = invaders[i];
+            if (invader.IsAlive || invader.ExplosionTime <= 0f)
+                continue;
+
+            invader.ExplosionTime = MathF.Max(0f, invader.ExplosionTime - dt);
+            invaders[i] = invader;
+        }
+    }
+
+    private void SpawnEnemyBolt()
+    {
+        var candidates = new List<InvaderActor>(FormationCols);
+        for (var col = 0; col < FormationCols; col++)
+        {
+            var invader = GetLowestAliveInvaderInColumn(col);
+            if (invader is { } candidate)
+                candidates.Add(candidate);
+        }
+
+        if (candidates.Count == 0)
+            return;
+
+        InvaderActor shooter;
+        if (random.NextDouble() < 0.62)
+        {
+            shooter = candidates[0];
+            var bestDistance = float.MaxValue;
+            for (var i = 0; i < candidates.Count; i++)
+            {
+                var (x, _) = GetInvaderPosition(candidates[i].Row, candidates[i].Col);
+                var distance = MathF.Abs(x - playerX);
+                if (distance >= bestDistance)
+                    continue;
+
+                bestDistance = distance;
+                shooter = candidates[i];
+            }
+        }
+        else
+        {
+            shooter = candidates[random.Next(candidates.Count)];
+        }
+
+        var (sx, sy) = GetInvaderPosition(shooter.Row, shooter.Col);
+        bolts.Add(new BoltActor
+        {
+            X = sx,
+            Y = sy + 3,
+            VelocityY = 15f + waveNumber,
+            IsPlayer = false,
+            Color = new Rgba32(255, 118, 126)
+        });
+    }
+
+    private int CountAliveInvaders()
+    {
+        var count = 0;
+        for (var i = 0; i < invaders.Count; i++)
+            if (invaders[i].IsAlive)
+                count++;
+
+        return count;
+    }
+
+    private float ComputeFormationStepInterval()
+    {
+        var alive = CountAliveInvaders();
+        var removed = FormationRows * FormationCols - alive;
+        var baseInterval = 0.46f - waveNumber * 0.03f - removed * 0.011f;
+        return MathF.Max(0.1f, baseInterval);
+    }
+
+    private bool HasActivePlayerBolt()
+    {
+        for (var i = 0; i < bolts.Count; i++)
+            if (bolts[i].IsPlayer)
+                return true;
+
+        return false;
+    }
+
+    private InvaderActor? GetLowestAliveInvaderInColumn(int col)
+    {
+        for (var row = FormationRows - 1; row >= 0; row--)
+        {
+            var index = row * FormationCols + col;
+            if (index < 0 || index >= invaders.Count)
+                continue;
+
+            var invader = invaders[index];
+            if (invader.IsAlive)
+                return invader;
+        }
+
+        return null;
+    }
+
+    private (float X, float Y) GetInvaderPosition(int row, int col)
+    {
+        return (formationX + col * FormationSpacingX, formationY + row * FormationSpacingY);
+    }
+
+    private void TriggerPlayerHit()
+    {
+        if (playerExplosionSeconds > 0f)
+            return;
+
+        playerExplosionSeconds = 0.48f;
+    }
+
+    private void ResetWave(bool firstWave)
+    {
+        waveNumber = firstWave ? 1 : waveNumber + 1;
+        bolts.Clear();
         invaders.Clear();
-        missiles.Clear();
-        playerTargetX = 10;
-        playerLastTarget = 31;
-        playerWaitTimeLeft = TimeSpan.FromSeconds(random.NextDouble() * 2.0);
-        isPlayerWaiting = true;
-        //isPlayerAvoiding = false;
-        playerTimeToFire = TimeSpan.FromSeconds(0.5);
+        resetBeatSeconds = 0f;
 
-        // Reset blocks
-        for (var y = 0; y < 32; y++)
-        for (var x = 0; x < 64; x++)
-            blocks[x, y] = blocksTemplate[x, y].A != 0;
+        formationX = 10f;
+        formationY = 4f;
+        formationDirection = 1f;
+        formationStepCooldown = 0.24f;
+        enemyFireCooldown = firstWave ? 0.55f : 0.34f;
 
-        // Create invaders
-        for (var i = 0; i < 46; i += 10)
+        playerX = Width / 2f;
+        playerTargetX = playerX;
+        playerDecisionCooldown = 0f;
+        playerFireCooldown = 0.22f;
+        playerExplosionSeconds = 0f;
+
+        ClearShields();
+
+        for (var row = 0; row < FormationRows; row++)
+        for (var col = 0; col < FormationCols; col++)
+            invaders.Add(new InvaderActor
+            {
+                Row = row,
+                Col = col,
+                IsAlive = true,
+                ExplosionTime = 0f
+            });
+    }
+
+    private void ClearShields()
+    {
+        Array.Clear(shields, 0, shields.Length);
+
+        CreateShield(9);
+        CreateShield(28);
+        CreateShield(47);
+    }
+
+    private void CreateShield(int startX)
+    {
+        const int shieldTop = 22;
+        for (var row = 0; row < ShieldMask.Length; row++)
         {
-            invaders.Add(new Invader(new Point(i, 0)));
-            invaders.Add(new Invader(new Point(i, 6)));
+            var line = ShieldMask[row];
+            for (var col = 0; col < line.Length; col++)
+            {
+                if (line[col] == '.')
+                    continue;
+
+                var x = startX + col;
+                var y = shieldTop + row;
+                if ((uint)x < Width && (uint)y < Height)
+                    shields[x, y] = true;
+            }
         }
     }
 
-    private void SelectNextPlayerTarget()
+    private void DamageShield(int centerX, int centerY)
     {
-        playerLastTarget = playerTargetX;
-        while (playerTargetX == playerLastTarget)
-            switch (random.Next(0, 3))
-            {
-                case 0:
-                    playerTargetX = 14;
-                    break;
-                case 1:
-                    playerTargetX = 35;
-                    break;
-                case 2:
-                    playerTargetX = 56;
-                    break;
-                default:
-                    playerTargetX = random.Next(3, 60);
-                    break;
-            }
-    }
-
-    private class Invader
-    {
-        private static readonly TimeSpan explodeDuration = TimeSpan.FromSeconds(0.5);
-        private readonly Point startPosition;
-        private TimeSpan explodeTimeLeft;
-        private TimeSpan timeToFire;
-
-        public Invader(Point startPosition)
+        for (var y = centerY - 1; y <= centerY + 1; y++)
+        for (var x = centerX - 1; x <= centerX + 1; x++)
         {
-            CanBeRemoved = false;
-            IsAlive = true;
-            this.startPosition = startPosition;
-            Offset = new Point(0, 0);
-            ReadyToFire = false;
-            ResetTimeToFire();
-        }
+            if ((uint)x >= Width || (uint)y >= Height)
+                continue;
 
-        public bool IsAlive { get; set; }
-        public bool CanBeRemoved { get; private set; }
-
-        public Point Position => new(startPosition.X + Offset.X, startPosition.Y + Offset.Y);
-
-        public bool ReadyToFire { get; set; }
-        public Point Offset { get; set; }
-
-        private void ResetTimeToFire()
-        {
-            timeToFire = TimeSpan.FromSeconds(5.0 + 5.0 * Random.Shared.NextDouble());
-        }
-
-        public void Elapsed(TimeSpan timeSpan)
-        {
-            if (IsAlive)
-            {
-                timeToFire -= timeSpan;
-                if (timeToFire < TimeSpan.Zero)
-                {
-                    ReadyToFire = true;
-                    ResetTimeToFire();
-                }
-            }
-            else
-            {
-                explodeTimeLeft -= timeSpan;
-                if (explodeTimeLeft < TimeSpan.Zero) CanBeRemoved = true;
-            }
-        }
-
-        internal void Hit()
-        {
-            explodeTimeLeft = explodeDuration;
-            IsAlive = false;
+            if (Math.Abs(x - centerX) + Math.Abs(y - centerY) <= 2)
+                shields[x, y] = false;
         }
     }
 
-    private class Missile
+    private void DrawBackground(Image<Rgba32> img)
     {
-        private readonly double speed;
-        private double currentY;
-
-        public Missile(Point startPosition, bool isPlayer)
+        var time = (float)elapsedThisScene.TotalSeconds;
+        for (var y = 0; y < Height; y++)
         {
-            X = startPosition.X;
-            currentY = startPosition.Y;
-            IsPlayer = isPlayer;
-            speed = isPlayer ? -30 : 15;
-            IsActive = true;
+            var depth = y / (float)(Height - 1);
+            var row = new Rgba32(
+                ToByte(4f + depth * 2f),
+                ToByte(6f + depth * 4f),
+                ToByte(14f + depth * 12f));
+
+            for (var x = 0; x < Width; x++)
+                img[x, y] = row;
         }
 
-        public bool IsActive { get; set; }
-
-        public bool IsPlayer { get; }
-
-        public int X { get; }
-        public int Y => (int)currentY;
-
-        internal void Elapsed(TimeSpan timeSpan, int playerX, List<Invader> invaders, ref bool[,] blocks,
-            out bool playerHit)
+        for (var i = 0; i < 12; i++)
         {
-            playerHit = false;
-            var canBreak = false;
-            var lastY = Y;
-            currentY += timeSpan.TotalSeconds * speed;
-
-            if (Y < 1 || Y > 30)
-                IsActive = false;
-            else
-                foreach (var pathY in GetPath(lastY, Y))
-                {
-                    if (blocks[X, pathY])
-                    {
-                        blocks[X, pathY] = false;
-                        IsActive = false;
-                        canBreak = true;
-                        break;
-                    }
-
-                    if (IsPlayer && IsActive)
-                    {
-                        foreach (var invader in invaders)
-                            if (IsWithinRect(X, pathY, invader.Position.X, invader.Position.Y, invader.Position.X + 7,
-                                    invader.Position.Y + 5))
-                            {
-                                invader.Hit();
-                                IsActive = false;
-                                canBreak = true;
-                                break;
-                            }
-                    }
-                    else if (IsActive)
-                    {
-                        if (IsWithinRect(X, pathY, playerX - 3, PlayerTop, playerX + 3, 31))
-                        {
-                            playerHit = true;
-                            canBreak = true;
-                        }
-                    }
-
-                    if (canBreak) break;
-                }
+            var x = (Hash(i, 17) % Width + Width) % Width;
+            var y = (Hash(i, 31) % 13 + 13) % 13 + 1;
+            var twinkle = 0.35f + 0.65f * (0.5f + 0.5f * MathF.Sin(time * 2.8f + i));
+            img[x, y] = Scale(new Rgba32(204, 219, 255), twinkle);
         }
 
-        private bool IsWithinRect(int missileX, int missileY, int x1, int y1, int x2, int y2)
-        {
-            return missileX >= x1 && missileX <= x2 && (missileY >= y1) & (missileY <= y2);
-        }
+        for (var x = 0; x < Width; x++)
+            img[x, Height - 1] = new Rgba32(42, 58, 84);
+    }
 
-        private IEnumerable<int> GetPath(int oldY, int newY)
+    private void DrawShields(Image<Rgba32> img)
+    {
+        for (var y = 0; y < Height; y++)
+        for (var x = 0; x < Width; x++)
         {
-            if (oldY == newY)
+            if (!shields[x, y])
+                continue;
+
+            var topEdge = y > 0 && !shields[x, y - 1];
+            img[x, y] = topEdge ? new Rgba32(188, 255, 212) : new Rgba32(92, 224, 146);
+        }
+    }
+
+    private void DrawInvaders(Image<Rgba32> img)
+    {
+        var useAltFrame = ((int)(animationClock * 6f) & 1) == 1;
+        for (var i = 0; i < invaders.Count; i++)
+        {
+            var invader = invaders[i];
+            var (x, y) = GetInvaderPosition(invader.Row, invader.Col);
+
+            if (invader.IsAlive)
             {
-                yield return newY;
+                var sprite = GetInvaderSprite(invader.Row, useAltFrame);
+                DrawSprite(img, (int)MathF.Round(x) - 2, (int)MathF.Round(y) - 1, sprite, RowColors[invader.Row]);
             }
-            else
+            else if (invader.ExplosionTime > 0f)
             {
-                var direction = oldY > newY ? -1 : 1;
-                for (var i = 1; i <= Math.Abs(oldY - newY); i++) yield return oldY + i * direction;
+                var intensity = invader.ExplosionTime / 0.24f;
+                DrawSprite(
+                    img,
+                    (int)MathF.Round(x) - 2,
+                    (int)MathF.Round(y) - 2,
+                    ExplosionSprite,
+                    Scale(new Rgba32(255, 222, 140), intensity));
             }
         }
+    }
+
+    private static string[] GetInvaderSprite(int row, bool useAltFrame)
+    {
+        return row switch
+        {
+            0 => useAltFrame ? InvaderTopFrameB : InvaderTopFrameA,
+            1 => useAltFrame ? InvaderMidFrameB : InvaderMidFrameA,
+            _ => useAltFrame ? InvaderLowFrameB : InvaderLowFrameA
+        };
+    }
+
+    private void DrawBolts(Image<Rgba32> img)
+    {
+        for (var i = 0; i < bolts.Count; i++)
+        {
+            var bolt = bolts[i];
+            var x = (int)MathF.Round(bolt.X);
+            var y = (int)MathF.Round(bolt.Y);
+            SetPixel(img, x, y - 1, Scale(bolt.Color, 0.55f));
+            SetPixel(img, x, y, bolt.Color);
+            SetPixel(img, x, y + 1, Scale(bolt.Color, 0.55f));
+        }
+    }
+
+    private void DrawPlayer(Image<Rgba32> img)
+    {
+        var x = (int)MathF.Round(playerX) - 3;
+        if (playerExplosionSeconds > 0f)
+        {
+            var intensity = playerExplosionSeconds / 0.48f;
+            DrawSprite(img, x, PlayerY - 2, ExplosionSprite, Scale(new Rgba32(255, 176, 126), intensity));
+            return;
+        }
+
+        DrawSprite(img, x, PlayerY - 2, PlayerSprite, new Rgba32(178, 236, 255));
+    }
+
+    private static void DrawSprite(Image<Rgba32> img, int x, int y, string[] sprite, Rgba32 color)
+    {
+        for (var row = 0; row < sprite.Length; row++)
+        {
+            var line = sprite[row];
+            for (var col = 0; col < line.Length; col++)
+            {
+                if (line[col] != 'X')
+                    continue;
+
+                SetPixel(img, x + col, y + row, color);
+            }
+        }
+    }
+
+    private static void SetPixel(Image<Rgba32> img, int x, int y, Rgba32 color)
+    {
+        if ((uint)x >= Width || (uint)y >= Height)
+            return;
+
+        img[x, y] = color;
+    }
+
+    private static int Hash(int seed, int salt)
+    {
+        unchecked
+        {
+            var h = seed * 374761393 + salt * 668265263;
+            h = (h ^ (h >> 13)) * 1274126177;
+            return h ^ (h >> 16);
+        }
+    }
+
+    private static Rgba32 Scale(Rgba32 color, float factor)
+    {
+        var clamped = Math.Clamp(factor, 0f, 1f);
+        return new Rgba32(
+            ToByte(color.R * clamped),
+            ToByte(color.G * clamped),
+            ToByte(color.B * clamped));
+    }
+
+    private static byte ToByte(float value)
+    {
+        return (byte)Math.Clamp((int)MathF.Round(value), 0, 255);
+    }
+
+    private struct InvaderActor
+    {
+        public int Row;
+        public int Col;
+        public bool IsAlive;
+        public float ExplosionTime;
+    }
+
+    private struct BoltActor
+    {
+        public float X;
+        public float Y;
+        public float VelocityY;
+        public bool IsPlayer;
+        public Rgba32 Color;
     }
 }

@@ -8,20 +8,18 @@ public class OrbitalScene : ISpecialScene
 {
     private const int Width = 64;
     private const int Height = 32;
-    private const float DaysPerSecond = 28f;
+    private const float DaysPerSecond = 10f;
     private static readonly TimeSpan SceneDuration = TimeSpan.FromSeconds(18);
     private static readonly DateTime J2000Utc = new(2000, 1, 1, 12, 0, 0, DateTimeKind.Utc);
 
     private static readonly Planet[] Planets =
     [
-        new Planet("Mercury", 87.9691, 252.25084, 4.5f, 2.8f, new Rgba32(190, 202, 210)),
-        new Planet("Venus", 224.70069, 181.97973, 6.2f, 3.8f, new Rgba32(255, 204, 142)),
-        new Planet("Earth", 365.25636, 100.46435, 8.0f, 4.9f, new Rgba32(92, 172, 255)),
-        new Planet("Mars", 686.97959, 355.45332, 9.9f, 6.0f, new Rgba32(255, 136, 92)),
-        new Planet("Jupiter", 4332.589, 34.40438, 12.0f, 7.2f, new Rgba32(240, 186, 138)),
-        new Planet("Saturn", 10759.22, 49.94432, 14.0f, 8.3f, new Rgba32(250, 214, 128)),
-        new Planet("Uranus", 30688.5, 313.23218, 16.0f, 9.4f, new Rgba32(152, 235, 236)),
-        new Planet("Neptune", 60182.0, 304.88003, 18.0f, 10.6f, new Rgba32(114, 150, 255))
+        new Planet("Mercury", 87.9691, 252.25084, 5.0f, 3.1f, 1, new Rgba32(196, 204, 214)),
+        new Planet("Venus", 224.70069, 181.97973, 8.0f, 5.0f, 1, new Rgba32(255, 208, 142)),
+        new Planet("Earth", 365.25636, 100.46435, 11.0f, 6.9f, 2, new Rgba32(96, 178, 255)),
+        new Planet("Mars", 686.97959, 355.45332, 14.0f, 8.7f, 1, new Rgba32(255, 138, 92)),
+        new Planet("Jupiter", 4332.589, 34.40438, 18.0f, 11.0f, 2, new Rgba32(244, 196, 144)),
+        new Planet("Saturn", 10759.22, 49.94432, 21.0f, 13.0f, 2, new Rgba32(250, 222, 132))
     ];
 
     private TimeSpan elapsedThisScene;
@@ -56,15 +54,15 @@ public class OrbitalScene : ISpecialScene
     {
         if (!IsActive) return;
 
-        var t = (float)elapsedThisScene.TotalSeconds;
+        var time = (float)elapsedThisScene.TotalSeconds;
         var cx = Width / 2f;
-        var cy = Height / 2f + 1f;
-        var simulatedDays = daysSinceJ2000AtActivation + t * DaysPerSecond;
+        var cy = Height / 2f;
+        var simulatedDays = daysSinceJ2000AtActivation + time * DaysPerSecond;
 
-        DrawBackground(img, t);
-        DrawOrbitRings(img, t, cx, cy);
-        DrawPlanets(img, simulatedDays, cx, cy, t);
-        DrawSun(img, cx, cy, t);
+        DrawBackground(img, time);
+        DrawOrbitRings(img, cx, cy, time);
+        DrawSun(img, cx, cy, time);
+        DrawPlanets(img, cx, cy, simulatedDays, time);
     }
 
     private static void DrawBackground(Image<Rgba32> img, float time)
@@ -72,39 +70,35 @@ public class OrbitalScene : ISpecialScene
         for (var y = 0; y < Height; y++)
         {
             var depth = y / (float)(Height - 1);
+            var row = new Rgba32(
+                ToByte(4f + depth * 6f),
+                ToByte(7f + depth * 7f),
+                ToByte(16f + depth * 18f));
+
             for (var x = 0; x < Width; x++)
-            {
-                var nebula = 0.5f + 0.5f * MathF.Sin(x * 0.12f + y * 0.21f + time * 0.38f);
-                var haze = 0.5f + 0.5f * MathF.Cos(x * 0.08f - y * 0.17f - time * 0.26f);
+                img[x, y] = row;
+        }
 
-                var r = 6f + depth * 8f + nebula * 8f + haze * 4f;
-                var g = 8f + depth * 6f + nebula * 4f + haze * 4f;
-                var b = 18f + depth * 24f + nebula * 16f + haze * 8f;
-
-                var hash = Hash(x, y, 41);
-                if ((hash & 255) == 1)
-                {
-                    var twinkle = 0.35f + 0.65f * (0.5f + 0.5f * MathF.Sin(time * 3.1f + (hash & 63)));
-                    r += 110f * twinkle;
-                    g += 126f * twinkle;
-                    b += 172f * twinkle;
-                }
-
-                img[x, y] = new Rgba32(ToByte(r), ToByte(g), ToByte(b));
-            }
+        for (var i = 0; i < 18; i++)
+        {
+            var x = (Hash(i, 11) % Width + Width) % Width;
+            var y = (Hash(i, 29) % Height + Height) % Height;
+            var pulse = 0.45f + 0.55f * (0.5f + 0.5f * MathF.Sin(time * 2.2f + i * 0.8f));
+            img[x, y] = Scale(new Rgba32(210, 224, 255), pulse);
         }
     }
 
-    private static void DrawOrbitRings(Image<Rgba32> img, float time, float cx, float cy)
+    private static void DrawOrbitRings(Image<Rgba32> img, float cx, float cy, float time)
     {
         for (var i = 0; i < Planets.Length; i++)
         {
             var planet = Planets[i];
-            var ringColor = Scale(planet.Color, 0.22f + 0.05f * MathF.Sin(time * 0.8f + i * 0.7f));
+            var brightness = 0.14f + 0.03f * MathF.Sin(time * 0.9f + i * 0.7f);
+            var ringColor = Scale(new Rgba32(146, 168, 214), brightness);
 
-            for (var deg = 0; deg < 360; deg += 8)
+            for (var deg = 0; deg < 360; deg += 18)
             {
-                var theta = deg * MathF.PI / 180f;
+                var theta = DegreesToRadians(deg);
                 var x = (int)MathF.Round(cx + MathF.Cos(theta) * planet.OrbitRadiusX);
                 var y = (int)MathF.Round(cy + MathF.Sin(theta) * planet.OrbitRadiusY);
                 BlendPixel(img, x, y, ringColor);
@@ -112,7 +106,22 @@ public class OrbitalScene : ISpecialScene
         }
     }
 
-    private static void DrawPlanets(Image<Rgba32> img, double simulatedDays, float cx, float cy, float time)
+    private static void DrawSun(Image<Rgba32> img, float cx, float cy, float time)
+    {
+        var centerX = (int)MathF.Round(cx);
+        var centerY = (int)MathF.Round(cy);
+        var glow = 0.82f + 0.18f * MathF.Sin(time * 4f);
+
+        DrawDisc(img, centerX, centerY, 2, Scale(new Rgba32(255, 222, 118), glow));
+        DrawDisc(img, centerX, centerY, 1, new Rgba32(255, 248, 200));
+
+        BlendPixel(img, centerX - 3, centerY, new Rgba32(255, 184, 92));
+        BlendPixel(img, centerX + 3, centerY, new Rgba32(255, 184, 92));
+        BlendPixel(img, centerX, centerY - 2, new Rgba32(255, 184, 92));
+        BlendPixel(img, centerX, centerY + 2, new Rgba32(255, 184, 92));
+    }
+
+    private static void DrawPlanets(Image<Rgba32> img, float cx, float cy, double simulatedDays, float time)
     {
         for (var i = 0; i < Planets.Length; i++)
         {
@@ -124,67 +133,55 @@ public class OrbitalScene : ISpecialScene
             var x = cx + MathF.Cos(angle) * planet.OrbitRadiusX;
             var y = cy + MathF.Sin(angle) * planet.OrbitRadiusY;
 
-            for (var step = 1; step <= 2; step++)
-            {
-                var trailingDays = simulatedDays - step * 3.3;
-                var trailAngleDegrees = NormalizeDegrees(planet.MeanLongitudeAtJ2000Degrees +
-                                                         trailingDays * (360.0 / planet.OrbitalPeriodDays));
-                var trailAngle = DegreesToRadians((float)trailAngleDegrees);
-                var tx = cx + MathF.Cos(trailAngle) * planet.OrbitRadiusX;
-                var ty = cy + MathF.Sin(trailAngle) * planet.OrbitRadiusY;
-                BlendPixel(img, (int)MathF.Round(tx), (int)MathF.Round(ty), Scale(planet.Color, 0.25f));
-            }
+            var trailingDays = simulatedDays - 2.2;
+            var tailDegrees = NormalizeDegrees(planet.MeanLongitudeAtJ2000Degrees +
+                                               trailingDays * (360.0 / planet.OrbitalPeriodDays));
+            var tailAngle = DegreesToRadians((float)tailDegrees);
+            var tx = cx + MathF.Cos(tailAngle) * planet.OrbitRadiusX;
+            var ty = cy + MathF.Sin(tailAngle) * planet.OrbitRadiusY;
 
-            var px = (int)MathF.Round(x);
-            var py = (int)MathF.Round(y);
-            var pulse = 0.75f + 0.25f * MathF.Sin(time * 4.2f + i * 0.6f);
-            BlendPixel(img, px, py, Scale(planet.Color, pulse));
-            BlendPixel(img, px - 1, py, Scale(planet.Color, 0.22f));
-            BlendPixel(img, px + 1, py, Scale(planet.Color, 0.22f));
-            BlendPixel(img, px, py - 1, Scale(planet.Color, 0.22f));
-            BlendPixel(img, px, py + 1, Scale(planet.Color, 0.22f));
+            BlendPixel(img, (int)MathF.Round(tx), (int)MathF.Round(ty), Scale(planet.Color, 0.3f));
+
+            var pulse = 0.82f + 0.18f * MathF.Sin(time * 3.4f + i * 0.8f);
+            DrawPlanetDot(img, (int)MathF.Round(x), (int)MathF.Round(y), planet.SizePixels, Scale(planet.Color, pulse));
 
             if (planet.Name == "Saturn")
             {
-                BlendPixel(img, px - 2, py, Scale(planet.Color, 0.3f));
-                BlendPixel(img, px + 2, py, Scale(planet.Color, 0.3f));
+                BlendPixel(img, (int)MathF.Round(x) - 2, (int)MathF.Round(y), Scale(planet.Color, 0.42f));
+                BlendPixel(img, (int)MathF.Round(x) + 2, (int)MathF.Round(y), Scale(planet.Color, 0.42f));
             }
         }
     }
 
-    private static void DrawSun(Image<Rgba32> img, float cx, float cy, float time)
+    private static void DrawPlanetDot(Image<Rgba32> img, int x, int y, int sizePixels, Rgba32 color)
     {
-        var centerX = (int)MathF.Round(cx);
-        var centerY = (int)MathF.Round(cy);
-        var coronaPulse = 0.75f + 0.25f * MathF.Sin(time * 5.4f);
+        BlendPixel(img, x, y, color);
+        if (sizePixels < 2)
+            return;
 
-        DrawDisc(img, centerX, centerY, 2, Scale(new Rgba32(255, 236, 140), coronaPulse));
-        DrawDisc(img, centerX, centerY, 1, new Rgba32(255, 252, 188));
-
-        for (var ray = 0; ray < 8; ray++)
-        {
-            var theta = ray * MathF.PI / 4f + time * 0.8f;
-            var x = (int)MathF.Round(cx + MathF.Cos(theta) * 4f);
-            var y = (int)MathF.Round(cy + MathF.Sin(theta) * 2.3f);
-            BlendPixel(img, x, y, new Rgba32(255, 190, 96));
-        }
+        BlendPixel(img, x - 1, y, Scale(color, 0.45f));
+        BlendPixel(img, x + 1, y, Scale(color, 0.45f));
+        BlendPixel(img, x, y - 1, Scale(color, 0.45f));
+        BlendPixel(img, x, y + 1, Scale(color, 0.45f));
     }
 
     private static void DrawDisc(Image<Rgba32> img, int centerX, int centerY, int radius, Rgba32 color)
     {
-        var r2 = radius * radius;
+        var radiusSquared = radius * radius;
         for (var y = centerY - radius; y <= centerY + radius; y++)
         for (var x = centerX - radius; x <= centerX + radius; x++)
         {
             var dx = x - centerX;
             var dy = y - centerY;
-            if (dx * dx + dy * dy <= r2) BlendPixel(img, x, y, color);
+            if (dx * dx + dy * dy <= radiusSquared)
+                BlendPixel(img, x, y, color);
         }
     }
 
     private static void BlendPixel(Image<Rgba32> img, int x, int y, Rgba32 source)
     {
-        if ((uint)x >= Width || (uint)y >= Height) return;
+        if ((uint)x >= Width || (uint)y >= Height)
+            return;
 
         var current = img[x, y];
         var r = Math.Min(255, current.R + source.R);
@@ -204,11 +201,11 @@ public class OrbitalScene : ISpecialScene
         return normalized < 0 ? normalized + 360.0 : normalized;
     }
 
-    private static int Hash(int x, int y, int z)
+    private static int Hash(int seed, int salt)
     {
         unchecked
         {
-            var h = x * 374761393 + y * 668265263 + z * 982451653;
+            var h = seed * 374761393 + salt * 668265263;
             h = (h ^ (h >> 13)) * 1274126177;
             return h ^ (h >> 16);
         }
@@ -216,8 +213,11 @@ public class OrbitalScene : ISpecialScene
 
     private static Rgba32 Scale(Rgba32 color, float factor)
     {
-        var f = Math.Clamp(factor, 0f, 1f);
-        return new Rgba32(ToByte(color.R * f), ToByte(color.G * f), ToByte(color.B * f));
+        var clamped = Math.Clamp(factor, 0f, 1f);
+        return new Rgba32(
+            ToByte(color.R * clamped),
+            ToByte(color.G * clamped),
+            ToByte(color.B * clamped));
     }
 
     private static byte ToByte(float value)
@@ -231,5 +231,6 @@ public class OrbitalScene : ISpecialScene
         double MeanLongitudeAtJ2000Degrees,
         float OrbitRadiusX,
         float OrbitRadiusY,
+        int SizePixels,
         Rgba32 Color);
 }

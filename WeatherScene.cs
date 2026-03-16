@@ -42,8 +42,10 @@ public class WeatherScene : ISpecialScene
     private static readonly Font HeroTempFont = AppFonts.Create(13f);
     private static readonly Font DetailFont = AppFonts.Create(6.5f);
 
+    private Image<Rgba32>? currentPanelBuffer;
     private TimeSpan elapsedThisScene;
     private Task<WeatherSnapshot>? fetchTask;
+    private Image<Rgba32>? nextPanelBuffer;
     private WeatherSnapshot? snapshot;
 
     public bool IsActive { get; private set; }
@@ -53,7 +55,9 @@ public class WeatherScene : ISpecialScene
 
     public void Activate()
     {
+        EnsurePanelBuffers();
         elapsedThisScene = TimeSpan.Zero;
+        fetchTask = null;
         IsActive = true;
         HidesTime = true;
 
@@ -73,6 +77,7 @@ public class WeatherScene : ISpecialScene
         {
             IsActive = false;
             HidesTime = false;
+            DisposePanelBuffers();
             return;
         }
 
@@ -134,8 +139,8 @@ public class WeatherScene : ISpecialScene
         var timeIntoPanel = elapsedThisScene - panelStart;
         var transitionStart = PanelDuration - TransitionDuration;
 
-        using var currentPanel = new Image<Rgba32>(Width, Height);
-        DrawForecastPanel(currentPanel, weather, panelIndex);
+        EnsurePanelBuffers();
+        DrawForecastPanel(currentPanelBuffer!, weather, panelIndex);
 
         if (panelIndex < PanelCount - 1 && timeIntoPanel > transitionStart)
         {
@@ -143,18 +148,17 @@ public class WeatherScene : ISpecialScene
                                    TransitionDuration.TotalMilliseconds);
             progress = Math.Clamp(progress, 0f, 1f);
 
-            using var nextPanel = new Image<Rgba32>(Width, Height);
-            DrawForecastPanel(nextPanel, weather, panelIndex + 1);
+            DrawForecastPanel(nextPanelBuffer!, weather, panelIndex + 1);
 
             var currentOffset = -(int)MathF.Round(progress * Width);
             var nextOffset = Width + currentOffset;
-            Blit(img, currentPanel, currentOffset);
-            Blit(img, nextPanel, nextOffset);
+            Blit(img, currentPanelBuffer!, currentOffset);
+            Blit(img, nextPanelBuffer!, nextOffset);
             DrawPageIndicators(img, panelIndex, progress);
             return;
         }
 
-        Blit(img, currentPanel, 0);
+        Blit(img, currentPanelBuffer!, 0);
         DrawPageIndicators(img, panelIndex, 0f);
     }
 
@@ -495,6 +499,21 @@ public class WeatherScene : ISpecialScene
             cachedSnapshot = weatherSnapshot;
             cacheUpdatedAtUtc = DateTimeOffset.UtcNow;
         }
+    }
+
+    private void EnsurePanelBuffers()
+    {
+        currentPanelBuffer ??= new Image<Rgba32>(Width, Height);
+        nextPanelBuffer ??= new Image<Rgba32>(Width, Height);
+    }
+
+    private void DisposePanelBuffers()
+    {
+        currentPanelBuffer?.Dispose();
+        currentPanelBuffer = null;
+
+        nextPanelBuffer?.Dispose();
+        nextPanelBuffer = null;
     }
 
     private static void DrawPanelBackdrop(Image<Rgba32> img, bool isDay, WeatherType weatherType, float time, int panelIndex)

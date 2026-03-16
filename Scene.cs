@@ -13,6 +13,7 @@ namespace advent;
 public class Scene
 {
     private readonly bool drawSnow;
+    private readonly Action<Image<Rgba32>> drawClockOverlay;
     private readonly Font font;
     private readonly Queue<TimeSpan> recentRandomSceneRequests = new();
 
@@ -22,7 +23,7 @@ public class Scene
     private TimeSpan elapsedSinceStartup;
     private TimeSpan timeToNextRandomScene;
 
-    public Scene()
+    public Scene(Action<Image<Rgba32>>? clockOverlayRenderer = null)
     {
         timeToNextRandomScene = TimeSpan.FromMinutes(Random.Shared.NextDouble());
         hasPendingSceneRequest = false;
@@ -30,6 +31,7 @@ public class Scene
         ContinuousSceneRequests = false;
 
         Img = new Image<Rgba32>(64, 32);
+        drawClockOverlay = clockOverlayRenderer ?? DrawClockOverlay;
         font = AppFonts.Create(16);
 
         if (DateTime.Now.Month == 12 || DateTime.Now.Month == 6)
@@ -94,12 +96,6 @@ public class Scene
             }
         }
 
-        if (!hidesTime)
-        {
-            var timeToDisplay = DateTime.Now.TimeOfDay.ToString("hh\\:mm\\:ss");
-            Img.Mutate(x => x.DrawText(timeToDisplay, font, Color.Aqua, new Point(0, 0)));
-        }
-
         if (specialScene != null) specialScene.Draw(Img);
 
         if (drawSnow)
@@ -111,6 +107,9 @@ public class Scene
                 Img.Mutate(x => x.Fill(flake.Color,
                     new EllipsePolygon(flake.Position.X, 32f - flake.Position.Y, flake.Width, flake.Width)));
         }
+
+        if (!hidesTime)
+            drawClockOverlay(Img);
     }
 
     private void RequestSceneIfNeeded()
@@ -145,5 +144,11 @@ public class Scene
         recentRandomSceneRequests.Enqueue(elapsedSinceStartup);
         timeToNextRandomScene = TimeSpan.FromMinutes(Random.Shared.NextDouble() * 2);
         NewSceneWanted?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void DrawClockOverlay(Image<Rgba32> img)
+    {
+        var timeToDisplay = DateTime.Now.TimeOfDay.ToString("hh\\:mm\\:ss");
+        img.Mutate(x => x.DrawText(timeToDisplay, font, Color.Aqua, new Point(0, 0)));
     }
 }

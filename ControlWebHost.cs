@@ -87,8 +87,12 @@ internal static class ControlWebHost
             TimeSpan? sceneDuration = null;
             if (request.DurationSeconds is { } durationSeconds)
             {
-                if (durationSeconds <= 0)
-                    return Results.BadRequest(new { error = "DurationSeconds must be > 0." });
+                if (durationSeconds <= 0 || durationSeconds > SceneTiming.MaxSceneDuration.TotalSeconds)
+                    return Results.BadRequest(new
+                    {
+                        error =
+                            $"DurationSeconds must be between 1 and {SceneTiming.MaxSceneDuration.TotalSeconds:0}."
+                    });
 
                 sceneDuration = TimeSpan.FromSeconds(durationSeconds);
             }

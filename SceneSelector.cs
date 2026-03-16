@@ -26,17 +26,15 @@ public sealed class SceneSelector
     [
         CreateSceneDefinition("Weather", static () => new WeatherScene()),
         CreateSceneDefinition("Cat", static () => new CatScene()),
-        CreateSceneDefinition("Game of Life", static () => new FadingScene(new GameOfLifeScene())),
         CreateSceneDefinition("Starfield Parallax", static () => new FadingScene(new StarfieldParallaxScene())),
-        CreateSceneDefinition("Plasma SDF", static () => new FadingScene(new PlasmaSdfScene())),
         CreateSceneDefinition("Metaballs", static () => new FadingScene(new MetaballsScene())),
         CreateSceneDefinition("Donkey Kong", static () => new FadingScene(new DonkeyKongScene())),
+        CreateSceneDefinition("Space Invaders", static () => new FadingScene(new SpaceInvadersScene())),
         CreateSceneDefinition("Bonkers Parade", static () => new FadingScene(new BonkersParadeScene())),
         CreateSceneDefinition("Synthwave Grid", static () => new FadingScene(new SynthwaveGridScene())),
         CreateSceneDefinition("Orbital", static () => new FadingScene(new OrbitalScene())),
         CreateSceneDefinition("Fireworks", static () => new FadingScene(new FireworksScene())),
-        CreateSceneDefinition("Error", static () => new FadingScene(new ErrorScene())),
-        CreateSceneDefinition("Space Invaders", static () => new FadingScene(new SpaceInvadersScene()))
+        CreateSceneDefinition("Error", static () => new FadingScene(new ErrorScene()))
     ];
 
     private static readonly IReadOnlyList<SceneDefinition> DecemberSceneDefinitions =
