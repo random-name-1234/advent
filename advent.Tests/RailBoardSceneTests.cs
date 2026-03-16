@@ -173,6 +173,21 @@ public class RailBoardSceneTests
         Assert.Equal(expected, formatted);
     }
 
+    [Theory]
+    [InlineData("On time", 22, "On tm")]
+    [InlineData("Cancelled", 22, "Can")]
+    [InlineData("See front", 22, "See")]
+    [InlineData("+14", 22, "+14")]
+    public void RailBoardScene_BuildsCompactBoardIndicator(string status, int maxWidth, string expected)
+    {
+        var method = typeof(RailBoardScene).GetMethod("CompactBoardIndicator", BindingFlags.Static | BindingFlags.NonPublic);
+        Assert.NotNull(method);
+
+        var compact = method!.Invoke(null, [status, maxWidth]);
+
+        Assert.Equal(expected, compact);
+    }
+
     private static RailBoardScene.RailServiceSnapshot CreateService(
         string scheduledText,
         string locationText,

@@ -35,6 +35,21 @@ public class WeatherSceneTests
         Assert.True(CountLitPixels(canvas, 0, 0, 64, 8) > 0);
         Assert.True(CountLitPixels(canvas, 0, 8, 64, 16) > 0);
         Assert.True(CountLitPixels(canvas, 0, 24, 64, 8) > 0);
+        Assert.True(CountLitPixels(canvas, 0, 0, 64, 1) > 0);
+        Assert.True(CountLitPixels(canvas, 0, 31, 64, 1) > 0);
+    }
+
+    [Fact]
+    public void Draw_DoesNotRenderBottomCenterIndicatorArtifacts()
+    {
+        var scene = new WeatherScene();
+        SetBackingField(scene, "<IsActive>k__BackingField", true);
+        SetPrivateField(scene, "snapshot", CreateSnapshot());
+
+        using var canvas = new Image<Rgba32>(64, 32);
+        scene.Draw(canvas);
+
+        Assert.True(CountLitPixels(canvas, 22, 31, 20, 1) <= 3);
     }
 
     private static object CreateSnapshot()
@@ -63,6 +78,20 @@ public class WeatherSceneTests
 
         Assert.NotNull(instance);
         return instance!;
+    }
+
+    private static void SetBackingField(object target, string fieldName, object value)
+    {
+        var field = target.GetType().GetField(fieldName, BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.NotNull(field);
+        field!.SetValue(target, value);
+    }
+
+    private static void SetPrivateField(object target, string fieldName, object value)
+    {
+        var field = target.GetType().GetField(fieldName, BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.NotNull(field);
+        field!.SetValue(target, value);
     }
 
     private static int CountLitPixels(Image<Rgba32> image, int x, int y, int width, int height)

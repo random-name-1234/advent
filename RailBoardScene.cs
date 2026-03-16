@@ -562,32 +562,50 @@ public sealed class RailBoardScene : ISpecialScene
     private static void DrawCompactBoardPage(Image<Rgba32> img, BoardPage page, TimeSpan elapsedOnPage)
     {
         DrawCompactBoardHeader(img, CompactStationLabel(page.StationName), page.BoardType, elapsedOnPage);
-        var rowTop = 9;
-        var rowHeight = 11;
+        var timeColumnWidth = RailDmiText.MeasureWidth("00:00") + 2;
+        var lowerLeftWidth = timeColumnWidth - 1;
+        var rowTopPositions = new[] { 7, 21 };
+        var statusTopPositions = new[] { 13, 27 };
         var rows = page.Rows.Take(CompactBoardRows).ToArray();
         for (var i = 0; i < rows.Length; i++)
         {
             var row = rows[i];
-            var y = rowTop + i * rowHeight;
+            var y = rowTopPositions[i];
+            var statusY = statusTopPositions[i];
             var platformText = CompactPlatform(row.PlatformText);
-            var platformWidth = string.IsNullOrWhiteSpace(platformText) ? 0 : RailDmiText.MeasureWidth(platformText) + 2;
-            var locationWidth = Math.Max(0, img.Width - 25 - platformWidth - 3);
+            var platformReserve = string.IsNullOrWhiteSpace(platformText) ? 0 : RailDmiText.MeasureWidth(platformText) + 1;
+            var locationWidth = Math.Max(0, img.Width - timeColumnWidth - platformReserve - 1);
 
-            DrawPixelText(img, row.ScheduledText, HeaderColor, 1, y);
+            DrawPixelText(img, row.ScheduledText, HeaderColor, 0, y);
             DrawPixelBouncingField(
                 img,
                 row.LocationText,
                 PrimaryTextColor,
-                25,
+                timeColumnWidth,
                 y,
                 locationWidth,
                 elapsedOnPage,
                 i);
-            DrawPixelRightAlignedText(img, platformText, PrimaryTextColor, img.Width - 2, y);
-            DrawPixelText(img, CompactBoardStatus(row.StatusText), row.StatusColor, 25, y + 5);
+            DrawPixelRightAlignedText(img, platformText, PrimaryTextColor, img.Width - 1, y);
+
+            var compactStatus = CompactBoardIndicator(row.StatusText, lowerLeftWidth);
+            if (!string.IsNullOrWhiteSpace(compactStatus))
+                DrawPixelText(img, compactStatus, row.StatusColor, 0, statusY);
+
+            var callingText = CompactBoardCallingText(row.CallingText);
+            if (!string.IsNullOrWhiteSpace(callingText))
+                DrawPixelScrollingField(
+                    img,
+                    callingText,
+                    SecondaryTextColor,
+                    timeColumnWidth,
+                    statusY,
+                    img.Width - timeColumnWidth,
+                    elapsedOnPage,
+                    i + 2);
 
             if (i < rows.Length - 1)
-                FillRect(img, 1, y + rowHeight - 1, img.Width - 2, 1, DividerColor);
+                FillRect(img, 0, 19, img.Width, 1, DividerColor);
         }
     }
 
@@ -661,14 +679,14 @@ public sealed class RailBoardScene : ISpecialScene
         BoardType boardType,
         TimeSpan elapsedOnPage)
     {
-        FillRect(img, 0, 7, img.Width, 1, DividerColor);
+        FillRect(img, 0, 5, img.Width, 1, DividerColor);
 
         var rightText = boardType == BoardType.Departures ? "DEP" : "ARR";
-        DrawPixelRightAlignedText(img, rightText, SecondaryTextColor, img.Width - 2, 1);
+        DrawPixelRightAlignedText(img, rightText, SecondaryTextColor, img.Width - 1, 0);
 
         var rightWidth = RailDmiText.MeasureWidth(rightText);
-        var leftWidth = Math.Max(0, img.Width - rightWidth - 5);
-        DrawPixelBouncingField(img, stationName, HeaderColor, 1, 1, leftWidth, elapsedOnPage, 0);
+        var leftWidth = Math.Max(0, img.Width - rightWidth - 2);
+        DrawPixelBouncingField(img, stationName, HeaderColor, 0, 0, leftWidth, elapsedOnPage, 0);
     }
 
     private static void DrawCompactFooter(Image<Rgba32> img, string text, TimeSpan elapsedOnPage, int lane)
@@ -736,16 +754,25 @@ public sealed class RailBoardScene : ISpecialScene
         return platformText.Trim().ToUpperInvariant();
     }
 
-    private static string CompactBoardStatus(string status)
+    private static string CompactBoardIndicator(string status, int maxWidth)
     {
-        return status switch
+        var compact = status switch
         {
-            "On time" => "On time",
-            "See front" => "See frnt",
-            "Cancelled" => "Cancel",
+            "On time" => "On tm",
+            "See front" => "See",
+            "Cancelled" => "Can",
             _ when status.Length > 8 => status[..8],
             _ => status
         };
+
+        return RailDmiText.TrimToWidth(compact, maxWidth);
+    }
+
+    private static string CompactBoardCallingText(string callingText)
+    {
+        return string.IsNullOrWhiteSpace(callingText)
+            ? string.Empty
+            : callingText;
     }
 
     private static string CompactOperatorText(string operatorText)

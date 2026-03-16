@@ -53,6 +53,56 @@ public class WeatherScene : ISpecialScene
     private static readonly Rgba32 DividerColor = new(36, 23, 11);
     private static readonly Rgba32 HighTextColor = new(236, 190, 108);
     private static readonly Rgba32 LowTextColor = new(122, 176, 236);
+    private static readonly string[] CloudSprite =
+    [
+        "000111100000",
+        "001222221000",
+        "012222222100",
+        "122222222221",
+        "122222222222",
+        "033333333330",
+        "003333333300"
+    ];
+
+    private static readonly string[] FogSprite =
+    [
+        "111111111000",
+        "001111111111",
+        "111111111000"
+    ];
+
+    private static readonly string[] DrizzleSprite =
+    [
+        "010001000000",
+        "100010000000",
+        "000100010000",
+        "001000100000"
+    ];
+
+    private static readonly string[] RainSprite =
+    [
+        "010001000100",
+        "100010001000",
+        "000100010001",
+        "001000100010"
+    ];
+
+    private static readonly string[] SnowSprite =
+    [
+        "010000001000",
+        "111000111000",
+        "010000001000",
+        "000000000000"
+    ];
+
+    private static readonly string[] ThunderSprite =
+    [
+        "001100",
+        "011000",
+        "001100",
+        "001000",
+        "010000"
+    ];
 
     private Image<Rgba32>? currentPanelBuffer;
     private TimeSpan elapsedThisScene;
@@ -163,12 +213,10 @@ public class WeatherScene : ISpecialScene
             var nextOffset = Width + currentOffset;
             Blit(img, currentPanelBuffer!, currentOffset);
             Blit(img, nextPanelBuffer!, nextOffset);
-            DrawPageIndicators(img, panelIndex, progress);
             return;
         }
 
         Blit(img, currentPanelBuffer!, 0);
-        DrawPageIndicators(img, panelIndex, 0f);
     }
 
     private void DrawForecastPanel(Image<Rgba32> img, WeatherSnapshot weather, int panelIndex)
@@ -185,7 +233,7 @@ public class WeatherScene : ISpecialScene
         DrawHeader(img, headerText, metricText);
 
         var bob = (int)MathF.Round(MathF.Sin(time * 2.1f + panelIndex * 0.9f) * 1.2f);
-        DrawWeatherIcon(img, 3, 10 + bob, 12, weatherCode, isToday ? weather.IsDay : true);
+        DrawWeatherIcon(img, 1, 10 + bob, 12, weatherCode, isToday ? weather.IsDay : true);
 
         var heroValue = isToday ? weather.CurrentTemperatureC : forecast.MaxTempC;
         DrawHeroTemperature(
@@ -213,15 +261,15 @@ public class WeatherScene : ISpecialScene
         string title,
         string metric)
     {
-        FillRect(img, 0, 0, Width, 8, BackgroundColor);
-        FillRect(img, 0, 7, Width, 1, DividerColor);
+        FillRect(img, 0, 0, Width, 6, BackgroundColor);
+        FillRect(img, 0, 5, Width, 1, DividerColor);
 
-        DrawPixelText(img, title, HeaderColor, 2, 1);
+        DrawPixelText(img, title, HeaderColor, 0, 0);
 
         var badgeWidth = RailDmiText.MeasureWidth(metric) + 4;
-        var badgeX = Width - badgeWidth - 3;
-        FillRect(img, badgeX, 1, badgeWidth, RailDmiText.Height, DividerColor);
-        DrawPixelText(img, metric, PrimaryTextColor, badgeX + 2, 1);
+        var badgeX = Width - badgeWidth;
+        FillRect(img, badgeX, 0, badgeWidth, RailDmiText.Height, DividerColor);
+        DrawPixelText(img, metric, PrimaryTextColor, badgeX + 2, 0);
     }
 
     private static void DrawHeroTemperature(Image<Rgba32> img, string text, Rgba32 color)
@@ -248,35 +296,19 @@ public class WeatherScene : ISpecialScene
 
     private static void DrawTemperatureSummary(Image<Rgba32> img, float highTempC, float lowTempC)
     {
-        const int rowY = 25;
+        const int rowY = 26;
         FillRect(img, 0, rowY - 1, Width, 1, DividerColor);
 
         var highText = $"HI {Math.Round(highTempC, MidpointRounding.AwayFromZero):0}C";
         var lowText = $"LO {Math.Round(lowTempC, MidpointRounding.AwayFromZero):0}C";
 
-        DrawPixelText(img, highText, HighTextColor, 2, rowY + 1);
-        DrawPixelRightAlignedText(img, lowText, LowTextColor, Width - 2, rowY + 1);
+        DrawPixelText(img, highText, HighTextColor, 0, rowY + 1);
+        DrawPixelRightAlignedText(img, lowText, LowTextColor, Width - 1, rowY + 1);
     }
 
     private static void DrawPixelCenteredText(Image<Rgba32> img, string text, Rgba32 color, int centerX, int y)
     {
         RailDmiText.DrawCentered(img, text, centerX, y, color);
-    }
-
-    private static void DrawPageIndicators(Image<Rgba32> img, int panelIndex, float transitionProgress)
-    {
-        var y = Height - 1;
-        for (var i = 0; i < PanelCount; i++)
-        {
-            var intensity = i == panelIndex ? 1f : 0.25f;
-            if (i == panelIndex + 1)
-                intensity = Math.Max(intensity, transitionProgress);
-            if (i == panelIndex)
-                intensity = Math.Max(0.25f, 1f - transitionProgress * 0.75f);
-
-            var color = Scale(HeaderColor, intensity);
-            FillRect(img, 24 + i * 6, y, 4, 1, color);
-        }
     }
 
     private static void DrawPixelText(Image<Rgba32> img, string text, Rgba32 color, int x, int y)
@@ -604,45 +636,40 @@ public class WeatherScene : ISpecialScene
                 break;
 
             case WeatherType.PartlyCloudy:
-                if (isDay)
-                    DrawSun(img, x, y, size);
-                else
-                    DrawMoon(img, x, y, size);
-
-                DrawCloud(img, x + size / 4, y + size / 3, size - 2, new Rgba32(214, 214, 220));
+                DrawPartlyCloudyIcon(img, x, y, size, isDay);
                 break;
 
             case WeatherType.Cloudy:
-                DrawCloud(img, x + 1, y + size / 3, size - 1, new Rgba32(210, 210, 216));
+                DrawCloudIcon(img, x, y, size, new Rgba32(216, 216, 224));
                 break;
 
             case WeatherType.Fog:
-                DrawCloud(img, x + 1, y + size / 3, size - 1, new Rgba32(198, 198, 204));
-                DrawFogLines(img, x + 1, y + size - 2, size - 2);
+                DrawCloudIcon(img, x, y, size, new Rgba32(198, 198, 204));
+                DrawFogOverlay(img, x, y, size, new Rgba32(148, 148, 156));
                 break;
 
             case WeatherType.Drizzle:
-                DrawCloud(img, x + 1, y + size / 3, size - 1, new Rgba32(210, 210, 216));
-                DrawRainDrops(img, x + 2, y + size - 1, size - 4, 2);
+                DrawCloudIcon(img, x, y, size, new Rgba32(210, 210, 216));
+                DrawPrecipitationOverlay(img, x, y, size, DrizzleSprite, new Rgba32(120, 188, 255));
                 break;
 
             case WeatherType.Rain:
-                DrawCloud(img, x + 1, y + size / 3, size - 1, new Rgba32(210, 210, 216));
-                DrawRainDrops(img, x + 2, y + size - 1, size - 4, 3);
+                DrawCloudIcon(img, x, y, size, new Rgba32(210, 210, 216));
+                DrawPrecipitationOverlay(img, x, y, size, RainSprite, new Rgba32(120, 188, 255));
                 break;
 
             case WeatherType.Snow:
-                DrawCloud(img, x + 1, y + size / 3, size - 1, new Rgba32(226, 226, 232));
-                DrawSnowFlakes(img, x + 2, y + size - 1, size - 4);
+                DrawCloudIcon(img, x, y, size, new Rgba32(226, 226, 232));
+                DrawPrecipitationOverlay(img, x, y, size, SnowSprite, new Rgba32(235, 245, 255));
                 break;
 
             case WeatherType.Thunder:
-                DrawCloud(img, x + 1, y + size / 3, size - 1, new Rgba32(210, 210, 216));
-                DrawThunderBolt(img, x + size / 2, y + size / 2 + 1);
+                DrawCloudIcon(img, x, y, size, new Rgba32(210, 210, 216));
+                DrawThunderOverlay(img, x, y, size, new Rgba32(255, 219, 106));
                 break;
 
             default:
-                DrawCloud(img, x + 1, y + size / 3, size - 1, new Rgba32(210, 210, 216));
+                DrawCloudIcon(img, x, y, size, new Rgba32(210, 210, 216));
                 break;
         }
     }
@@ -699,59 +726,116 @@ public class WeatherScene : ISpecialScene
         FillCircle(img, centerX + 1, centerY - 1, radius, BackgroundColor);
     }
 
-    private static void DrawCloud(Image<Rgba32> img, int x, int y, int size, Rgba32 color)
+    private static void DrawPartlyCloudyIcon(Image<Rgba32> img, int x, int y, int size, bool isDay)
     {
-        var width = Math.Max(6, size);
-        var baseY = y + size / 3;
+        var celestialSize = Math.Max(7, size - 3);
+        if (isDay)
+            DrawSun(img, x, y, celestialSize);
+        else
+            DrawMoon(img, x, y, celestialSize);
 
-        FillCircle(img, x + width / 4, baseY, 2, color);
-        FillCircle(img, x + width / 2, baseY - 1, 3, color);
-        FillCircle(img, x + 3 * width / 4, baseY, 2, color);
-        FillRect(img, x + 1, baseY, width - 2, 3, color);
+        DrawCloudIcon(img, x + size / 3, y + size / 3, size - size / 3, new Rgba32(214, 214, 220));
     }
 
-    private static void DrawRainDrops(Image<Rgba32> img, int x, int y, int width, int drops)
+    private static void DrawCloudIcon(Image<Rgba32> img, int x, int y, int size, Rgba32 baseColor)
     {
-        var color = new Rgba32(120, 188, 255);
-        for (var i = 0; i < drops; i++)
+        var cloudWidth = size;
+        var cloudHeight = Math.Max(5, (int)MathF.Round(size * 0.58f));
+        var highlight = Mix(baseColor, new Rgba32(255, 255, 255), 0.16f);
+        var shadow = Mix(baseColor, BackgroundColor, 0.32f);
+        DrawScaledSprite(
+            img,
+            x,
+            y,
+            cloudWidth,
+            cloudHeight,
+            CloudSprite,
+            token => token switch
+            {
+                '1' => highlight,
+                '2' => baseColor,
+                '3' => shadow,
+                _ => null
+            });
+    }
+
+    private static void DrawFogOverlay(Image<Rgba32> img, int x, int y, int size, Rgba32 color)
+    {
+        var overlayY = y + Math.Max(6, size - Math.Max(3, size / 4));
+        DrawScaledSprite(
+            img,
+            x + 1,
+            overlayY,
+            Math.Max(8, size - 2),
+            Math.Max(3, size / 4),
+            FogSprite,
+            token => token == '1' ? color : null);
+    }
+
+    private static void DrawPrecipitationOverlay(
+        Image<Rgba32> img,
+        int x,
+        int y,
+        int size,
+        string[] sprite,
+        Rgba32 color)
+    {
+        var overlayY = y + Math.Max(6, size - Math.Max(4, size / 3));
+        DrawScaledSprite(
+            img,
+            x + 1,
+            overlayY,
+            Math.Max(8, size - 2),
+            Math.Max(4, size / 3),
+            sprite,
+            token => token == '1' ? color : null);
+    }
+
+    private static void DrawThunderOverlay(Image<Rgba32> img, int x, int y, int size, Rgba32 color)
+    {
+        DrawScaledSprite(
+            img,
+            x + size / 2 - Math.Max(2, size / 7),
+            y + Math.Max(5, size / 2 - 1),
+            Math.Max(4, size / 3),
+            Math.Max(5, size / 2),
+            ThunderSprite,
+            token => token == '1' ? color : null);
+    }
+
+    private static void DrawScaledSprite(
+        Image<Rgba32> img,
+        int x,
+        int y,
+        int width,
+        int height,
+        string[] sprite,
+        Func<char, Rgba32?> resolveColor)
+    {
+        if (width <= 0 || height <= 0 || sprite.Length == 0 || sprite[0].Length == 0)
+            return;
+
+        var sourceHeight = sprite.Length;
+        var sourceWidth = sprite[0].Length;
+        for (var targetY = 0; targetY < height; targetY++)
+        for (var targetX = 0; targetX < width; targetX++)
         {
-            var dropX = x + i * Math.Max(3, width / Math.Max(1, drops - 1));
-            DrawLine(img, dropX, y, dropX - 1, y + 2, color);
+            var sourceX = targetX * sourceWidth / width;
+            var sourceY = targetY * sourceHeight / height;
+            var token = sprite[sourceY][sourceX];
+            var color = resolveColor(token);
+            if (color is { } resolved)
+                SetPixel(img, x + targetX, y + targetY, resolved);
         }
     }
 
-    private static void DrawSnowFlakes(Image<Rgba32> img, int x, int y, int width)
+    private static Rgba32 Mix(Rgba32 source, Rgba32 destination, float amount)
     {
-        var color = new Rgba32(235, 245, 255);
-        var firstX = x + 1;
-        var secondX = x + Math.Max(4, width - 1);
-
-        DrawSnowFlake(img, firstX, y + 1, color);
-        DrawSnowFlake(img, secondX, y + 2, color);
-    }
-
-    private static void DrawSnowFlake(Image<Rgba32> img, int x, int y, Rgba32 color)
-    {
-        SetPixel(img, x, y, color);
-        SetPixel(img, x - 1, y, color);
-        SetPixel(img, x + 1, y, color);
-        SetPixel(img, x, y - 1, color);
-        SetPixel(img, x, y + 1, color);
-    }
-
-    private static void DrawThunderBolt(Image<Rgba32> img, int x, int y)
-    {
-        var color = new Rgba32(255, 219, 106);
-        DrawLine(img, x, y, x - 2, y + 2, color);
-        DrawLine(img, x - 2, y + 2, x, y + 2, color);
-        DrawLine(img, x, y + 2, x - 1, y + 4, color);
-    }
-
-    private static void DrawFogLines(Image<Rgba32> img, int x, int y, int width)
-    {
-        var color = new Rgba32(160, 160, 168);
-        FillRect(img, x, y, width, 1, color);
-        FillRect(img, x + 1, y + 2, Math.Max(2, width - 2), 1, color);
+        var t = Math.Clamp(amount, 0f, 1f);
+        return new Rgba32(
+            (byte)Math.Round(source.R + (destination.R - source.R) * t),
+            (byte)Math.Round(source.G + (destination.G - source.G) * t),
+            (byte)Math.Round(source.B + (destination.B - source.B) * t));
     }
 
     private static void DrawLine(Image<Rgba32> img, int x0, int y0, int x1, int y1, Rgba32 color)
