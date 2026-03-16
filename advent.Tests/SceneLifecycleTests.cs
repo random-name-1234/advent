@@ -154,6 +154,44 @@ public class SceneLifecycleTests
         Assert.False(scene.IsActive);
     }
 
+    [Fact]
+    public void WeatherScene_ActivatesDrawsLoadingStateAndExpires()
+    {
+        var scene = new WeatherScene();
+        scene.Activate();
+
+        using var canvas = new Image<Rgba32>(64, 32);
+        scene.Elapsed(TimeSpan.FromMilliseconds(250));
+        scene.Draw(canvas);
+
+        Assert.True(scene.IsActive);
+        Assert.True(scene.HidesTime);
+
+        scene.Elapsed(TimeSpan.FromSeconds(21));
+
+        Assert.False(scene.IsActive);
+        Assert.False(scene.HidesTime);
+    }
+
+    [Fact]
+    public void LegibilityLabScene_ActivatesDrawsAndExpires()
+    {
+        var scene = new LegibilityLabScene();
+        scene.Activate();
+
+        using var canvas = new Image<Rgba32>(64, 32);
+        scene.Elapsed(TimeSpan.FromMilliseconds(250));
+        scene.Draw(canvas);
+
+        Assert.True(scene.IsActive);
+        Assert.True(scene.HidesTime);
+
+        scene.Elapsed(TimeSpan.FromSeconds(61));
+
+        Assert.False(scene.IsActive);
+        Assert.False(scene.HidesTime);
+    }
+
     private static void RunInProjectRoot(Action testAction)
     {
         var originalDirectory = Directory.GetCurrentDirectory();

@@ -51,6 +51,7 @@ public class SceneSelectorTests
             var sut = new SceneSelector(11, imageSceneDirectory: imageDirectory);
 
             Assert.Contains("always-logo", sut.AvailableSceneNames);
+            Assert.Contains("Legibility Lab", sut.AvailableSceneNames);
             Assert.DoesNotContain("december-gif", sut.AvailableSceneNames);
             Assert.DoesNotContain("Santa", sut.AvailableSceneNames);
             Assert.Equal(ExpectedNonDecemberSceneCount(), sut.AvailableSceneNames.Count);
@@ -349,6 +350,28 @@ public class SceneSelectorTests
     }
 
     [Fact]
+    public void TryGetSceneByName_UsesExtendedDuration_ForLegibilityLab()
+    {
+        var imageDirectory = CreateImageDirectory();
+        try
+        {
+            var sut = new SceneSelector(11, imageSceneDirectory: imageDirectory);
+
+            var found = sut.TryGetSceneByName("Legibility Lab", out var scene);
+
+            Assert.True(found);
+            var field = scene.GetType().GetField("maxDuration", BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.NotNull(field);
+            Assert.Equal(LegibilityLabScene.MaxSceneDuration, Assert.IsType<TimeSpan>(field!.GetValue(scene)));
+            Assert.IsType<LegibilityLabScene>(UnwrapTimedScene(scene));
+        }
+        finally
+        {
+            Directory.Delete(imageDirectory, true);
+        }
+    }
+
+    [Fact]
     public void AllSceneNames_ContainsLoadedScenes()
     {
         var imageDirectory = CreateImageDirectory();
@@ -357,7 +380,8 @@ public class SceneSelectorTests
             CreatePng(Path.Combine(imageDirectory, "always-logo.png"), 32, 32);
             var sut = new SceneSelector(11, imageSceneDirectory: imageDirectory);
 
-            Assert.Equal(sut.AvailableSceneNames, sut.AllSceneNames);
+            Assert.Contains("Legibility Lab", sut.AvailableSceneNames);
+            Assert.DoesNotContain("Legibility Lab", sut.AllSceneNames);
             Assert.Contains("Starfield Parallax", sut.AllSceneNames);
             Assert.Contains("Metaballs", sut.AllSceneNames);
             Assert.Contains("Donkey Kong", sut.AllSceneNames);
@@ -410,7 +434,7 @@ public class SceneSelectorTests
 
     private static int ExpectedNonDecemberSceneCount()
     {
-        return RailBoardScene.IsConfiguredFromEnvironment() ? 13 : 12;
+        return RailBoardScene.IsConfiguredFromEnvironment() ? 14 : 13;
     }
 
     private static void CreatePng(string filePath, int width, int height)

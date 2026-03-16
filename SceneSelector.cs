@@ -42,7 +42,12 @@ public sealed class SceneSelector
         CreateSceneDefinition("Santa", static () => new FadingScene(new SantaScene()))
     ];
 
-    private readonly IReadOnlyList<SceneDefinition> sceneDefinitions;
+    private static readonly IReadOnlyList<SceneDefinition> ManualSceneDefinitions =
+    [
+        CreateSceneDefinition("Legibility Lab", static () => new LegibilityLabScene(), LegibilityLabScene.MaxSceneDuration)
+    ];
+
+    private readonly IReadOnlyList<SceneDefinition> availableSceneDefinitions;
     private readonly IReadOnlyList<SceneDefinition> cycleSceneDefinitions;
     private readonly IReadOnlyDictionary<string, SceneDefinition> sceneDefinitionsByName;
     private readonly Func<int, int> nextIndex;
@@ -66,12 +71,12 @@ public sealed class SceneSelector
             monthSceneDefinitions.AddRange(DecemberSceneDefinitions);
         monthSceneDefinitions.AddRange(LoadImageSceneDefinitions(month, imageSceneDirectory));
 
-        sceneDefinitions = monthSceneDefinitions.ToArray();
-        cycleSceneDefinitions = sceneDefinitions;
-        sceneDefinitionsByName = BuildSceneDefinitionsByName(sceneDefinitions);
+        cycleSceneDefinitions = monthSceneDefinitions.ToArray();
+        availableSceneDefinitions = cycleSceneDefinitions.Concat(ManualSceneDefinitions).ToArray();
+        sceneDefinitionsByName = BuildSceneDefinitionsByName(availableSceneDefinitions);
 
         this.nextIndex = nextIndex ?? Random.Shared.Next;
-        AvailableSceneNames = sceneDefinitions.Select(static x => x.Name).ToArray();
+        AvailableSceneNames = availableSceneDefinitions.Select(static x => x.Name).ToArray();
         AllSceneNames = cycleSceneDefinitions.Select(static x => x.Name).ToArray();
         cycleIndex = 0;
     }
@@ -81,12 +86,12 @@ public sealed class SceneSelector
 
     public ISpecialScene GetScene()
     {
-        var index = nextIndex(sceneDefinitions.Count);
-        if ((uint)index >= (uint)sceneDefinitions.Count)
+        var index = nextIndex(cycleSceneDefinitions.Count);
+        if ((uint)index >= (uint)cycleSceneDefinitions.Count)
             throw new InvalidOperationException(
-                $"Scene index provider returned {index}, but valid range is 0..{sceneDefinitions.Count - 1}.");
+                $"Scene index provider returned {index}, but valid range is 0..{cycleSceneDefinitions.Count - 1}.");
 
-        return sceneDefinitions[index].Create();
+        return cycleSceneDefinitions[index].Create();
     }
 
     public bool TryGetSceneByName(string sceneName, out ISpecialScene scene)
