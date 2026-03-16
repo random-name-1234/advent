@@ -132,6 +132,58 @@ public class ImageScenesTests
         }
     }
 
+    [Fact]
+    public void ScrollingImageScene_DefaultDuration_CompletesByTwentySeconds()
+    {
+        var tempDirectory = CreateTempDirectory();
+        var imagePath = Path.Combine(tempDirectory, "very-wide-banner.png");
+
+        try
+        {
+            using (var image = new Image<Rgba32>(640, 32))
+                image.Save(imagePath);
+
+            var scene = new ScrollingImageScene(imagePath, "Wide");
+            scene.Activate();
+
+            scene.Elapsed(TimeSpan.FromSeconds(19));
+            Assert.True(scene.IsActive);
+
+            scene.Elapsed(TimeSpan.FromSeconds(2));
+            Assert.False(scene.IsActive);
+        }
+        finally
+        {
+            Directory.Delete(tempDirectory, true);
+        }
+    }
+
+    [Fact]
+    public void ScrollingImageScene_ExplicitLongDuration_IsClampedToTwentySeconds()
+    {
+        var tempDirectory = CreateTempDirectory();
+        var imagePath = Path.Combine(tempDirectory, "banner.png");
+
+        try
+        {
+            using (var image = new Image<Rgba32>(180, 32))
+                image.Save(imagePath);
+
+            var scene = new ScrollingImageScene(imagePath, "Banner", TimeSpan.FromSeconds(45));
+            scene.Activate();
+
+            scene.Elapsed(TimeSpan.FromSeconds(19));
+            Assert.True(scene.IsActive);
+
+            scene.Elapsed(TimeSpan.FromSeconds(2));
+            Assert.False(scene.IsActive);
+        }
+        finally
+        {
+            Directory.Delete(tempDirectory, true);
+        }
+    }
+
     private static string CreateTempDirectory()
     {
         var directory = Path.Combine(Path.GetTempPath(), $"advent-image-scenes-{Guid.NewGuid():N}");

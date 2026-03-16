@@ -24,24 +24,24 @@ public sealed class SceneSelector
 
     private static readonly IReadOnlyList<SceneDefinition> BaseSceneDefinitions =
     [
-        new SceneDefinition("Weather", static () => new FadingScene(new WeatherScene())),
-        new SceneDefinition("Cat", static () => new CatScene()),
-        new SceneDefinition("Game of Life", static () => new FadingScene(new GameOfLifeScene())),
-        new SceneDefinition("Starfield Parallax", static () => new FadingScene(new StarfieldParallaxScene())),
-        new SceneDefinition("Plasma SDF", static () => new FadingScene(new PlasmaSdfScene())),
-        new SceneDefinition("Metaballs", static () => new FadingScene(new MetaballsScene())),
-        new SceneDefinition("Donkey Kong", static () => new FadingScene(new DonkeyKongScene())),
-        new SceneDefinition("Bonkers Parade", static () => new FadingScene(new BonkersParadeScene())),
-        new SceneDefinition("Synthwave Grid", static () => new FadingScene(new SynthwaveGridScene())),
-        new SceneDefinition("Orbital", static () => new FadingScene(new OrbitalScene())),
-        new SceneDefinition("Fireworks", static () => new FadingScene(new FireworksScene())),
-        new SceneDefinition("Error", static () => new FadingScene(new ErrorScene())),
-        new SceneDefinition("Space Invaders", static () => new FadingScene(new SpaceInvadersScene()))
+        CreateSceneDefinition("Weather", static () => new WeatherScene()),
+        CreateSceneDefinition("Cat", static () => new CatScene()),
+        CreateSceneDefinition("Game of Life", static () => new FadingScene(new GameOfLifeScene())),
+        CreateSceneDefinition("Starfield Parallax", static () => new FadingScene(new StarfieldParallaxScene())),
+        CreateSceneDefinition("Plasma SDF", static () => new FadingScene(new PlasmaSdfScene())),
+        CreateSceneDefinition("Metaballs", static () => new FadingScene(new MetaballsScene())),
+        CreateSceneDefinition("Donkey Kong", static () => new FadingScene(new DonkeyKongScene())),
+        CreateSceneDefinition("Bonkers Parade", static () => new FadingScene(new BonkersParadeScene())),
+        CreateSceneDefinition("Synthwave Grid", static () => new FadingScene(new SynthwaveGridScene())),
+        CreateSceneDefinition("Orbital", static () => new FadingScene(new OrbitalScene())),
+        CreateSceneDefinition("Fireworks", static () => new FadingScene(new FireworksScene())),
+        CreateSceneDefinition("Error", static () => new FadingScene(new ErrorScene())),
+        CreateSceneDefinition("Space Invaders", static () => new FadingScene(new SpaceInvadersScene()))
     ];
 
     private static readonly IReadOnlyList<SceneDefinition> DecemberSceneDefinitions =
     [
-        new SceneDefinition("Santa", static () => new FadingScene(new SantaScene()))
+        CreateSceneDefinition("Santa", static () => new FadingScene(new SantaScene()))
     ];
 
     private readonly IReadOnlyList<SceneDefinition> sceneDefinitions;
@@ -340,7 +340,7 @@ public sealed class SceneSelector
                 return null;
             }
 
-            return new SceneDefinition(sceneName,
+            return CreateSceneDefinition(sceneName,
                 () => new FadingScene(new AnimatedGifScene(filePath, sceneName, sceneDuration)));
         }
 
@@ -352,7 +352,7 @@ public sealed class SceneSelector
                 return null;
             }
 
-            return new SceneDefinition(sceneName,
+            return CreateSceneDefinition(sceneName,
                 () => new FadingScene(new StaticImageScene(filePath, sceneName, sceneDuration)));
         }
 
@@ -365,12 +365,12 @@ public sealed class SceneSelector
                 return null;
             }
 
-            return new SceneDefinition(sceneName,
+            return CreateSceneDefinition(sceneName,
                 () => new FadingScene(new ScrollingImageScene(filePath, sceneName, sceneDuration)));
         }
 
         if (SupportedAnimatedImageExtensions.Contains(extension))
-            return new SceneDefinition(sceneName,
+            return CreateSceneDefinition(sceneName,
                 () => new FadingScene(new AnimatedGifScene(filePath, sceneName, sceneDuration)));
 
         if (!SupportedStaticImageExtensions.Contains(extension))
@@ -383,10 +383,10 @@ public sealed class SceneSelector
                 return null;
 
             if (info.Width > MatrixWidth && info.Width >= info.Height)
-                return new SceneDefinition(sceneName,
+                return CreateSceneDefinition(sceneName,
                     () => new FadingScene(new ScrollingImageScene(filePath, sceneName, sceneDuration)));
 
-            return new SceneDefinition(sceneName,
+            return CreateSceneDefinition(sceneName,
                 () => new FadingScene(new StaticImageScene(filePath, sceneName, sceneDuration)));
         }
         catch (Exception ex)
@@ -424,6 +424,11 @@ public sealed class SceneSelector
         }
 
         return byName;
+    }
+
+    private static SceneDefinition CreateSceneDefinition(string name, Func<ISpecialScene> create)
+    {
+        return new SceneDefinition(name, () => new TimedScene(create()));
     }
 
     private sealed class ImageSceneManifest

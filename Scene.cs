@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using SixLabors.Fonts;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.Drawing;
@@ -13,10 +14,12 @@ public class Scene
 {
     private readonly bool drawSnow;
     private readonly Font font;
+    private readonly Queue<TimeSpan> recentRandomSceneRequests = new();
 
     private readonly SnowMachine snowMachine = new();
     private bool hasPendingSceneRequest;
     private ISpecialScene? specialScene;
+    private TimeSpan elapsedSinceStartup;
     private TimeSpan timeToNextRandomScene;
 
     public Scene()
@@ -53,6 +56,7 @@ public class Scene
 
     public void Elapsed(TimeSpan timeSpan)
     {
+        elapsedSinceStartup += timeSpan;
         snowMachine.Elapsed(timeSpan);
         var hidesTime = false;
 
@@ -86,8 +90,7 @@ public class Scene
             timeToNextRandomScene -= timeSpan;
             if (timeToNextRandomScene < TimeSpan.Zero)
             {
-                timeToNextRandomScene = TimeSpan.FromMinutes(Random.Shared.NextDouble() * 2);
-                NewSceneWanted?.Invoke(this, EventArgs.Empty);
+                TriggerRandomSceneRequestIfAllowed();
             }
         }
 
@@ -121,6 +124,26 @@ public class Scene
         if (hasPendingSceneRequest) return;
 
         hasPendingSceneRequest = true;
+        NewSceneWanted?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void TriggerRandomSceneRequestIfAllowed()
+    {
+        while (recentRandomSceneRequests.Count > 0 &&
+               elapsedSinceStartup - recentRandomSceneRequests.Peek() >= SceneTiming.RandomSceneWindow)
+            recentRandomSceneRequests.Dequeue();
+
+        if (recentRandomSceneRequests.Count >= SceneTiming.MaxRandomSceneRequestsPerWindow)
+        {
+            var nextAvailableAt = recentRandomSceneRequests.Peek() + SceneTiming.RandomSceneWindow;
+            timeToNextRandomScene = nextAvailableAt - elapsedSinceStartup;
+            if (timeToNextRandomScene < TimeSpan.FromMilliseconds(1))
+                timeToNextRandomScene = TimeSpan.FromMilliseconds(1);
+            return;
+        }
+
+        recentRandomSceneRequests.Enqueue(elapsedSinceStartup);
+        timeToNextRandomScene = TimeSpan.FromMinutes(Random.Shared.NextDouble() * 2);
         NewSceneWanted?.Invoke(this, EventArgs.Empty);
     }
 }

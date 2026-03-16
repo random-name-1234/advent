@@ -76,13 +76,13 @@ public sealed class SceneControlService
             return false;
         }
 
-        if (sceneDuration is { } duration && (duration <= TimeSpan.Zero || duration > TimeSpan.FromSeconds(60)))
+        if (sceneDuration is { } duration && (duration <= TimeSpan.Zero || duration > SceneTiming.MaxSceneDuration))
         {
-            error = "Duration must be between 0 and 60 seconds.";
+            error = $"Duration must be between 0 and {SceneTiming.MaxSceneDuration.TotalSeconds:0} seconds.";
             return false;
         }
 
-        var messageScene = new MessageScene(normalizedMessage, sceneDuration);
+        var messageScene = new TimedScene(new MessageScene(normalizedMessage, sceneDuration));
         scene.SpecialScenes.Enqueue(messageScene);
         Console.WriteLine($"Enqueued message: {normalizedMessage}");
         error = string.Empty;

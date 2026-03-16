@@ -13,7 +13,7 @@ public class MessageScene : ISpecialScene
     private const int Height = 32;
     private const float ScrollSpeedPixelsPerSecond = 24f;
     private static readonly TimeSpan MinDuration = TimeSpan.FromSeconds(4);
-    private static readonly TimeSpan MaxDuration = TimeSpan.FromSeconds(25);
+    private static readonly TimeSpan MaxDuration = SceneTiming.MaxSceneDuration;
 
     private readonly Font font;
     private readonly string message;

@@ -1,5 +1,6 @@
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
+using System.Reflection;
 using Xunit;
 
 namespace advent.Tests;
@@ -60,6 +61,23 @@ public class SceneOrchestrationTests
         scene.Elapsed(TimeSpan.FromMinutes(2));
 
         Assert.Equal(1, requestCount);
+    }
+
+    [Fact]
+    public void NormalMode_DoesNotRaiseMoreThanTwoRequestsWithinOneMinute()
+    {
+        var scene = new Scene();
+        var requestCount = 0;
+        scene.NewSceneWanted += (_, _) => requestCount++;
+
+        ForceRandomSceneTimer(scene, TimeSpan.Zero);
+        scene.Elapsed(TimeSpan.FromMilliseconds(10));
+        ForceRandomSceneTimer(scene, TimeSpan.Zero);
+        scene.Elapsed(TimeSpan.FromMilliseconds(10));
+        ForceRandomSceneTimer(scene, TimeSpan.Zero);
+        scene.Elapsed(TimeSpan.FromMilliseconds(10));
+
+        Assert.Equal(2, requestCount);
     }
 
     [Fact]
@@ -130,5 +148,12 @@ public class SceneOrchestrationTests
             DrawCount++;
             OnDraw?.Invoke(img);
         }
+    }
+
+    private static void ForceRandomSceneTimer(Scene scene, TimeSpan value)
+    {
+        var field = typeof(Scene).GetField("timeToNextRandomScene", BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.NotNull(field);
+        field!.SetValue(scene, value);
     }
 }

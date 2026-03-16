@@ -88,7 +88,8 @@ public class SceneControlServiceTests
             Assert.True(queued);
             Assert.True(string.IsNullOrEmpty(error));
             Assert.True(scene.SpecialScenes.TryPeek(out var queuedScene));
-            Assert.IsType<MessageScene>(queuedScene);
+            var innerScene = UnwrapTimedScene(queuedScene);
+            Assert.IsType<MessageScene>(innerScene);
             Assert.Equal("Message: Hello house!", queuedScene.Name);
         }
         finally
@@ -109,13 +110,24 @@ public class SceneControlServiceTests
 
             Assert.False(control.EnqueueMessage("", null, out _));
             Assert.False(control.EnqueueMessage("ok", TimeSpan.FromSeconds(0), out _));
-            Assert.False(control.EnqueueMessage("ok", TimeSpan.FromSeconds(61), out _));
+            Assert.False(control.EnqueueMessage("ok", TimeSpan.FromSeconds(21), out _));
             Assert.Empty(scene.SpecialScenes);
         }
         finally
         {
             Directory.Delete(imageDirectory, true);
         }
+    }
+
+    private static ISpecialScene UnwrapTimedScene(ISpecialScene scene)
+    {
+        if (scene.GetType().Name != "TimedScene")
+            return scene;
+
+        var field = scene.GetType().GetField("innerScene",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+        Assert.NotNull(field);
+        return Assert.IsAssignableFrom<ISpecialScene>(field!.GetValue(scene));
     }
 
     private static string CreateImageDirectory()

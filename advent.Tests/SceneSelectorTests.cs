@@ -296,6 +296,30 @@ public class SceneSelectorTests
     }
 
     [Fact]
+    public void TryGetSceneByName_CapsLongRunningScenes_AtTwentySeconds()
+    {
+        var imageDirectory = CreateImageDirectory();
+        try
+        {
+            var sut = new SceneSelector(11, imageSceneDirectory: imageDirectory);
+
+            var found = sut.TryGetSceneByName("Donkey Kong", out var scene);
+
+            Assert.True(found);
+            scene.Activate();
+            scene.Elapsed(TimeSpan.FromSeconds(19));
+            Assert.True(scene.IsActive);
+
+            scene.Elapsed(TimeSpan.FromSeconds(2));
+            Assert.False(scene.IsActive);
+        }
+        finally
+        {
+            Directory.Delete(imageDirectory, true);
+        }
+    }
+
+    [Fact]
     public void AllSceneNames_ContainsLoadedScenes()
     {
         var imageDirectory = CreateImageDirectory();
@@ -371,9 +395,20 @@ public class SceneSelectorTests
 
     private static ISpecialScene UnwrapMainScene(ISpecialScene scene)
     {
+        scene = UnwrapTimedScene(scene);
         var fadingScene = Assert.IsType<FadingScene>(scene);
         var field = typeof(FadingScene).GetField("mainScene", BindingFlags.Instance | BindingFlags.NonPublic);
         Assert.NotNull(field);
         return Assert.IsAssignableFrom<ISpecialScene>(field!.GetValue(fadingScene));
+    }
+
+    private static ISpecialScene UnwrapTimedScene(ISpecialScene scene)
+    {
+        if (scene.GetType().Name != "TimedScene")
+            return scene;
+
+        var field = scene.GetType().GetField("innerScene", BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.NotNull(field);
+        return Assert.IsAssignableFrom<ISpecialScene>(field!.GetValue(scene));
     }
 }
