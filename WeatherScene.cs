@@ -37,7 +37,7 @@ public class WeatherScene : ISpecialScene
     private static readonly double Latitude = ReadCoordinate("ADVENT_WEATHER_LATITUDE", 52.2053);
     private static readonly double Longitude = ReadCoordinate("ADVENT_WEATHER_LONGITUDE", 0.1218);
 
-    private static readonly Font HeroTempFont = AppFonts.Create(13f);
+    private static readonly Font HeroTempFont = AppFonts.Create(10.5f);
     private static readonly DrawingOptions CrispDrawingOptions = new()
     {
         GraphicsOptions = new GraphicsOptions
@@ -47,12 +47,12 @@ public class WeatherScene : ISpecialScene
     };
 
     private static readonly Rgba32 BackgroundColor = new(0, 0, 0);
-    private static readonly Rgba32 HeaderColor = new(255, 178, 72);
-    private static readonly Rgba32 PrimaryTextColor = new(255, 232, 188);
-    private static readonly Rgba32 SecondaryTextColor = new(146, 118, 76);
+    private static readonly Rgba32 HeaderColor = new(248, 168, 66);
+    private static readonly Rgba32 PrimaryTextColor = new(238, 214, 170);
+    private static readonly Rgba32 SecondaryTextColor = new(128, 102, 66);
     private static readonly Rgba32 DividerColor = new(36, 23, 11);
-    private static readonly Rgba32 HighTextColor = new(255, 206, 120);
-    private static readonly Rgba32 LowTextColor = new(160, 204, 255);
+    private static readonly Rgba32 HighTextColor = new(236, 190, 108);
+    private static readonly Rgba32 LowTextColor = new(122, 176, 236);
 
     private Image<Rgba32>? currentPanelBuffer;
     private TimeSpan elapsedThisScene;
@@ -181,15 +181,18 @@ public class WeatherScene : ISpecialScene
         var time = (float)elapsedThisScene.TotalSeconds;
 
         var headerText = forecast.DayLabel;
-        var metricText = isToday ? "NOW" : "HIGH";
+        var metricText = isToday ? "NOW" : "HI";
         DrawHeader(img, headerText, metricText);
 
         var bob = (int)MathF.Round(MathF.Sin(time * 2.1f + panelIndex * 0.9f) * 1.2f);
-        DrawWeatherIcon(img, 4, 7 + bob, 19, weatherCode, isToday ? weather.IsDay : true);
+        DrawWeatherIcon(img, 3, 10 + bob, 12, weatherCode, isToday ? weather.IsDay : true);
 
         var heroValue = isToday ? weather.CurrentTemperatureC : forecast.MaxTempC;
-        DrawHeroTemperature(img, $"{Math.Round(heroValue, MidpointRounding.AwayFromZero):0}C");
-        DrawConditionRow(img, ConditionLabel(weatherCode));
+        DrawHeroTemperature(
+            img,
+            $"{Math.Round(heroValue, MidpointRounding.AwayFromZero):0}C",
+            isToday ? PrimaryTextColor : HighTextColor);
+        DrawConditionField(img, ConditionLabel(weatherCode), elapsedThisScene, panelIndex);
         DrawTemperatureSummary(img, forecast.MaxTempC, forecast.MinTempC);
     }
 
@@ -221,20 +224,26 @@ public class WeatherScene : ISpecialScene
         DrawPixelText(img, metric, PrimaryTextColor, badgeX + 2, 1);
     }
 
-    private static void DrawHeroTemperature(Image<Rgba32> img, string text)
+    private static void DrawHeroTemperature(Image<Rgba32> img, string text, Rgba32 color)
     {
         var textSize = TextMeasurer.MeasureSize(text, new TextOptions(HeroTempFont));
-        var x = Width - textSize.Width - 7f;
+        var x = Width - textSize.Width - 5f;
         var y = 8f;
         DrawText(img, text, HeroTempFont, SecondaryTextColor, (int)x + 1, (int)y + 1);
-        DrawText(img, text, HeroTempFont, PrimaryTextColor, (int)x, (int)y);
+        DrawText(img, text, HeroTempFont, color, (int)x, (int)y);
     }
 
-    private static void DrawConditionRow(Image<Rgba32> img, string condition)
+    private static void DrawConditionField(
+        Image<Rgba32> img,
+        string condition,
+        TimeSpan elapsedOnPage,
+        int lane)
     {
-        const int rowY = 20;
-        FillRect(img, 0, rowY, Width, 1, DividerColor);
-        DrawPixelCenteredText(img, condition, PrimaryTextColor, Width / 2, rowY + 2);
+        const int fieldX = 23;
+        const int fieldY = 18;
+        const int fieldWidth = 39;
+
+        DrawPixelCenteredBouncingField(img, condition, PrimaryTextColor, fieldX, fieldY, fieldWidth, elapsedOnPage, lane);
     }
 
     private static void DrawTemperatureSummary(Image<Rgba32> img, float highTempC, float lowTempC)
@@ -245,8 +254,8 @@ public class WeatherScene : ISpecialScene
         var highText = $"HI {Math.Round(highTempC, MidpointRounding.AwayFromZero):0}C";
         var lowText = $"LO {Math.Round(lowTempC, MidpointRounding.AwayFromZero):0}C";
 
-        DrawPixelText(img, highText, HighTextColor, 3, rowY + 1);
-        DrawPixelRightAlignedText(img, lowText, LowTextColor, Width - 3, rowY + 1);
+        DrawPixelText(img, highText, HighTextColor, 2, rowY + 1);
+        DrawPixelRightAlignedText(img, lowText, LowTextColor, Width - 2, rowY + 1);
     }
 
     private static void DrawPixelCenteredText(Image<Rgba32> img, string text, Rgba32 color, int centerX, int y)
@@ -280,6 +289,57 @@ public class WeatherScene : ISpecialScene
         RailDmiText.DrawRightAligned(img, text, rightX, y, color);
     }
 
+    private static void DrawPixelCenteredBouncingField(
+        Image<Rgba32> img,
+        string text,
+        Rgba32 color,
+        int x,
+        int y,
+        int width,
+        TimeSpan elapsedOnPage,
+        int lane)
+    {
+        if (string.IsNullOrWhiteSpace(text) || width <= 0)
+            return;
+
+        var measuredWidth = RailDmiText.MeasureWidth(text);
+        if (measuredWidth <= width)
+        {
+            RailDmiText.Draw(img, text, x + (width - measuredWidth) / 2, y, color);
+            return;
+        }
+
+        using var field = new Image<Rgba32>(width, RailDmiText.Height);
+        var overflow = measuredWidth - width;
+        const float speed = 8f;
+        const float holdDuration = 0.7f;
+        var travelDuration = overflow / speed;
+        var cycleDuration = holdDuration + travelDuration + holdDuration + travelDuration;
+        var phase = ((float)elapsedOnPage.TotalSeconds + lane * 0.3f) % cycleDuration;
+
+        float offset;
+        if (phase < holdDuration)
+        {
+            offset = 0f;
+        }
+        else if (phase < holdDuration + travelDuration)
+        {
+            offset = (phase - holdDuration) * speed;
+        }
+        else if (phase < holdDuration + travelDuration + holdDuration)
+        {
+            offset = overflow;
+        }
+        else
+        {
+            var returnPhase = phase - holdDuration - travelDuration - holdDuration;
+            offset = overflow - returnPhase * speed;
+        }
+
+        RailDmiText.Draw(field, text, -(int)MathF.Round(offset), 0, color);
+        BlitOpaque(img, field, x, y);
+    }
+
     private static void DrawText(Image<Rgba32> img, string text, Font font, Rgba32 color, int x, int y)
     {
         img.Mutate(ctx => ctx.DrawText(CrispDrawingOptions, text, font, color, new PointF(x, y)));
@@ -295,6 +355,24 @@ public class WeatherScene : ISpecialScene
                 continue;
 
             destination[targetX, y] = source[x, y];
+        }
+    }
+
+    private static void BlitOpaque(Image<Rgba32> destination, Image<Rgba32> source, int left, int top)
+    {
+        for (var y = 0; y < source.Height; y++)
+        for (var x = 0; x < source.Width; x++)
+        {
+            var pixel = source[x, y];
+            if (pixel.A == 0 || (pixel.R == 0 && pixel.G == 0 && pixel.B == 0))
+                continue;
+
+            var destX = left + x;
+            var destY = top + y;
+            if ((uint)destX >= destination.Width || (uint)destY >= destination.Height)
+                continue;
+
+            destination[destX, destY] = pixel;
         }
     }
 
@@ -375,11 +453,11 @@ public class WeatherScene : ISpecialScene
         return MapWeatherType(weatherCode) switch
         {
             WeatherType.Clear => "CLEAR",
-            WeatherType.PartlyCloudy => "PARTLY",
+            WeatherType.PartlyCloudy => "PART CLOUD",
             WeatherType.Cloudy => "CLOUDY",
-            WeatherType.Fog => "FOG",
+            WeatherType.Fog => "MIST",
             WeatherType.Drizzle => "DRIZZLE",
-            WeatherType.Rain => "RAIN",
+            WeatherType.Rain => "SHOWERS",
             WeatherType.Snow => "SNOW",
             WeatherType.Thunder => "STORM",
             _ => "OUTLOOK"

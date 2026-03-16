@@ -9,17 +9,20 @@ public sealed class PixelFont
 {
     private readonly string[] fallbackGlyph;
     private readonly IReadOnlyDictionary<char, string[]> glyphs;
+    private readonly Func<string, string> normalizeText;
 
     public PixelFont(
         int height,
         int characterSpacing,
         IReadOnlyDictionary<char, string[]> glyphs,
-        string[] fallbackGlyph)
+        string[] fallbackGlyph,
+        Func<string, string>? normalizeText = null)
     {
         Height = height;
         CharacterSpacing = characterSpacing;
         this.glyphs = glyphs;
         this.fallbackGlyph = fallbackGlyph;
+        this.normalizeText = normalizeText ?? Normalize;
     }
 
     public int Height { get; }
@@ -27,7 +30,7 @@ public sealed class PixelFont
 
     public int MeasureWidth(string text)
     {
-        var normalized = Normalize(text);
+        var normalized = this.normalizeText(text);
         if (normalized.Length == 0)
             return 0;
 
@@ -47,7 +50,7 @@ public sealed class PixelFont
 
     public string TrimToWidth(string text, int maxWidth)
     {
-        var normalized = Normalize(text);
+        var normalized = this.normalizeText(text);
         if (MeasureWidth(normalized) <= maxWidth)
             return normalized;
 
@@ -60,7 +63,7 @@ public sealed class PixelFont
 
     public void Draw(Image<Rgba32> img, string text, int x, int y, Rgba32 color)
     {
-        var normalized = Normalize(text);
+        var normalized = this.normalizeText(text);
         if (normalized.Length == 0)
             return;
 
@@ -104,6 +107,22 @@ public sealed class PixelFont
         return text
             .Trim()
             .ToUpperInvariant()
+            .Replace('•', '.')
+            .Replace('·', '.')
+            .Replace('…', '.')
+            .Replace('–', '-')
+            .Replace('—', '-')
+            .Replace('’', '\'')
+            .Replace('‘', '\'');
+    }
+
+    public static string NormalizePreservingCase(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return string.Empty;
+
+        return text
+            .Trim()
             .Replace('•', '.')
             .Replace('·', '.')
             .Replace('…', '.')
