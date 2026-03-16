@@ -117,28 +117,28 @@ public sealed class LegibilityLabScene : ISpecialScene
 
     private static void DrawDetailCard(Image<Rgba32> img)
     {
-        PixelText.Draw(img, "07:25", 1, 10, PrimaryAmber);
-        PixelText.DrawRightAligned(img, "P4", Width - 2, 10, PrimaryAmber);
-        PixelText.DrawCentered(img, "LONDON KX", Width / 2, 16, PrimaryAmber);
-        PixelText.Draw(img, "ON TIME", 1, 22, PrimaryAmber);
-        PixelText.DrawRightAligned(img, "GN", Width - 2, 22, SoftAmber);
+        RailDmiText.Draw(img, "07:25", 1, 10, PrimaryAmber);
+        RailDmiText.DrawRightAligned(img, "P4", Width - 2, 10, PrimaryAmber);
+        RailDmiText.DrawCentered(img, "LONDON KX", Width / 2, 16, PrimaryAmber);
+        RailDmiText.Draw(img, "ON TIME", 1, 22, PrimaryAmber);
+        RailDmiText.DrawRightAligned(img, "GN", Width - 2, 22, SoftAmber);
     }
 
     private static void DrawAlertCard(Image<Rgba32> img)
     {
-        PixelText.DrawCentered(img, "SIGNAL FAIL", Width / 2, 10, AlertRed);
-        PixelText.DrawCentered(img, "DELAYS ON", Width / 2, 16, PrimaryAmber);
-        PixelText.DrawCentered(img, "CAM ROUTE", Width / 2, 22, PrimaryAmber);
+        RailDmiText.DrawCentered(img, "SIGNAL FAIL", Width / 2, 10, AlertRed);
+        RailDmiText.DrawCentered(img, "DELAYS ON", Width / 2, 16, PrimaryAmber);
+        RailDmiText.DrawCentered(img, "CAM ROUTE", Width / 2, 22, PrimaryAmber);
     }
 
     private static void DrawWeatherCard(Image<Rgba32> img)
     {
         DrawSun(img, 4, 10, 10, CoolBlue);
-        PixelText.Draw(img, "WED", 2, 1 + PixelText.Height + 4, PrimaryAmber);
-        PixelText.DrawRightAligned(img, "NOW", Width - 2, 1 + PixelText.Height + 4, PrimaryAmber);
-        PixelText.DrawCentered(img, "CLEAR", 43, 12, PrimaryAmber);
-        PixelText.Draw(img, "HI 16C", 25, 18, PrimaryAmber);
-        PixelText.Draw(img, "LO 09C", 25, 24, CoolBlue);
+        RailDmiText.Draw(img, "WED", 2, 1 + RailDmiText.Height + 4, PrimaryAmber);
+        RailDmiText.DrawRightAligned(img, "NOW", Width - 2, 1 + RailDmiText.Height + 4, PrimaryAmber);
+        RailDmiText.DrawCentered(img, "CLEAR", 43, 12, PrimaryAmber);
+        RailDmiText.Draw(img, "HI 16C", 25, 18, PrimaryAmber);
+        RailDmiText.Draw(img, "LO 09C", 25, 24, CoolBlue);
     }
 
     private static void DrawBoardRow(
@@ -151,17 +151,17 @@ public sealed class LegibilityLabScene : ISpecialScene
         Rgba32 primaryColor,
         Rgba32 detailColor)
     {
-        PixelText.Draw(img, time, 1, y, primaryColor);
-        PixelText.Draw(img, destination, 25, y, primaryColor);
-        PixelText.DrawRightAligned(img, platform, Width - 2, y, primaryColor);
-        PixelText.Draw(img, status, 25, y + 5, detailColor);
+        RailDmiText.Draw(img, time, 1, y, primaryColor);
+        RailDmiText.Draw(img, destination, 25, y, primaryColor);
+        RailDmiText.DrawRightAligned(img, platform, Width - 2, y, primaryColor);
+        RailDmiText.Draw(img, status, 25, y + 5, detailColor);
     }
 
     private static void DrawDenseRow(Image<Rgba32> img, int y, string time, string destination, string right)
     {
-        PixelText.Draw(img, time, 1, y, PrimaryAmber);
-        PixelText.Draw(img, destination, 25, y, PrimaryAmber);
-        PixelText.DrawRightAligned(img, right, Width - 2, y, SoftAmber);
+        RailDmiText.Draw(img, time, 1, y, PrimaryAmber);
+        RailDmiText.Draw(img, destination, 25, y, PrimaryAmber);
+        RailDmiText.DrawRightAligned(img, right, Width - 2, y, SoftAmber);
     }
 
     private static void DrawHeader(Image<Rgba32> img, string title, string badge)

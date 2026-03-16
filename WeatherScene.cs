@@ -215,9 +215,9 @@ public class WeatherScene : ISpecialScene
 
         DrawPixelText(img, title, HeaderColor, 2, 1);
 
-        var badgeWidth = PixelText.MeasureWidth(metric) + 4;
+        var badgeWidth = RailDmiText.MeasureWidth(metric) + 4;
         var badgeX = Width - badgeWidth - 3;
-        FillRect(img, badgeX, 1, badgeWidth, 5, DividerColor);
+        FillRect(img, badgeX, 1, badgeWidth, RailDmiText.Height, DividerColor);
         DrawPixelText(img, metric, PrimaryTextColor, badgeX + 2, 1);
     }
 
@@ -251,7 +251,7 @@ public class WeatherScene : ISpecialScene
 
     private static void DrawPixelCenteredText(Image<Rgba32> img, string text, Rgba32 color, int centerX, int y)
     {
-        PixelText.DrawCentered(img, text, centerX, y, color);
+        RailDmiText.DrawCentered(img, text, centerX, y, color);
     }
 
     private static void DrawPageIndicators(Image<Rgba32> img, int panelIndex, float transitionProgress)
@@ -272,12 +272,12 @@ public class WeatherScene : ISpecialScene
 
     private static void DrawPixelText(Image<Rgba32> img, string text, Rgba32 color, int x, int y)
     {
-        PixelText.Draw(img, text, x, y, color);
+        RailDmiText.Draw(img, text, x, y, color);
     }
 
     private static void DrawPixelRightAlignedText(Image<Rgba32> img, string text, Rgba32 color, int rightX, int y)
     {
-        PixelText.DrawRightAligned(img, text, rightX, y, color);
+        RailDmiText.DrawRightAligned(img, text, rightX, y, color);
     }
 
     private static void DrawText(Image<Rgba32> img, string text, Font font, Rgba32 color, int x, int y)

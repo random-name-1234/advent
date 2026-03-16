@@ -528,7 +528,7 @@ public sealed class RailBoardScene : ISpecialScene
     private static void DrawCompactJourneyPage(Image<Rgba32> img, JourneyPage page, TimeSpan elapsedOnPage)
     {
         DrawCompactHeader(img, CompactPageTitle(page.Header, "TRIP"), page.TimeText, HeaderColor);
-        DrawPixelText(img, PixelText.TrimToWidth(page.Subtitle, img.Width - 2), SecondaryTextColor, 1, 10);
+        DrawPixelText(img, RailDmiText.TrimToWidth(page.Subtitle, img.Width - 2), SecondaryTextColor, 1, 10);
         DrawPixelText(img, CompactStatus(page.StatusText), page.StatusColor, 1, 18);
         DrawPixelRightAlignedText(img, CompactPlatform(page.PlatformText), PrimaryTextColor, img.Width - 2, 18);
         DrawCompactFooter(img, page.TickerText, elapsedOnPage, 0);
@@ -539,9 +539,9 @@ public sealed class RailBoardScene : ISpecialScene
         DrawCompactHeader(img, "ALERT", CompactStationLabel(page.StationText), AlertColor);
         var lines = WrapText(page.TickerText, 16, 2);
         if (lines.Count > 0)
-            DrawPixelText(img, PixelText.TrimToWidth(lines[0], img.Width - 2), PrimaryTextColor, 1, 10);
+            DrawPixelText(img, RailDmiText.TrimToWidth(lines[0], img.Width - 2), PrimaryTextColor, 1, 10);
         if (lines.Count > 1)
-            DrawPixelText(img, PixelText.TrimToWidth(lines[1], img.Width - 2), PrimaryTextColor, 1, 18);
+            DrawPixelText(img, RailDmiText.TrimToWidth(lines[1], img.Width - 2), PrimaryTextColor, 1, 18);
 
         if (NeedsCompactFooter(page.TickerText, 16, 2))
             DrawCompactFooter(img, page.TickerText, elapsedOnPage, 0);
@@ -585,7 +585,7 @@ public sealed class RailBoardScene : ISpecialScene
         if (string.IsNullOrWhiteSpace(text))
             return;
 
-        var y = img.Height - PixelText.Height - 1;
+        var y = img.Height - RailDmiText.Height - 1;
         FillRect(img, 0, y - 1, img.Width, 1, DividerColor);
         DrawPixelScrollingField(img, text, SecondaryTextColor, 1, y, img.Width - 2, elapsedOnPage, lane);
     }
@@ -658,14 +658,14 @@ public sealed class RailBoardScene : ISpecialScene
     private static string FitCompactBoardLocation(string locationText)
     {
         var normalized = CompactBoardLocation(locationText);
-        if (PixelText.MeasureWidth(normalized) <= 28)
+        if (RailDmiText.MeasureWidth(normalized) <= 28)
             return normalized;
 
         var code = BuildLocationCode(locationText);
-        if (PixelText.MeasureWidth(code) <= 28)
+        if (RailDmiText.MeasureWidth(code) <= 28)
             return code;
 
-        return PixelText.TrimToWidth(normalized, 28);
+        return RailDmiText.TrimToWidth(normalized, 28);
     }
 
     private static string CompactBoardLocation(string locationText)
@@ -724,12 +724,12 @@ public sealed class RailBoardScene : ISpecialScene
 
     private static void DrawPixelText(Image<Rgba32> img, string text, Rgba32 color, int x, int y)
     {
-        PixelText.Draw(img, text, x, y, color);
+        RailDmiText.Draw(img, text, x, y, color);
     }
 
     private static void DrawPixelRightAlignedText(Image<Rgba32> img, string text, Rgba32 color, int rightX, int y)
     {
-        PixelText.DrawRightAligned(img, text, rightX, y, color);
+        RailDmiText.DrawRightAligned(img, text, rightX, y, color);
     }
 
     private static void DrawScrollingField(
@@ -783,14 +783,14 @@ public sealed class RailBoardScene : ISpecialScene
         if (string.IsNullOrWhiteSpace(text) || width <= 0)
             return;
 
-        var size = PixelText.MeasureWidth(text);
+        var size = RailDmiText.MeasureWidth(text);
         if (size <= width)
         {
             DrawPixelText(img, text, color, x, y);
             return;
         }
 
-        using var field = new Image<Rgba32>(width, PixelText.Height);
+        using var field = new Image<Rgba32>(width, RailDmiText.Height);
         var gap = 8f;
         var cycleWidth = size + gap;
         var speed = 10f;

@@ -1,15 +1,9 @@
-using System;
 using System.Collections.Generic;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.PixelFormats;
 
 namespace advent;
 
 public static class PixelText
 {
-    public const int Height = 5;
-    public const int CharacterSpacing = 1;
-
     private static readonly string[] FallbackGlyph =
     [
         "1110",
@@ -407,116 +401,23 @@ public static class PixelText
         ]
     };
 
-    public static int MeasureWidth(string text)
-    {
-        var normalized = Normalize(text);
-        if (normalized.Length == 0)
-            return 0;
+    private static readonly PixelFont DefaultFont = new(
+        5,
+        1,
+        Glyphs,
+        FallbackGlyph);
 
-        var width = 0;
-        var first = true;
-        foreach (var c in normalized)
-        {
-            if (!first)
-                width += CharacterSpacing;
+    public static int Height => DefaultFont.Height;
+    public static int CharacterSpacing => DefaultFont.CharacterSpacing;
 
-            width += ResolveGlyph(c)[0].Length;
-            first = false;
-        }
+    internal static PixelFont Font => DefaultFont;
 
-        return width;
-    }
-
-    public static string TrimToWidth(string text, int maxWidth)
-    {
-        var normalized = Normalize(text);
-        if (MeasureWidth(normalized) <= maxWidth)
-            return normalized;
-
-        var trimmed = normalized;
-        while (trimmed.Length > 0 && MeasureWidth(trimmed) > maxWidth)
-            trimmed = trimmed[..^1];
-
-        return trimmed.TrimEnd();
-    }
-
-    public static void Draw(Image<Rgba32> img, string text, int x, int y, Rgba32 color)
-    {
-        var normalized = Normalize(text);
-        if (normalized.Length == 0)
-            return;
-
-        var cursor = x;
-        var first = true;
-        foreach (var c in normalized)
-        {
-            var glyph = ResolveGlyph(c);
-            if (!first)
-                cursor += CharacterSpacing;
-
-            DrawGlyph(img, glyph, cursor, y, color);
-            cursor += glyph[0].Length;
-            first = false;
-        }
-    }
-
-    public static void DrawCentered(Image<Rgba32> img, string text, int centerX, int y, Rgba32 color)
-    {
-        var width = MeasureWidth(text);
-        if (width == 0)
-            return;
-
-        Draw(img, text, centerX - width / 2, y, color);
-    }
-
-    public static void DrawRightAligned(Image<Rgba32> img, string text, int rightX, int y, Rgba32 color)
-    {
-        var width = MeasureWidth(text);
-        if (width == 0)
-            return;
-
-        Draw(img, text, rightX - width + 1, y, color);
-    }
-
-    private static string Normalize(string text)
-    {
-        if (string.IsNullOrWhiteSpace(text))
-            return string.Empty;
-
-        return text
-            .Trim()
-            .ToUpperInvariant()
-            .Replace('•', '.')
-            .Replace('·', '.')
-            .Replace('…', '.')
-            .Replace('–', '-')
-            .Replace('—', '-')
-            .Replace('’', '\'')
-            .Replace('‘', '\'');
-    }
-
-    private static string[] ResolveGlyph(char c)
-    {
-        return Glyphs.TryGetValue(c, out var glyph) ? glyph : FallbackGlyph;
-    }
-
-    private static void DrawGlyph(Image<Rgba32> img, string[] glyph, int x, int y, Rgba32 color)
-    {
-        for (var row = 0; row < glyph.Length; row++)
-        {
-            var bits = glyph[row];
-            for (var col = 0; col < bits.Length; col++)
-            {
-                if (bits[col] != '1')
-                    continue;
-
-                var px = x + col;
-                var py = y + row;
-                if ((uint)px >= img.Width || (uint)py >= img.Height)
-                    continue;
-
-                img[px, py] = color;
-            }
-        }
-    }
+    public static int MeasureWidth(string text) => DefaultFont.MeasureWidth(text);
+    public static string TrimToWidth(string text, int maxWidth) => DefaultFont.TrimToWidth(text, maxWidth);
+    public static void Draw(SixLabors.ImageSharp.Image<SixLabors.ImageSharp.PixelFormats.Rgba32> img, string text, int x, int y,
+        SixLabors.ImageSharp.PixelFormats.Rgba32 color) => DefaultFont.Draw(img, text, x, y, color);
+    public static void DrawCentered(SixLabors.ImageSharp.Image<SixLabors.ImageSharp.PixelFormats.Rgba32> img, string text, int centerX,
+        int y, SixLabors.ImageSharp.PixelFormats.Rgba32 color) => DefaultFont.DrawCentered(img, text, centerX, y, color);
+    public static void DrawRightAligned(SixLabors.ImageSharp.Image<SixLabors.ImageSharp.PixelFormats.Rgba32> img, string text,
+        int rightX, int y, SixLabors.ImageSharp.PixelFormats.Rgba32 color) => DefaultFont.DrawRightAligned(img, text, rightX, y, color);
 }
