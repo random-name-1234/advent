@@ -21,14 +21,13 @@ public class RailBoardScene : ISpecialScene
 {
     private const int Width = 64;
     private const int Height = 32;
-    private const int PanelCount = 4;
-    private const int RowsPerPanel = 3;
+    private const int PanelCount = 2;
+    private const int RowsPerSection = 2;
     private const int StationFetchRows = 8;
 
     private static readonly TimeSpan SceneDuration = SceneTiming.MaxSceneDuration;
     private static readonly TimeSpan PanelDuration =
         TimeSpan.FromMilliseconds(SceneDuration.TotalMilliseconds / PanelCount);
-    private static readonly TimeSpan TransitionDuration = TimeSpan.FromMilliseconds(650);
     private static readonly TimeSpan CacheLifetime = TimeSpan.FromSeconds(45);
 
     private static readonly HttpClient HttpClient = new()
@@ -44,9 +43,8 @@ public class RailBoardScene : ISpecialScene
     private static DateTimeOffset cacheUpdatedAtUtc = DateTimeOffset.MinValue;
     private static RailBoardSnapshot? cachedSnapshot;
 
-    private static readonly Font HeaderFont = AppFonts.Create(7.5f);
-    private static readonly Font MetaFont = AppFonts.Create(5.5f);
-    private static readonly Font RowFont = AppFonts.Create(6f);
+    private static readonly Font HeaderFont = AppFonts.Create(6.25f);
+    private static readonly Font RowFont = AppFonts.Create(5.75f);
 
     private readonly RailBoardOptions? options;
     private readonly Func<RailBoardOptions, DateTimeOffset, CancellationToken, Task<RailBoardSnapshot>> fetchSnapshotAsync;
@@ -55,7 +53,6 @@ public class RailBoardScene : ISpecialScene
     private Image<Rgba32>? currentPanelBuffer;
     private TimeSpan elapsedThisScene;
     private Task<RailBoardSnapshot>? fetchTask;
-    private Image<Rgba32>? nextPanelBuffer;
     private RailBoardSnapshot? snapshot;
 
     public RailBoardScene()
@@ -166,144 +163,78 @@ public class RailBoardScene : ISpecialScene
     private void DrawPanels(Image<Rgba32> img, RailBoardSnapshot railSnapshot)
     {
         var panelIndex = Math.Min(PanelCount - 1, (int)(elapsedThisScene.TotalMilliseconds / PanelDuration.TotalMilliseconds));
-        var panelStart = TimeSpan.FromMilliseconds(panelIndex * PanelDuration.TotalMilliseconds);
-        var timeIntoPanel = elapsedThisScene - panelStart;
-        var transitionStart = PanelDuration - TransitionDuration;
 
         EnsurePanelBuffers();
-        DrawBoardPanel(currentPanelBuffer!, railSnapshot.Panels[panelIndex], panelIndex, railSnapshot.GeneratedAtLocal);
-
-        if (panelIndex < PanelCount - 1 && timeIntoPanel > transitionStart)
-        {
-            var progress = (float)((timeIntoPanel - transitionStart).TotalMilliseconds /
-                                   TransitionDuration.TotalMilliseconds);
-            progress = Math.Clamp(progress, 0f, 1f);
-
-            DrawBoardPanel(nextPanelBuffer!, railSnapshot.Panels[panelIndex + 1], panelIndex + 1,
-                railSnapshot.GeneratedAtLocal);
-
-            var currentOffset = -(int)MathF.Round(progress * Width);
-            var nextOffset = Width + currentOffset;
-            Blit(img, currentPanelBuffer!, currentOffset);
-            Blit(img, nextPanelBuffer!, nextOffset);
-            DrawPageIndicators(img, panelIndex, progress);
-            return;
-        }
-
+        DrawBoardPanel(currentPanelBuffer!, railSnapshot.Panels[panelIndex], railSnapshot.GeneratedAtLocal);
         Blit(img, currentPanelBuffer!, 0);
-        DrawPageIndicators(img, panelIndex, 0f);
     }
 
-    private void DrawBoardPanel(Image<Rgba32> img, RailBoardPanel panel, int panelIndex, DateTimeOffset generatedAtLocal)
+    private static void DrawBoardPanel(Image<Rgba32> img, RailBoardPanel panel, DateTimeOffset generatedAtLocal)
     {
-        DrawBoardBackdrop(img, panelIndex);
-        DrawHeader(img, panel, generatedAtLocal);
-
-        if (panel.Services.Count == 0)
-        {
-            DrawCenteredText(img, panel.IsUnavailable ? "No live data" : "No services", RowFont,
-                new Rgba32(240, 220, 144), Width / 2, 13);
-            DrawCenteredText(img, panel.IsUnavailable ? "Board unavailable" : "Board clear", MetaFont,
-                new Rgba32(120, 154, 122), Width / 2, 21);
-            return;
-        }
-
-        var rowTop = 10;
-        for (var i = 0; i < panel.Services.Count && i < RowsPerPanel; i++)
-        {
-            DrawServiceRow(img, rowTop + i * 6, panel.Services[i]);
-        }
+        Clear(img);
+        DrawPanelStamp(img, generatedAtLocal);
+        DrawSection(img, panel.Sections[0], panel.BoardLabel, 0);
+        DrawSection(img, panel.Sections[1], panel.BoardLabel, 16);
     }
 
     private static void DrawStatePanel(Image<Rgba32> img, string title, string badge, string message)
     {
-        DrawBoardBackdrop(img, 0);
-        FillRect(img, 0, 0, Width, 8, new Rgba32(7, 16, 15));
-        FillRect(img, 0, 8, Width, 1, new Rgba32(42, 96, 74));
-        img.Mutate(ctx => ctx.DrawText(title, HeaderFont, new Rgba32(168, 250, 205), new PointF(3, -1)));
-        DrawBadge(img, badge, new Rgba32(248, 210, 106), new Rgba32(61, 47, 18));
-        DrawCenteredText(img, message, RowFont, new Rgba32(240, 220, 144), Width / 2, 13);
-
-        var phase = ((int)(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() / 220)) % 3;
-        for (var i = 0; i < 3; i++)
-        {
-            var color = i <= phase ? new Rgba32(246, 220, 134) : new Rgba32(72, 96, 74);
-            FillRect(img, 27 + i * 4, 23, 2, 2, color);
-        }
+        Clear(img);
+        img.Mutate(ctx => ctx.DrawText(title, HeaderFont, new Rgba32(242, 242, 242), new PointF(1, -1)));
+        DrawRightLabel(img, badge, 0, new Rgba32(255, 196, 96));
+        DrawCenteredText(img, message, HeaderFont, new Rgba32(236, 236, 236), Width / 2, 11);
     }
 
-    private static void DrawHeader(Image<Rgba32> img, RailBoardPanel panel, DateTimeOffset generatedAtLocal)
+    private static void DrawPanelStamp(Image<Rgba32> img, DateTimeOffset generatedAtLocal)
     {
-        FillRect(img, 0, 0, Width, 8, new Rgba32(7, 16, 15));
-        FillRect(img, 0, 8, Width, 1, new Rgba32(42, 96, 74));
-
-        img.Mutate(ctx => ctx.DrawText(panel.StationLabel, HeaderFont, new Rgba32(168, 250, 205), new PointF(3, -1)));
-        DrawBadge(img, panel.BoardLabel, new Rgba32(248, 210, 106), new Rgba32(61, 47, 18));
-
         var stamp = generatedAtLocal.ToString("HH:mm", CultureInfo.InvariantCulture);
-        var stampSize = TextMeasurer.MeasureSize(stamp, new TextOptions(MetaFont));
-        img.Mutate(ctx =>
-            ctx.DrawText(stamp, MetaFont, new Rgba32(112, 142, 118), new PointF(Width - stampSize.Width - 3f, 25)));
+        img.Mutate(ctx => ctx.DrawText(stamp, HeaderFont, new Rgba32(156, 156, 156), new PointF(23, -1)));
     }
 
-    private static void DrawBadge(Image<Rgba32> img, string text, Rgba32 textColor, Rgba32 fillColor)
+    private static void DrawSection(Image<Rgba32> img, RailStationSection section, string boardLabel, int top)
     {
-        var badgeSize = TextMeasurer.MeasureSize(text, new TextOptions(MetaFont));
-        var badgeWidth = (int)MathF.Ceiling(badgeSize.Width) + 6;
-        var badgeX = Width - badgeWidth - 3;
-        FillRect(img, badgeX, 1, badgeWidth, 6, fillColor);
-        FillRect(img, badgeX + 1, 2, badgeWidth - 2, 4, new Rgba32(20, 26, 20));
-        img.Mutate(ctx => ctx.DrawText(text, MetaFont, textColor, new PointF(badgeX + 3, 0)));
+        img.Mutate(ctx => ctx.DrawText(section.StationLabel, HeaderFont, new Rgba32(242, 242, 242), new PointF(1, top - 1)));
+        DrawRightLabel(img, boardLabel, top, BoardAccent(boardLabel));
+
+        if (section.Services.Count == 0)
+        {
+            var message = section.IsUnavailable ? "NO DATA" : "CLEAR";
+            DrawCenteredText(img, message, HeaderFont, new Rgba32(160, 160, 160), Width / 2, top + 6);
+            return;
+        }
+
+        for (var i = 0; i < section.Services.Count && i < RowsPerSection; i++)
+            DrawServiceRow(img, top + 5 + i * 5, section.Services[i], boardLabel);
     }
 
-    private static void DrawServiceRow(Image<Rgba32> img, int y, RailServiceRow row)
+    private static void DrawRightLabel(Image<Rgba32> img, string text, int y, Rgba32 color)
     {
-        FillRect(img, 1, y, Width - 2, 5, new Rgba32(4, 10, 9));
-        FillRect(img, 1, y + 5, Width - 2, 1, new Rgba32(14, 32, 26));
+        var labelSize = TextMeasurer.MeasureSize(text, new TextOptions(HeaderFont));
+        img.Mutate(ctx => ctx.DrawText(text, HeaderFont, color, new PointF(Width - labelSize.Width - 2f, y - 1)));
+    }
 
-        img.Mutate(ctx => ctx.DrawText(row.TimeText, RowFont, new Rgba32(255, 210, 112), new PointF(2, y - 1)));
-        img.Mutate(ctx => ctx.DrawText(row.LocationCode, RowFont, new Rgba32(236, 243, 221), new PointF(20, y - 1)));
+    private static void DrawServiceRow(Image<Rgba32> img, int y, RailServiceRow row, string boardLabel)
+    {
+        img.Mutate(ctx => ctx.DrawText(row.TimeText, RowFont, BoardAccent(boardLabel), new PointF(1, y - 1)));
+        img.Mutate(ctx => ctx.DrawText(row.LocationCode, RowFont, new Rgba32(236, 236, 236), new PointF(25, y - 1)));
 
         var statusSize = TextMeasurer.MeasureSize(row.StatusText, new TextOptions(RowFont));
-        var statusX = Math.Max(41f, Width - statusSize.Width - 3f);
+        var statusX = Math.Max(47f, Width - statusSize.Width - 1f);
         img.Mutate(ctx => ctx.DrawText(row.StatusText, RowFont, row.StatusColor, new PointF(statusX, y - 1)));
     }
 
-    private static void DrawBoardBackdrop(Image<Rgba32> img, int panelIndex)
+    private static Rgba32 BoardAccent(string boardLabel)
     {
-        for (var y = 0; y < Height; y++)
-        {
-            var depth = y / (float)(Height - 1);
-            var baseColor = new Rgba32(
-                Lerp(3, 6, depth),
-                Lerp(8, 16, depth),
-                Lerp(8, 12, depth));
-
-            if (((y + panelIndex) & 1) == 0)
-                baseColor = Blend(baseColor, new Rgba32(2, 4, 3), 0.22f);
-
-            for (var x = 0; x < Width; x++)
-                img[x, y] = baseColor;
-        }
-
-        DrawGlow(img, 7 + panelIndex * 3, 4, new Rgba32(28, 82, 56), 8f);
-        DrawGlow(img, Width - 9, Height - 6, new Rgba32(28, 60, 44), 9f);
+        return string.Equals(boardLabel, "ARR", StringComparison.OrdinalIgnoreCase)
+            ? new Rgba32(132, 232, 255)
+            : new Rgba32(255, 196, 96);
     }
 
-    private static void DrawGlow(Image<Rgba32> img, int centerX, int centerY, Rgba32 color, float radius)
+    private static void Clear(Image<Rgba32> img)
     {
         for (var y = 0; y < Height; y++)
         for (var x = 0; x < Width; x++)
-        {
-            var dx = x - centerX;
-            var dy = y - centerY;
-            var distance = MathF.Sqrt(dx * dx + dy * dy);
-            if (distance > radius)
-                continue;
-
-            var intensity = 1f - distance / radius;
-            img[x, y] = Blend(img[x, y], color, intensity * 0.3f);
-        }
+            img[x, y] = new Rgba32(0, 0, 0);
     }
 
     private static void DrawCenteredText(Image<Rgba32> img, string text, Font font, Rgba32 color, int centerX, int y)
@@ -311,22 +242,6 @@ public class RailBoardScene : ISpecialScene
         var size = TextMeasurer.MeasureSize(text, new TextOptions(font));
         var left = Math.Clamp(centerX - size.Width / 2f, 2f, Width - size.Width - 2f);
         img.Mutate(ctx => ctx.DrawText(text, font, color, new PointF(left, y)));
-    }
-
-    private static void DrawPageIndicators(Image<Rgba32> img, int panelIndex, float transitionProgress)
-    {
-        var y = Height - 2;
-        for (var i = 0; i < PanelCount; i++)
-        {
-            var intensity = i == panelIndex ? 1f : 0.2f;
-            if (i == panelIndex + 1)
-                intensity = Math.Max(intensity, transitionProgress);
-            if (i == panelIndex)
-                intensity = Math.Max(0.2f, 1f - transitionProgress * 0.8f);
-
-            var color = Scale(new Rgba32(236, 214, 124), intensity);
-            FillRect(img, 22 + i * 5, y, 3, 1, color);
-        }
     }
 
     private static void Blit(Image<Rgba32> destination, Image<Rgba32> source, int offsetX)
@@ -360,14 +275,18 @@ public class RailBoardScene : ISpecialScene
             .ToArray();
 
         var stationPanels = await Task.WhenAll(tasks).ConfigureAwait(false);
-        var panels = stationPanels.SelectMany(static x => x.Panels).ToArray();
         var generatedAtLocal = stationPanels
             .Select(static x => x.GeneratedAtLocal)
             .Where(static x => x != DateTimeOffset.MinValue)
             .DefaultIfEmpty(ukNow)
             .Max();
 
-        return new RailBoardSnapshot(panels, generatedAtLocal);
+        return new RailBoardSnapshot(
+            [
+                new RailBoardPanel("DEP", stationPanels.Select(static x => x.Departures).ToArray()),
+                new RailBoardPanel("ARR", stationPanels.Select(static x => x.Arrivals).ToArray())
+            ],
+            generatedAtLocal);
     }
 
     private static async Task<RailStationPanels> FetchStationPanelsAsync(
@@ -400,10 +319,8 @@ public class RailBoardScene : ISpecialScene
         if (board is null)
         {
             return new RailStationPanels(
-                [
-                    new RailBoardPanel(request.StationLabel, "DEP", [], true),
-                    new RailBoardPanel(request.StationLabel, "ARR", [], true)
-                ],
+                new RailStationSection(request.StationLabel, [], true),
+                new RailStationSection(request.StationLabel, [], true),
                 DateTimeOffset.MinValue);
         }
 
@@ -412,17 +329,14 @@ public class RailBoardScene : ISpecialScene
             : DateTimeOffset.MinValue;
 
         return new RailStationPanels(
-            [
-                BuildPanel(board, request.StationLabel, "DEP", RailPanelKind.Departures),
-                BuildPanel(board, request.StationLabel, "ARR", RailPanelKind.Arrivals)
-            ],
+            BuildSection(board, request.StationLabel, RailPanelKind.Departures),
+            BuildSection(board, request.StationLabel, RailPanelKind.Arrivals),
             generatedAtLocal);
     }
 
-    private static RailBoardPanel BuildPanel(
+    private static RailStationSection BuildSection(
         StationBoardDto board,
         string stationLabel,
-        string boardLabel,
         RailPanelKind panelKind)
     {
         var services = (board.TrainServices ?? [])
@@ -430,11 +344,10 @@ public class RailBoardScene : ISpecialScene
             .Where(static row => row is not null)
             .Cast<RailServiceRow>()
             .OrderBy(row => row.SortTime)
-            .Take(RowsPerPanel)
-            .Select(static row => row with { SortTime = DateTimeOffset.MaxValue })
+            .Take(RowsPerSection)
             .ToArray();
 
-        return new RailBoardPanel(stationLabel, boardLabel, services, board.ServicesAreUnavailable);
+        return new RailStationSection(stationLabel, services, board.ServicesAreUnavailable);
     }
 
     private static RailServiceRow? BuildServiceRow(ServiceItemDto service, RailPanelKind panelKind)
@@ -606,16 +519,12 @@ public class RailBoardScene : ISpecialScene
     private void EnsurePanelBuffers()
     {
         currentPanelBuffer ??= new Image<Rgba32>(Width, Height);
-        nextPanelBuffer ??= new Image<Rgba32>(Width, Height);
     }
 
     private void DisposePanelBuffers()
     {
         currentPanelBuffer?.Dispose();
         currentPanelBuffer = null;
-
-        nextPanelBuffer?.Dispose();
-        nextPanelBuffer = null;
     }
 
     private static void FillRect(Image<Rgba32> img, int x, int y, int width, int height, Rgba32 color)
@@ -626,39 +535,14 @@ public class RailBoardScene : ISpecialScene
                 img[px, py] = color;
     }
 
-    private static byte Lerp(int start, int end, float t)
-    {
-        return (byte)Math.Clamp((int)Math.Round(start + (end - start) * t), 0, 255);
-    }
-
-    private static Rgba32 Blend(Rgba32 from, Rgba32 to, float amount)
-    {
-        var t = Math.Clamp(amount, 0f, 1f);
-        return new Rgba32(
-            Lerp(from.R, to.R, t),
-            Lerp(from.G, to.G, t),
-            Lerp(from.B, to.B, t));
-    }
-
-    private static byte Lerp(byte start, byte end, float t)
-    {
-        return (byte)Math.Clamp((int)Math.Round(start + (end - start) * t), 0, 255);
-    }
-
-    private static Rgba32 Scale(Rgba32 color, float factor)
-    {
-        var clamped = Math.Clamp(factor, 0f, 1f);
-        return new Rgba32(
-            (byte)Math.Clamp((int)Math.Round(color.R * clamped), 0, 255),
-            (byte)Math.Clamp((int)Math.Round(color.G * clamped), 0, 255),
-            (byte)Math.Clamp((int)Math.Round(color.B * clamped), 0, 255));
-    }
-
     public sealed record RailBoardSnapshot(IReadOnlyList<RailBoardPanel> Panels, DateTimeOffset GeneratedAtLocal);
 
     public sealed record RailBoardPanel(
-        string StationLabel,
         string BoardLabel,
+        IReadOnlyList<RailStationSection> Sections);
+
+    public sealed record RailStationSection(
+        string StationLabel,
         IReadOnlyList<RailServiceRow> Services,
         bool IsUnavailable);
 
@@ -669,7 +553,10 @@ public class RailBoardScene : ISpecialScene
         Rgba32 StatusColor,
         DateTimeOffset SortTime);
 
-    private sealed record RailStationPanels(IReadOnlyList<RailBoardPanel> Panels, DateTimeOffset GeneratedAtLocal);
+    private sealed record RailStationPanels(
+        RailStationSection Departures,
+        RailStationSection Arrivals,
+        DateTimeOffset GeneratedAtLocal);
 
     private sealed record RailStationRequest(string Crs, string StationLabel);
 
