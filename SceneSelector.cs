@@ -60,7 +60,8 @@ public sealed class SceneSelector
 
         var monthSceneDefinitions = BaseSceneDefinitions.ToList();
         if (RailBoardScene.IsConfiguredFromEnvironment())
-            monthSceneDefinitions.Insert(1, CreateSceneDefinition("UK Rail Board", static () => new RailBoardScene()));
+            monthSceneDefinitions.Insert(1,
+                CreateSceneDefinition("UK Rail Board", static () => new RailBoardScene(), RailBoardScene.MaxSceneDuration));
         if (month == 12)
             monthSceneDefinitions.AddRange(DecemberSceneDefinitions);
         monthSceneDefinitions.AddRange(LoadImageSceneDefinitions(month, imageSceneDirectory));
@@ -426,9 +427,12 @@ public sealed class SceneSelector
         return byName;
     }
 
-    private static SceneDefinition CreateSceneDefinition(string name, Func<ISpecialScene> create)
+    private static SceneDefinition CreateSceneDefinition(
+        string name,
+        Func<ISpecialScene> create,
+        TimeSpan? maxDuration = null)
     {
-        return new SceneDefinition(name, () => new TimedScene(create()));
+        return new SceneDefinition(name, () => new TimedScene(create(), maxDuration));
     }
 
     private sealed class ImageSceneManifest

@@ -7,11 +7,15 @@ namespace advent;
 internal sealed class TimedScene : ISpecialScene
 {
     private readonly ISpecialScene innerScene;
+    private readonly TimeSpan maxDuration;
     private TimeSpan elapsedThisScene;
 
-    public TimedScene(ISpecialScene innerScene)
+    public TimedScene(ISpecialScene innerScene, TimeSpan? maxDuration = null)
     {
         this.innerScene = innerScene ?? throw new ArgumentNullException(nameof(innerScene));
+        this.maxDuration = maxDuration ?? SceneTiming.MaxSceneDuration;
+        if (this.maxDuration <= TimeSpan.Zero)
+            throw new ArgumentOutOfRangeException(nameof(maxDuration), "Timed scene duration must be positive.");
     }
 
     public bool IsActive { get; private set; }
@@ -31,7 +35,7 @@ internal sealed class TimedScene : ISpecialScene
         if (!IsActive)
             return;
 
-        var remaining = SceneTiming.MaxSceneDuration - elapsedThisScene;
+        var remaining = maxDuration - elapsedThisScene;
         if (remaining <= TimeSpan.Zero)
         {
             IsActive = false;
@@ -42,7 +46,7 @@ internal sealed class TimedScene : ISpecialScene
         elapsedThisScene += step;
         innerScene.Elapsed(step);
 
-        if (!innerScene.IsActive || elapsedThisScene >= SceneTiming.MaxSceneDuration)
+        if (!innerScene.IsActive || elapsedThisScene >= maxDuration)
             IsActive = false;
     }
 

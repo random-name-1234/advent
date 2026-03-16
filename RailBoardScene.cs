@@ -2,11 +2,13 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using SixLabors.Fonts;
@@ -17,43 +19,65 @@ using SixLabors.ImageSharp.Processing;
 
 namespace advent;
 
-public class RailBoardScene : ISpecialScene
+public sealed class RailBoardScene : ISpecialScene
 {
-    private const int Width = 64;
-    private const int Height = 32;
-    private const int PanelCount = 2;
-    private const int RowsPerSection = 2;
-    private const int StationFetchRows = 8;
+    public static readonly TimeSpan MaxSceneDuration = TimeSpan.FromSeconds(60);
 
-    private static readonly TimeSpan SceneDuration = SceneTiming.MaxSceneDuration;
-    private static readonly TimeSpan PanelDuration =
-        TimeSpan.FromMilliseconds(SceneDuration.TotalMilliseconds / PanelCount);
+    private const int WideMinWidth = 100;
+    private const int WideMinHeight = 48;
+    private const int StationFetchRows = 10;
+    private const int WideBoardRows = 3;
+    private const int CompactBoardRows = 2;
+
     private static readonly TimeSpan CacheLifetime = TimeSpan.FromSeconds(45);
+    private static readonly TimeSpan BoardPageDuration = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan DetailPageDuration = TimeSpan.FromSeconds(8);
+    private static readonly TimeSpan JourneyPageDuration = TimeSpan.FromSeconds(8);
+    private static readonly TimeSpan AlertPageDuration = TimeSpan.FromSeconds(8);
+    private static readonly TimeSpan LoadingPageDuration = TimeSpan.FromSeconds(6);
 
     private static readonly HttpClient HttpClient = new()
     {
         Timeout = TimeSpan.FromSeconds(4)
     };
+
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNameCaseInsensitive = true
     };
 
+    private static readonly Regex HtmlTagRegex = new("<.*?>", RegexOptions.Compiled);
     private static readonly Lock CacheLock = new();
     private static DateTimeOffset cacheUpdatedAtUtc = DateTimeOffset.MinValue;
-    private static RailBoardSnapshot? cachedSnapshot;
+    private static RailSceneSnapshot? cachedSnapshot;
 
-    private static readonly Font HeaderFont = AppFonts.Create(6.25f);
-    private static readonly Font RowFont = AppFonts.Create(5.75f);
+    private static readonly Font WideHeaderFont = AppFonts.Create(10f);
+    private static readonly Font WideRowFont = AppFonts.Create(8f);
+    private static readonly Font WideSmallFont = AppFonts.Create(6f);
+    private static readonly Font CompactHeaderFont = AppFonts.Create(6.25f);
+    private static readonly Font CompactRowFont = AppFonts.Create(5.75f);
+
+    private static readonly Rgba32 BackgroundColor = new(0, 0, 0);
+    private static readonly Rgba32 HeaderColor = new(255, 194, 92);
+    private static readonly Rgba32 PrimaryTextColor = new(242, 225, 180);
+    private static readonly Rgba32 SecondaryTextColor = new(156, 138, 108);
+    private static readonly Rgba32 DividerColor = new(48, 36, 18);
+    private static readonly Rgba32 OnTimeColor = new(210, 188, 144);
+    private static readonly Rgba32 DelayedColor = new(255, 184, 64);
+    private static readonly Rgba32 CancelledColor = new(255, 96, 84);
+    private static readonly Rgba32 WarningColor = new(168, 212, 255);
+    private static readonly Rgba32 AlertColor = new(255, 84, 72);
 
     private readonly RailBoardOptions? options;
-    private readonly Func<RailBoardOptions, DateTimeOffset, CancellationToken, Task<RailBoardSnapshot>> fetchSnapshotAsync;
+    private readonly Func<RailBoardOptions, DateTimeOffset, CancellationToken, Task<RailSceneSnapshot>> fetchSnapshotAsync;
     private readonly Func<DateTimeOffset> nowProvider;
 
-    private Image<Rgba32>? currentPanelBuffer;
+    private RailSceneSnapshot? snapshot;
+    private Task<RailSceneSnapshot>? fetchTask;
+    private IReadOnlyList<RailPage> pages = [];
+    private int currentPageIndex;
+    private TimeSpan elapsedOnPage;
     private TimeSpan elapsedThisScene;
-    private Task<RailBoardSnapshot>? fetchTask;
-    private RailBoardSnapshot? snapshot;
 
     public RailBoardScene()
         : this(
@@ -64,7 +88,7 @@ public class RailBoardScene : ISpecialScene
     }
 
     public RailBoardScene(
-        Func<DateTimeOffset, CancellationToken, Task<RailBoardSnapshot>> fetchSnapshotAsync,
+        Func<DateTimeOffset, CancellationToken, Task<RailSceneSnapshot>> fetchSnapshotAsync,
         Func<DateTimeOffset>? nowProvider = null)
         : this(
             RailBoardOptions.CreateForTesting(),
@@ -75,7 +99,7 @@ public class RailBoardScene : ISpecialScene
 
     private RailBoardScene(
         RailBoardOptions? options,
-        Func<RailBoardOptions, DateTimeOffset, CancellationToken, Task<RailBoardSnapshot>> fetchSnapshotAsync,
+        Func<RailBoardOptions, DateTimeOffset, CancellationToken, Task<RailSceneSnapshot>> fetchSnapshotAsync,
         Func<DateTimeOffset> nowProvider)
     {
         this.options = options;
@@ -95,17 +119,17 @@ public class RailBoardScene : ISpecialScene
 
     public void Activate()
     {
-        EnsurePanelBuffers();
         elapsedThisScene = TimeSpan.Zero;
+        elapsedOnPage = TimeSpan.Zero;
+        currentPageIndex = 0;
         fetchTask = null;
         IsActive = true;
         HidesTime = true;
 
         snapshot = TryGetCachedSnapshot();
-        if (options is null)
-            return;
+        pages = snapshot is not null ? BuildPages(snapshot) : [];
 
-        if (snapshot is null || IsCacheStale())
+        if (options is not null && (snapshot is null || IsCacheStale()))
             fetchTask = fetchSnapshotAsync(options, nowProvider(), CancellationToken.None);
     }
 
@@ -115,29 +139,50 @@ public class RailBoardScene : ISpecialScene
             return;
 
         elapsedThisScene += timeSpan;
-        if (elapsedThisScene > SceneDuration)
+
+        if (fetchTask is not null && fetchTask.IsCompleted)
         {
-            IsActive = false;
-            HidesTime = false;
-            DisposePanelBuffers();
+            if (fetchTask.IsCompletedSuccessfully)
+            {
+                snapshot = fetchTask.Result;
+                UpdateCache(snapshot);
+                pages = BuildPages(snapshot);
+                currentPageIndex = 0;
+                elapsedOnPage = TimeSpan.Zero;
+            }
+            else
+            {
+                var baseException = fetchTask.Exception?.GetBaseException();
+                Console.WriteLine($"Rail board fetch failed: {baseException?.Message ?? "Unknown error"}");
+            }
+
+            fetchTask = null;
+        }
+
+        if (pages.Count == 0)
+        {
+            if (fetchTask is null || elapsedThisScene >= LoadingPageDuration)
+            {
+                IsActive = false;
+                HidesTime = false;
+            }
+
             return;
         }
 
-        if (fetchTask is null || !fetchTask.IsCompleted)
-            return;
-
-        if (fetchTask.IsCompletedSuccessfully)
+        elapsedOnPage += timeSpan;
+        while (currentPageIndex < pages.Count && elapsedOnPage >= pages[currentPageIndex].Duration)
         {
-            snapshot = fetchTask.Result;
-            UpdateCache(snapshot);
-        }
-        else
-        {
-            var baseException = fetchTask.Exception?.GetBaseException();
-            Console.WriteLine($"Rail board fetch failed: {baseException?.Message ?? "Unknown error"}");
-        }
+            elapsedOnPage -= pages[currentPageIndex].Duration;
+            currentPageIndex++;
 
-        fetchTask = null;
+            if (currentPageIndex >= pages.Count)
+            {
+                IsActive = false;
+                HidesTime = false;
+                return;
+            }
+        }
     }
 
     public void Draw(Image<Rgba32> img)
@@ -145,151 +190,567 @@ public class RailBoardScene : ISpecialScene
         if (!IsActive)
             return;
 
+        Clear(img);
+
         if (options is null && snapshot is null)
         {
-            DrawStatePanel(img, "RAIL", "CONFIG", "Add LDB creds");
+            DrawFallbackPage(img, "NATIONAL RAIL", "NO LIVE DATA", "CONFIGURE API ACCESS");
             return;
         }
 
-        if (snapshot is null)
+        if (pages.Count == 0)
         {
-            DrawStatePanel(img, "RAIL", "LIVE", "Loading board");
+            DrawFallbackPage(img, "NATIONAL RAIL", "LOADING", "UPDATING BOARD DATA");
             return;
         }
 
-        DrawPanels(img, snapshot);
+        var page = pages[Math.Clamp(currentPageIndex, 0, pages.Count - 1)];
+        if (IsWide(img))
+            DrawWidePage(img, page, elapsedOnPage);
+        else
+            DrawCompactPage(img, page, elapsedOnPage);
     }
 
-    private void DrawPanels(Image<Rgba32> img, RailBoardSnapshot railSnapshot)
+    private static bool IsWide(Image<Rgba32> img)
     {
-        var panelIndex = Math.Min(PanelCount - 1, (int)(elapsedThisScene.TotalMilliseconds / PanelDuration.TotalMilliseconds));
-
-        EnsurePanelBuffers();
-        DrawBoardPanel(currentPanelBuffer!, railSnapshot.Panels[panelIndex], railSnapshot.GeneratedAtLocal);
-        Blit(img, currentPanelBuffer!, 0);
+        return img.Width >= WideMinWidth && img.Height >= WideMinHeight;
     }
 
-    private static void DrawBoardPanel(Image<Rgba32> img, RailBoardPanel panel, DateTimeOffset generatedAtLocal)
+    private static IReadOnlyList<RailPage> BuildPages(RailSceneSnapshot railSnapshot)
     {
-        Clear(img);
-        DrawPanelStamp(img, generatedAtLocal);
-        DrawSection(img, panel.Sections[0], panel.BoardLabel, 0);
-        DrawSection(img, panel.Sections[1], panel.BoardLabel, 16);
-    }
-
-    private static void DrawStatePanel(Image<Rgba32> img, string title, string badge, string message)
-    {
-        Clear(img);
-        img.Mutate(ctx => ctx.DrawText(title, HeaderFont, new Rgba32(242, 242, 242), new PointF(1, -1)));
-        DrawRightLabel(img, badge, 0, new Rgba32(255, 196, 96));
-        DrawCenteredText(img, message, HeaderFont, new Rgba32(236, 236, 236), Width / 2, 11);
-    }
-
-    private static void DrawPanelStamp(Image<Rgba32> img, DateTimeOffset generatedAtLocal)
-    {
-        var stamp = generatedAtLocal.ToString("HH:mm", CultureInfo.InvariantCulture);
-        img.Mutate(ctx => ctx.DrawText(stamp, HeaderFont, new Rgba32(156, 156, 156), new PointF(23, -1)));
-    }
-
-    private static void DrawSection(Image<Rgba32> img, RailStationSection section, string boardLabel, int top)
-    {
-        img.Mutate(ctx => ctx.DrawText(section.StationLabel, HeaderFont, new Rgba32(242, 242, 242), new PointF(1, top - 1)));
-        DrawRightLabel(img, boardLabel, top, BoardAccent(boardLabel));
-
-        if (section.Services.Count == 0)
+        var pages = new List<RailPage>
         {
-            var message = section.IsUnavailable ? "NO DATA" : "CLEAR";
-            DrawCenteredText(img, message, HeaderFont, new Rgba32(160, 160, 160), Width / 2, top + 6);
+            BuildBoardPage(railSnapshot.Cambridge, BoardType.Departures, railSnapshot.UpdatedAt),
+            BuildBoardPage(railSnapshot.KingsCross, BoardType.Arrivals, railSnapshot.UpdatedAt)
+        };
+
+        var journeyService = railSnapshot.Cambridge.Departures
+            .FirstOrDefault(static service => string.Equals(service.LocationCode, "KGX", StringComparison.OrdinalIgnoreCase) ||
+                                             service.LocationText.Contains("KX", StringComparison.OrdinalIgnoreCase) ||
+                                             service.LocationText.Contains("Kings Cross", StringComparison.OrdinalIgnoreCase));
+        if (journeyService is not null)
+            pages.Add(BuildJourneyPage(railSnapshot.Cambridge, journeyService));
+
+        foreach (var alert in railSnapshot.Cambridge.Alerts
+                     .Select(alert => (Station: railSnapshot.Cambridge.StationCode, alert))
+                     .Concat(railSnapshot.KingsCross.Alerts.Select(alert => (Station: railSnapshot.KingsCross.StationCode, alert)))
+                     .OrderByDescending(static item => item.alert.SeverityWeight)
+                     .Take(2))
+        {
+            pages.Add(BuildAlertPage(alert.Station, alert.alert));
+        }
+
+        var detailService = SelectDetailPageService(railSnapshot);
+        if (detailService is not null)
+            pages.Add(BuildDetailPage(detailService.Value.Service, detailService.Value.Station));
+
+        return pages;
+    }
+
+    private static (RailServiceSnapshot Service, RailStationSnapshot Station)? SelectDetailPageService(
+        RailSceneSnapshot railSnapshot)
+    {
+        var candidates = railSnapshot.Cambridge.Departures
+            .Select(static service => (Service: service, StationCode: "CAM"))
+            .Concat(railSnapshot.KingsCross.Arrivals.Select(static service => (Service: service, StationCode: "KGX")))
+            .ToArray();
+        if (candidates.Length == 0)
+            return null;
+
+        foreach (var candidate in candidates)
+        {
+            if (candidate.Service.StatusText is not "ON TIME")
+            {
+                return (candidate.Service,
+                    candidate.StationCode == railSnapshot.Cambridge.StationCode ? railSnapshot.Cambridge : railSnapshot.KingsCross);
+            }
+        }
+
+        var first = candidates[0];
+        return (first.Service, first.StationCode == railSnapshot.Cambridge.StationCode ? railSnapshot.Cambridge : railSnapshot.KingsCross);
+    }
+
+    private static BoardPage BuildBoardPage(
+        RailStationSnapshot station,
+        BoardType boardType,
+        DateTimeOffset updatedAt)
+    {
+        var services = boardType == BoardType.Departures ? station.Departures : station.Arrivals;
+        var boardRows = BuildBoardRows(station, boardType, services);
+        var tickerText = BuildBoardTicker(station, boardType, boardRows);
+        return new BoardPage(
+            $"{station.HeaderLabel} {BoardTitle(boardType)}",
+            station.StationName,
+            boardType,
+            updatedAt,
+            boardRows,
+            tickerText,
+            DurationForText(BoardPageDuration, tickerText));
+    }
+
+    private static IReadOnlyList<RailServiceSnapshot> BuildBoardRows(
+        RailStationSnapshot station,
+        BoardType boardType,
+        IReadOnlyList<RailServiceSnapshot> services)
+    {
+        if (services.Count > 0)
+            return services.Take(WideBoardRows).ToArray();
+
+        var statusText = station.IsUnavailable ? "NO DATA" : "CHECK";
+        var detailTicker = station.IsUnavailable
+            ? $"{station.StationName.ToUpperInvariant()} BOARD DATA UNAVAILABLE"
+            : $"{station.StationName.ToUpperInvariant()} HAS NO SERVICES IN THE CURRENT WINDOW";
+
+        return
+        [
+            new RailServiceSnapshot(
+                "--:--",
+                station.IsUnavailable ? "NO LIVE DATA" : "NO SERVICES",
+                boardType == BoardType.Departures ? "DEP" : "ARR",
+                "--",
+                statusText,
+                station.IsUnavailable ? AlertColor : SecondaryTextColor,
+                string.Empty,
+                string.Empty,
+                detailTicker,
+                DateTimeOffset.MaxValue)
+        ];
+    }
+
+    private static ServiceDetailPage BuildDetailPage(RailServiceSnapshot service, RailStationSnapshot station)
+    {
+        var title = $"{station.HeaderLabel} SERVICE DETAIL";
+        return new ServiceDetailPage(
+            title,
+            service.ScheduledText,
+            service.LocationText,
+            service.PlatformText,
+            service.StatusText,
+            service.StatusColor,
+            service.OperatorText,
+            service.DetailTicker,
+            DurationForText(DetailPageDuration, service.DetailTicker));
+    }
+
+    private static JourneyPage BuildJourneyPage(RailStationSnapshot station, RailServiceSnapshot service)
+    {
+        var ticker = string.IsNullOrWhiteSpace(service.CallingText)
+            ? service.DetailTicker
+            : $"CALLS {service.CallingText}";
+        return new JourneyPage(
+            $"{station.HeaderLabel} -> KGX",
+            "NEXT SERVICE",
+            service.ScheduledText,
+            service.PlatformText,
+            service.LocationText,
+            service.StatusText,
+            service.StatusColor,
+            ticker,
+            DurationForText(JourneyPageDuration, ticker));
+    }
+
+    private static AlertPage BuildAlertPage(string stationLabel, RailAlertSnapshot alert)
+    {
+        var lines = WrapText(alert.Message, 28, 3);
+        return new AlertPage(
+            "RAIL ALERT",
+            stationLabel,
+            lines,
+            alert.Message,
+            AlertPageDuration);
+    }
+
+    private static string BuildBoardTicker(
+        RailStationSnapshot station,
+        BoardType boardType,
+        IReadOnlyList<RailServiceSnapshot> services)
+    {
+        if (station.IsUnavailable)
+            return $"{station.StationName.ToUpperInvariant()} BOARD DATA UNAVAILABLE";
+
+        if (services.Count == 0)
+        {
+            return station.Alerts.Count > 0
+                ? station.Alerts[0].Message
+                : $"{station.StationName.ToUpperInvariant()} {BoardTitle(boardType)}";
+        }
+
+        var focus = services[0];
+        return focus.DetailTicker;
+    }
+
+    private static TimeSpan DurationForText(TimeSpan baseDuration, string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return baseDuration;
+
+        var extraSeconds = Math.Min(5, Math.Max(0, text.Length - 42) / 18.0);
+        return baseDuration + TimeSpan.FromSeconds(extraSeconds);
+    }
+
+    private static void DrawWidePage(Image<Rgba32> img, RailPage page, TimeSpan elapsedOnPage)
+    {
+        switch (page)
+        {
+            case BoardPage boardPage:
+                DrawWideBoardPage(img, boardPage, elapsedOnPage);
+                break;
+            case ServiceDetailPage serviceDetailPage:
+                DrawWideDetailPage(img, serviceDetailPage, elapsedOnPage);
+                break;
+            case JourneyPage journeyPage:
+                DrawWideJourneyPage(img, journeyPage, elapsedOnPage);
+                break;
+            case AlertPage alertPage:
+                DrawWideAlertPage(img, alertPage, elapsedOnPage);
+                break;
+        }
+    }
+
+    private static void DrawCompactPage(Image<Rgba32> img, RailPage page, TimeSpan elapsedOnPage)
+    {
+        switch (page)
+        {
+            case BoardPage boardPage:
+                DrawCompactBoardPage(img, boardPage, elapsedOnPage);
+                break;
+            case ServiceDetailPage serviceDetailPage:
+                DrawCompactDetailPage(img, serviceDetailPage, elapsedOnPage);
+                break;
+            case JourneyPage journeyPage:
+                DrawCompactJourneyPage(img, journeyPage, elapsedOnPage);
+                break;
+            case AlertPage alertPage:
+                DrawCompactAlertPage(img, alertPage, elapsedOnPage);
+                break;
+        }
+    }
+
+    private static void DrawWideBoardPage(Image<Rgba32> img, BoardPage page, TimeSpan elapsedOnPage)
+    {
+        FillRect(img, 0, 0, img.Width, 1, DividerColor);
+        DrawText(img, page.Header, WideHeaderFont, HeaderColor, 3, 2);
+        DrawText(img, page.UpdatedAt.ToString("HH:mm", CultureInfo.InvariantCulture), WideSmallFont, SecondaryTextColor,
+            img.Width - 28, 4);
+
+        var columnsY = 13;
+        DrawText(img, "TIME", WideSmallFont, SecondaryTextColor, 3, columnsY);
+        DrawText(img, page.BoardType == BoardType.Departures ? "DESTINATION" : "ORIGIN", WideSmallFont, SecondaryTextColor, 30,
+            columnsY);
+        DrawText(img, "P", WideSmallFont, SecondaryTextColor, img.Width - 42, columnsY);
+        DrawText(img, "STATUS", WideSmallFont, SecondaryTextColor, img.Width - 26, columnsY);
+        FillRect(img, 0, 21, img.Width, 1, DividerColor);
+
+        var rowTop = 24;
+        var rowHeight = 11;
+        for (var i = 0; i < page.Rows.Count && i < WideBoardRows; i++)
+        {
+            var row = page.Rows[i];
+            var y = rowTop + i * rowHeight;
+            DrawText(img, row.ScheduledText, WideRowFont, HeaderColor, 3, y);
+            DrawScrollingField(img, row.LocationText, WideRowFont, PrimaryTextColor, 30, y, img.Width - 62, 10, elapsedOnPage, i);
+            DrawText(img, row.PlatformText, WideRowFont, PrimaryTextColor, img.Width - 42, y);
+            DrawText(img, row.StatusText, WideSmallFont, row.StatusColor, img.Width - 26, y + 1);
+
+            if (i < page.Rows.Count - 1)
+                FillRect(img, 0, y + rowHeight - 1, img.Width, 1, DividerColor);
+        }
+
+        DrawTicker(img, page.TickerText, elapsedOnPage);
+    }
+
+    private static void DrawWideDetailPage(Image<Rgba32> img, ServiceDetailPage page, TimeSpan elapsedOnPage)
+    {
+        DrawText(img, page.Header, WideHeaderFont, HeaderColor, 3, 2);
+        DrawText(img, page.TimeText, WideHeaderFont, PrimaryTextColor, 4, 16);
+        DrawText(img, page.PlatformText, WideHeaderFont, WarningColor, img.Width - 26, 16);
+        DrawScrollingField(img, page.LocationText, WideHeaderFont, PrimaryTextColor, 4, 30, img.Width - 8, 12, elapsedOnPage, 0);
+        DrawText(img, page.StatusText, WideHeaderFont, page.StatusColor, 4, 44);
+        DrawText(img, page.OperatorText, WideSmallFont, SecondaryTextColor, img.Width - 48, 46);
+        DrawTicker(img, page.TickerText, elapsedOnPage);
+    }
+
+    private static void DrawWideJourneyPage(Image<Rgba32> img, JourneyPage page, TimeSpan elapsedOnPage)
+    {
+        DrawText(img, page.Header, WideHeaderFont, HeaderColor, 3, 2);
+        DrawText(img, page.Subtitle, WideSmallFont, SecondaryTextColor, 4, 16);
+        DrawText(img, page.TimeText, WideHeaderFont, PrimaryTextColor, 4, 26);
+        DrawText(img, page.PlatformText, WideHeaderFont, WarningColor, img.Width - 26, 26);
+        DrawText(img, page.StatusText, WideHeaderFont, page.StatusColor, 4, 42);
+        DrawScrollingField(img, page.LocationText, WideRowFont, PrimaryTextColor, 56, 27, img.Width - 60, 10, elapsedOnPage, 0);
+        DrawTicker(img, page.TickerText, elapsedOnPage);
+    }
+
+    private static void DrawWideAlertPage(Image<Rgba32> img, AlertPage page, TimeSpan elapsedOnPage)
+    {
+        DrawText(img, page.Header, WideHeaderFont, AlertColor, 3, 2);
+        DrawText(img, page.StationText, WideSmallFont, WarningColor, 4, 16);
+        for (var i = 0; i < page.Lines.Count; i++)
+            DrawText(img, page.Lines[i], WideHeaderFont, PrimaryTextColor, 4, 24 + i * 10);
+
+        DrawTicker(img, page.TickerText, elapsedOnPage);
+    }
+
+    private static void DrawCompactBoardPage(Image<Rgba32> img, BoardPage page, TimeSpan elapsedOnPage)
+    {
+        DrawCompactHeader(img, CompactBoardTitle(page), page.UpdatedAt.ToString("HH:mm", CultureInfo.InvariantCulture), HeaderColor);
+        var rowTop = 8;
+        var rowHeight = 10;
+        var rows = page.Rows.Take(CompactBoardRows).ToArray();
+        for (var i = 0; i < rows.Length; i++)
+        {
+            var row = rows[i];
+            var y = rowTop + i * rowHeight;
+            DrawText(img, row.ScheduledText, CompactRowFont, HeaderColor, 1, y);
+            DrawScrollingField(img, row.LocationText, CompactRowFont, PrimaryTextColor, 18, y, 45, 7, elapsedOnPage, i);
+            DrawText(img, CompactStatus(row.StatusText), CompactRowFont, row.StatusColor, 18, y + 5);
+            DrawRightAlignedText(img, CompactPlatform(row.PlatformText), CompactRowFont, WarningColor, img.Width - 2, y + 5);
+
+            if (i < rows.Length - 1)
+                FillRect(img, 1, y + rowHeight - 1, img.Width - 2, 1, DividerColor);
+        }
+
+        DrawCompactFooter(img, BuildCompactBoardFooter(page), elapsedOnPage, 4);
+    }
+
+    private static void DrawCompactDetailPage(Image<Rgba32> img, ServiceDetailPage page, TimeSpan elapsedOnPage)
+    {
+        DrawCompactHeader(img, CompactPageTitle(page.Header, "DETAIL"), page.TimeText, HeaderColor);
+        DrawScrollingField(img, page.LocationText, CompactHeaderFont, PrimaryTextColor, 1, 10, img.Width - 2, 8,
+            elapsedOnPage, 0);
+        DrawText(img, CompactStatus(page.StatusText), CompactHeaderFont, page.StatusColor, 1, 18);
+        DrawRightAlignedText(img, CompactPlatform(page.PlatformText), CompactHeaderFont, WarningColor, img.Width - 2, 18);
+        DrawCompactFooter(img, BuildCompactDetailFooter(page), elapsedOnPage, 1);
+    }
+
+    private static void DrawCompactJourneyPage(Image<Rgba32> img, JourneyPage page, TimeSpan elapsedOnPage)
+    {
+        DrawCompactHeader(img, page.Header, page.TimeText, HeaderColor);
+        DrawText(img, page.Subtitle, CompactRowFont, SecondaryTextColor, 1, 10);
+        DrawText(img, CompactStatus(page.StatusText), CompactHeaderFont, page.StatusColor, 1, 18);
+        DrawRightAlignedText(img, CompactPlatform(page.PlatformText), CompactHeaderFont, WarningColor, img.Width - 2, 18);
+        DrawCompactFooter(img, page.TickerText, elapsedOnPage, 0);
+    }
+
+    private static void DrawCompactAlertPage(Image<Rgba32> img, AlertPage page, TimeSpan elapsedOnPage)
+    {
+        DrawCompactHeader(img, page.Header, page.StationText, AlertColor);
+        var lines = WrapText(page.TickerText, 16, 2);
+        if (lines.Count > 0)
+            DrawText(img, lines[0], CompactHeaderFont, PrimaryTextColor, 1, 10);
+        if (lines.Count > 1)
+            DrawText(img, lines[1], CompactHeaderFont, PrimaryTextColor, 1, 18);
+        DrawCompactFooter(img, page.TickerText, elapsedOnPage, 0);
+    }
+
+    private static void DrawFallbackPage(Image<Rgba32> img, string title, string line1, string line2)
+    {
+        if (IsWide(img))
+        {
+            DrawText(img, title, WideHeaderFont, HeaderColor, 3, 4);
+            DrawText(img, line1, WideHeaderFont, PrimaryTextColor, 3, 22);
+            DrawText(img, line2, WideSmallFont, SecondaryTextColor, 3, 40);
             return;
         }
 
-        for (var i = 0; i < section.Services.Count && i < RowsPerSection; i++)
-            DrawServiceRow(img, top + 5 + i * 5, section.Services[i], boardLabel);
+        DrawText(img, title, CompactHeaderFont, HeaderColor, 1, 0);
+        DrawText(img, line1, CompactHeaderFont, PrimaryTextColor, 1, 11);
+        DrawText(img, line2, CompactRowFont, SecondaryTextColor, 1, 22);
     }
 
-    private static void DrawRightLabel(Image<Rgba32> img, string text, int y, Rgba32 color)
+    private static void DrawTicker(Image<Rgba32> img, string text, TimeSpan elapsedOnPage)
     {
-        var labelSize = TextMeasurer.MeasureSize(text, new TextOptions(HeaderFont));
-        img.Mutate(ctx => ctx.DrawText(text, HeaderFont, color, new PointF(Width - labelSize.Width - 2f, y - 1)));
+        if (string.IsNullOrWhiteSpace(text))
+            return;
+
+        var y = img.Height - 8;
+        FillRect(img, 0, y - 2, img.Width, 1, DividerColor);
+        DrawScrollingField(img, text, WideSmallFont, SecondaryTextColor, 3, y, img.Width - 6, 8, elapsedOnPage, 0);
     }
 
-    private static void DrawServiceRow(Image<Rgba32> img, int y, RailServiceRow row, string boardLabel)
+    private static void DrawCompactHeader(Image<Rgba32> img, string leftText, string rightText, Rgba32 leftColor)
     {
-        img.Mutate(ctx => ctx.DrawText(row.TimeText, RowFont, BoardAccent(boardLabel), new PointF(1, y - 1)));
-        img.Mutate(ctx => ctx.DrawText(row.LocationCode, RowFont, new Rgba32(236, 236, 236), new PointF(25, y - 1)));
-
-        var statusSize = TextMeasurer.MeasureSize(row.StatusText, new TextOptions(RowFont));
-        var statusX = Math.Max(47f, Width - statusSize.Width - 1f);
-        img.Mutate(ctx => ctx.DrawText(row.StatusText, RowFont, row.StatusColor, new PointF(statusX, y - 1)));
+        FillRect(img, 0, 7, img.Width, 1, DividerColor);
+        DrawText(img, leftText, CompactHeaderFont, leftColor, 1, 0);
+        if (!string.IsNullOrWhiteSpace(rightText))
+            DrawRightAlignedText(img, rightText, CompactHeaderFont, SecondaryTextColor, img.Width - 2, 0);
     }
 
-    private static Rgba32 BoardAccent(string boardLabel)
+    private static void DrawCompactFooter(Image<Rgba32> img, string text, TimeSpan elapsedOnPage, int lane)
     {
-        return string.Equals(boardLabel, "ARR", StringComparison.OrdinalIgnoreCase)
-            ? new Rgba32(132, 232, 255)
-            : new Rgba32(255, 196, 96);
+        if (string.IsNullOrWhiteSpace(text))
+            return;
+
+        var y = img.Height - 7;
+        FillRect(img, 0, y - 1, img.Width, 1, DividerColor);
+        DrawScrollingField(img, text, CompactRowFont, SecondaryTextColor, 1, y, img.Width - 2, 7, elapsedOnPage, lane);
+    }
+
+    private static void DrawRightAlignedText(Image<Rgba32> img, string text, Font font, Rgba32 color, int rightX, int y)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return;
+
+        var size = TextMeasurer.MeasureSize(text, new TextOptions(font));
+        var x = Math.Max(1, (int)MathF.Round(rightX - size.Width));
+        DrawText(img, text, font, color, x, y);
+    }
+
+    private static string CompactBoardTitle(BoardPage page)
+    {
+        return $"{CompactStationLabel(page.StationName)} {(page.BoardType == BoardType.Departures ? "DEP" : "ARR")}";
+    }
+
+    private static string CompactPageTitle(string header, string fallbackSuffix)
+    {
+        var token = header.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
+        return string.IsNullOrWhiteSpace(token) ? fallbackSuffix : $"{token} {fallbackSuffix}";
+    }
+
+    private static string BuildCompactBoardFooter(BoardPage page)
+    {
+        var updated = $"UPD {page.UpdatedAt:HH:mm}";
+        return string.IsNullOrWhiteSpace(page.TickerText) ? updated : $"{updated}  •  {page.TickerText}";
+    }
+
+    private static string BuildCompactDetailFooter(ServiceDetailPage page)
+    {
+        var platform = CompactPlatform(page.PlatformText);
+        var parts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(platform))
+            parts.Add(platform);
+        if (!string.IsNullOrWhiteSpace(page.OperatorText))
+            parts.Add(page.OperatorText.ToUpperInvariant());
+        if (!string.IsNullOrWhiteSpace(page.TickerText))
+            parts.Add(page.TickerText);
+        return string.Join("  •  ", parts);
+    }
+
+    private static string CompactStationLabel(string stationName)
+    {
+        return stationName.Trim().ToUpperInvariant() switch
+        {
+            "CAMBRIDGE" => "CAM",
+            "LONDON KINGS CROSS" => "KGX",
+            "KINGS CROSS" => "KGX",
+            "LONDON KING'S CROSS" => "KGX",
+            _ => BuildLocationCode(stationName)
+        };
+    }
+
+    private static string CompactPlatform(string platformText)
+    {
+        if (string.IsNullOrWhiteSpace(platformText) || platformText == "--")
+            return string.Empty;
+
+        return platformText.Trim().ToUpperInvariant();
+    }
+
+    private static void DrawText(Image<Rgba32> img, string text, Font font, Rgba32 color, int x, int y)
+    {
+        img.Mutate(ctx => ctx.DrawText(text, font, color, new PointF(x, y)));
+    }
+
+    private static void DrawScrollingField(
+        Image<Rgba32> img,
+        string text,
+        Font font,
+        Rgba32 color,
+        int x,
+        int y,
+        int width,
+        int height,
+        TimeSpan elapsedOnPage,
+        int lane)
+    {
+        if (string.IsNullOrWhiteSpace(text) || width <= 0 || height <= 0)
+            return;
+
+        var size = TextMeasurer.MeasureSize(text, new TextOptions(font));
+        if (size.Width <= width - 2)
+        {
+            DrawText(img, text, font, color, x, y);
+            return;
+        }
+
+        using var field = new Image<Rgba32>(width, height);
+        var gap = 18f;
+        var cycleWidth = size.Width + gap;
+        var speed = 16f;
+        var phase = ((float)elapsedOnPage.TotalSeconds * speed + lane * 12f) % cycleWidth;
+        var drawX = 2f - phase;
+
+        field.Mutate(ctx =>
+        {
+            ctx.DrawText(text, font, color, new PointF(drawX, -1));
+            ctx.DrawText(text, font, color, new PointF(drawX + cycleWidth, -1));
+        });
+
+        BlitOpaque(img, field, x, y);
+    }
+
+    private static void BlitOpaque(Image<Rgba32> destination, Image<Rgba32> source, int left, int top)
+    {
+        for (var y = 0; y < source.Height; y++)
+        for (var x = 0; x < source.Width; x++)
+        {
+            var pixel = source[x, y];
+            if (pixel.A == 0 || (pixel.R == 0 && pixel.G == 0 && pixel.B == 0))
+                continue;
+
+            var destX = left + x;
+            var destY = top + y;
+            if ((uint)destX >= destination.Width || (uint)destY >= destination.Height)
+                continue;
+
+            destination[destX, destY] = pixel;
+        }
     }
 
     private static void Clear(Image<Rgba32> img)
     {
-        for (var y = 0; y < Height; y++)
-        for (var x = 0; x < Width; x++)
-            img[x, y] = new Rgba32(0, 0, 0);
+        for (var y = 0; y < img.Height; y++)
+        for (var x = 0; x < img.Width; x++)
+            img[x, y] = BackgroundColor;
     }
 
-    private static void DrawCenteredText(Image<Rgba32> img, string text, Font font, Rgba32 color, int centerX, int y)
+    private static void FillRect(Image<Rgba32> img, int x, int y, int width, int height, Rgba32 color)
     {
-        var size = TextMeasurer.MeasureSize(text, new TextOptions(font));
-        var left = Math.Clamp(centerX - size.Width / 2f, 2f, Width - size.Width - 2f);
-        img.Mutate(ctx => ctx.DrawText(text, font, color, new PointF(left, y)));
+        for (var py = y; py < y + height; py++)
+        for (var px = x; px < x + width; px++)
+            if ((uint)px < img.Width && (uint)py < img.Height)
+                img[px, py] = color;
     }
 
-    private static void Blit(Image<Rgba32> destination, Image<Rgba32> source, int offsetX)
-    {
-        for (var y = 0; y < Height; y++)
-        for (var x = 0; x < Width; x++)
-        {
-            var targetX = x + offsetX;
-            if ((uint)targetX >= Width)
-                continue;
-
-            destination[targetX, y] = source[x, y];
-        }
-    }
-
-    private static async Task<RailBoardSnapshot> FetchSnapshotAsync(
+    private static async Task<RailSceneSnapshot> FetchSnapshotAsync(
         RailBoardOptions railOptions,
         DateTimeOffset now,
         CancellationToken cancellationToken)
     {
         var ukNow = ConvertToUkTime(now);
         var boardTime = ukNow.ToString("yyyyMMdd'T'HHmmss", CultureInfo.InvariantCulture);
+
         var requests = new[]
         {
-            new RailStationRequest(railOptions.CambridgeCrs, "CBG"),
+            new RailStationRequest(railOptions.CambridgeCrs, "CAM"),
             new RailStationRequest(railOptions.KingsCrossCrs, "KGX")
         };
 
         var tasks = requests
-            .Select(request => FetchStationPanelsAsync(railOptions, request, boardTime, cancellationToken))
+            .Select(request => FetchStationSnapshotAsync(railOptions, request, boardTime, cancellationToken))
             .ToArray();
 
-        var stationPanels = await Task.WhenAll(tasks).ConfigureAwait(false);
-        var generatedAtLocal = stationPanels
-            .Select(static x => x.GeneratedAtLocal)
-            .Where(static x => x != DateTimeOffset.MinValue)
+        var stations = await Task.WhenAll(tasks).ConfigureAwait(false);
+        var updatedAt = stations
+            .Select(static station => station.UpdatedAt)
+            .Where(static value => value != DateTimeOffset.MinValue)
             .DefaultIfEmpty(ukNow)
             .Max();
 
-        return new RailBoardSnapshot(
-            [
-                new RailBoardPanel("DEP", stationPanels.Select(static x => x.Departures).ToArray()),
-                new RailBoardPanel("ARR", stationPanels.Select(static x => x.Arrivals).ToArray())
-            ],
-            generatedAtLocal);
+        return new RailSceneSnapshot(stations[0], stations[1], updatedAt);
     }
 
-    private static async Task<RailStationPanels> FetchStationPanelsAsync(
+    private static async Task<RailStationSnapshot> FetchStationSnapshotAsync(
         RailBoardOptions railOptions,
         RailStationRequest request,
         string boardTime,
@@ -318,66 +779,146 @@ public class RailBoardScene : ISpecialScene
 
         if (board is null)
         {
-            return new RailStationPanels(
-                new RailStationSection(request.StationLabel, [], true),
-                new RailStationSection(request.StationLabel, [], true),
-                DateTimeOffset.MinValue);
+            return new RailStationSnapshot(
+                request.StationLabel,
+                request.StationLabel,
+                [],
+                [],
+                [],
+                DateTimeOffset.MinValue,
+                true);
         }
 
-        var generatedAtLocal = board.GeneratedAt.HasValue
+        var updatedAt = board.GeneratedAt.HasValue
             ? ConvertToUkTime(board.GeneratedAt.Value)
             : DateTimeOffset.MinValue;
 
-        return new RailStationPanels(
-            BuildSection(board, request.StationLabel, RailPanelKind.Departures),
-            BuildSection(board, request.StationLabel, RailPanelKind.Arrivals),
-            generatedAtLocal);
+        return new RailStationSnapshot(
+            request.StationLabel,
+            board.LocationName ?? request.StationLabel,
+            BuildServices(board.TrainServices, BoardType.Departures),
+            BuildServices(board.TrainServices, BoardType.Arrivals),
+            BuildAlerts(board.NrccMessages),
+            updatedAt,
+            board.ServicesAreUnavailable);
     }
 
-    private static RailStationSection BuildSection(
-        StationBoardDto board,
-        string stationLabel,
-        RailPanelKind panelKind)
+    private static IReadOnlyList<RailServiceSnapshot> BuildServices(ServiceItemDto[]? services, BoardType boardType)
     {
-        var services = (board.TrainServices ?? [])
-            .Select(service => BuildServiceRow(service, panelKind))
-            .Where(static row => row is not null)
-            .Cast<RailServiceRow>()
-            .OrderBy(row => row.SortTime)
-            .Take(RowsPerSection)
+        if (services is null || services.Length == 0)
+            return [];
+
+        return services
+            .Select(service => BuildServiceSnapshot(service, boardType))
+            .Where(static service => service is not null)
+            .Cast<RailServiceSnapshot>()
+            .OrderBy(static service => service.SortTime)
             .ToArray();
-
-        return new RailStationSection(stationLabel, services, board.ServicesAreUnavailable);
     }
 
-    private static RailServiceRow? BuildServiceRow(ServiceItemDto service, RailPanelKind panelKind)
+    private static RailServiceSnapshot? BuildServiceSnapshot(ServiceItemDto service, BoardType boardType)
     {
-        var location = panelKind == RailPanelKind.Departures
-            ? PickLocation(service.Destination)
-            : PickLocation(service.Origin);
+        var location = boardType == BoardType.Departures
+            ? PickEndPoint(service.Destination)
+            : PickEndPoint(service.Origin);
         if (location is null)
             return null;
 
-        var planned = ParseBoardTimestamp(panelKind == RailPanelKind.Departures ? service.Std : service.Sta);
-        var estimated = ParseBoardTimestamp(panelKind == RailPanelKind.Departures ? service.Etd : service.Eta);
+        var planned = ParseBoardTimestamp(boardType == BoardType.Departures ? service.Std : service.Sta);
+        var estimated = ParseBoardTimestamp(boardType == BoardType.Departures
+            ? service.Etd ?? service.Atd
+            : service.Eta ?? service.Ata);
         if (!planned.HasValue && !estimated.HasValue)
             return null;
 
-        var timeText = planned?.ToString("HH:mm", CultureInfo.InvariantCulture) ?? "--:--";
-        var locationCode = string.IsNullOrWhiteSpace(location.Crs)
-            ? BuildLocationCode(location.LocationName)
-            : location.Crs!.Trim().ToUpperInvariant();
+        var platformText = !service.PlatformIsHidden && !string.IsNullOrWhiteSpace(service.Platform)
+            ? $"P{service.Platform!.Trim()}"
+            : "--";
+        var locationText = FormatStationDisplayName(location.Crs, location.LocationName);
+        var locationCode = !string.IsNullOrWhiteSpace(location.Crs)
+            ? location.Crs!.Trim().ToUpperInvariant()
+            : BuildLocationCode(location.LocationName);
+        var callingPoints = BuildCallingPoints(boardType == BoardType.Departures
+            ? service.SubsequentLocations
+            : service.PreviousLocations);
 
         var (statusText, statusColor) = BuildStatus(service, planned, estimated);
-        return new RailServiceRow(
-            timeText,
+        var detailTicker = BuildDetailTicker(locationText, service.Operator, callingPoints, statusText);
+
+        return new RailServiceSnapshot(
+            planned?.ToString("HH:mm", CultureInfo.InvariantCulture) ?? "--:--",
+            locationText,
             locationCode,
+            platformText,
             statusText,
             statusColor,
+            service.Operator ?? string.Empty,
+            callingPoints,
+            detailTicker,
             estimated ?? planned ?? DateTimeOffset.MaxValue);
     }
 
-    private static EndPointLocationDto? PickLocation(EndPointLocationDto[]? endpoints)
+    private static string BuildDetailTicker(string locationText, string? operatorName, string callingPoints, string statusText)
+    {
+        var parts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(locationText))
+            parts.Add(locationText.ToUpperInvariant());
+        if (!string.IsNullOrWhiteSpace(operatorName))
+            parts.Add(operatorName.ToUpperInvariant());
+        if (!string.IsNullOrWhiteSpace(callingPoints))
+            parts.Add($"CALLS {callingPoints}");
+        if (!string.IsNullOrWhiteSpace(statusText))
+            parts.Add(statusText);
+        return string.Join("  •  ", parts);
+    }
+
+    private static IReadOnlyList<RailAlertSnapshot> BuildAlerts(NrccMessageDto[]? messages)
+    {
+        if (messages is null || messages.Length == 0)
+            return [];
+
+        return messages
+            .Select(BuildAlertSnapshot)
+            .Where(static alert => alert is not null)
+            .Cast<RailAlertSnapshot>()
+            .DistinctBy(static alert => alert.Message)
+            .OrderByDescending(static alert => alert.SeverityWeight)
+            .ToArray();
+    }
+
+    private static RailAlertSnapshot? BuildAlertSnapshot(NrccMessageDto message)
+    {
+        var stripped = StripHtml(message.XhtmlMessage);
+        if (string.IsNullOrWhiteSpace(stripped))
+            return null;
+
+        return new RailAlertSnapshot(
+            stripped,
+            GetSeverityWeight(message.Severity));
+    }
+
+    private static int GetSeverityWeight(string? severity)
+    {
+        return severity?.Trim().ToUpperInvariant() switch
+        {
+            "SEVERE" => 3,
+            "MAJOR" => 2,
+            "MINOR" => 1,
+            _ => 0
+        };
+    }
+
+    private static string StripHtml(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return string.Empty;
+
+        var decoded = WebUtility.HtmlDecode(value);
+        var stripped = HtmlTagRegex.Replace(decoded, " ");
+        return Regex.Replace(stripped, "\\s+", " ").Trim();
+    }
+
+    private static EndPointLocationDto? PickEndPoint(EndPointLocationDto[]? endpoints)
     {
         if (endpoints is null || endpoints.Length == 0)
             return null;
@@ -391,28 +932,37 @@ public class RailBoardScene : ISpecialScene
         return endpoints.FirstOrDefault(static endpoint => endpoint is not null);
     }
 
+    private static string BuildCallingPoints(ServiceLocationDto[]? locations)
+    {
+        if (locations is null || locations.Length == 0)
+            return string.Empty;
+
+        return string.Join(", ",
+            locations
+                .Select(static location => FormatStationDisplayName(location.Crs, location.LocationName))
+                .Where(static text => !string.IsNullOrWhiteSpace(text))
+                .Take(8));
+    }
+
     private static (string Text, Rgba32 Color) BuildStatus(
         ServiceItemDto service,
         DateTimeOffset? planned,
         DateTimeOffset? estimated)
     {
         if (service.IsCancelled)
-            return ("CAN", new Rgba32(255, 132, 126));
+            return ("CANCEL", CancelledColor);
 
         if (service.ServiceIsSuppressed)
-            return ("OFF", new Rgba32(255, 166, 108));
+            return ("SEE FRONT", WarningColor);
 
         if (planned.HasValue && estimated.HasValue)
         {
             var delayMinutes = (int)Math.Round((estimated.Value - planned.Value).TotalMinutes);
             if (delayMinutes > 0)
-                return ($"+{Math.Min(delayMinutes, 99):0}", new Rgba32(255, 206, 118));
+                return ($"+{Math.Min(delayMinutes, 99):0}", DelayedColor);
         }
 
-        if (!service.PlatformIsHidden && !string.IsNullOrWhiteSpace(service.Platform))
-            return ($"P{service.Platform!.Trim()}", new Rgba32(164, 238, 178));
-
-        return ("ON", new Rgba32(186, 232, 164));
+        return ("ON TIME", OnTimeColor);
     }
 
     private static DateTimeOffset? ParseBoardTimestamp(string? value)
@@ -443,6 +993,50 @@ public class RailBoardScene : ISpecialScene
         }
     }
 
+    private static string BoardTitle(BoardType boardType)
+    {
+        return boardType == BoardType.Departures ? "DEPARTURES" : "ARRIVALS";
+    }
+
+    private static string CompactStatus(string status)
+    {
+        return status switch
+        {
+            "ON TIME" => "ON TIME",
+            "CANCEL" => "CANCEL",
+            "SEE FRONT" => "SEE FRNT",
+            _ when status.Length > 8 => status[..8],
+            _ => status
+        };
+    }
+
+    private static string FormatStationDisplayName(string? crs, string? locationName)
+    {
+        if (!string.IsNullOrWhiteSpace(crs))
+        {
+            return crs.Trim().ToUpperInvariant() switch
+            {
+                "CBG" => "CAMBRIDGE",
+                "KGX" => "LONDON KX",
+                "LST" => "LIV ST",
+                "PBO" => "PETERBORO",
+                "SVG" => "STEVENAGE",
+                "FPK" => "FINSBURY PK",
+                _ => crs.Trim().ToUpperInvariant()
+            };
+        }
+
+        if (string.IsNullOrWhiteSpace(locationName))
+            return "---";
+
+        return locationName.Trim().ToUpperInvariant() switch
+        {
+            "LONDON KINGS CROSS" => "LONDON KX",
+            "LONDON LIVERPOOL STREET" => "LIV ST",
+            _ => locationName.Trim().ToUpperInvariant()
+        };
+    }
+
     private static string BuildLocationCode(string? locationName)
     {
         if (string.IsNullOrWhiteSpace(locationName))
@@ -461,6 +1055,35 @@ public class RailBoardScene : ISpecialScene
 
         var letters = new string(cleaned.Where(char.IsLetter).Take(3).ToArray()).ToUpperInvariant();
         return letters.Length == 0 ? "---" : letters;
+    }
+
+    private static IReadOnlyList<string> WrapText(string text, int maxCharactersPerLine, int maxLines)
+    {
+        var words = text.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var lines = new List<string>();
+        var current = string.Empty;
+
+        foreach (var word in words)
+        {
+            var candidate = string.IsNullOrEmpty(current) ? word : $"{current} {word}";
+            if (candidate.Length <= maxCharactersPerLine)
+            {
+                current = candidate;
+                continue;
+            }
+
+            if (!string.IsNullOrEmpty(current))
+                lines.Add(current);
+
+            current = word;
+            if (lines.Count >= maxLines)
+                break;
+        }
+
+        if (!string.IsNullOrEmpty(current) && lines.Count < maxLines)
+            lines.Add(current);
+
+        return lines;
     }
 
     private static void ApplyAuthentication(HttpRequestMessage request, RailBoardOptions railOptions)
@@ -485,7 +1108,7 @@ public class RailBoardScene : ISpecialScene
         throw new InvalidOperationException("Rail board credentials are not configured.");
     }
 
-    private static RailBoardSnapshot? TryGetCachedSnapshot()
+    private static RailSceneSnapshot? TryGetCachedSnapshot()
     {
         lock (CacheLock)
         {
@@ -507,7 +1130,7 @@ public class RailBoardScene : ISpecialScene
         }
     }
 
-    private static void UpdateCache(RailBoardSnapshot railSnapshot)
+    private static void UpdateCache(RailSceneSnapshot railSnapshot)
     {
         lock (CacheLock)
         {
@@ -516,47 +1139,80 @@ public class RailBoardScene : ISpecialScene
         }
     }
 
-    private void EnsurePanelBuffers()
+    public sealed record RailSceneSnapshot(
+        RailStationSnapshot Cambridge,
+        RailStationSnapshot KingsCross,
+        DateTimeOffset UpdatedAt);
+
+    public sealed record RailStationSnapshot(
+        string HeaderLabel,
+        string StationName,
+        IReadOnlyList<RailServiceSnapshot> Departures,
+        IReadOnlyList<RailServiceSnapshot> Arrivals,
+        IReadOnlyList<RailAlertSnapshot> Alerts,
+        DateTimeOffset UpdatedAt,
+        bool IsUnavailable)
     {
-        currentPanelBuffer ??= new Image<Rgba32>(Width, Height);
+        public string StationCode => HeaderLabel;
     }
 
-    private void DisposePanelBuffers()
-    {
-        currentPanelBuffer?.Dispose();
-        currentPanelBuffer = null;
-    }
-
-    private static void FillRect(Image<Rgba32> img, int x, int y, int width, int height, Rgba32 color)
-    {
-        for (var py = y; py < y + height; py++)
-        for (var px = x; px < x + width; px++)
-            if ((uint)px < Width && (uint)py < Height)
-                img[px, py] = color;
-    }
-
-    public sealed record RailBoardSnapshot(IReadOnlyList<RailBoardPanel> Panels, DateTimeOffset GeneratedAtLocal);
-
-    public sealed record RailBoardPanel(
-        string BoardLabel,
-        IReadOnlyList<RailStationSection> Sections);
-
-    public sealed record RailStationSection(
-        string StationLabel,
-        IReadOnlyList<RailServiceRow> Services,
-        bool IsUnavailable);
-
-    public sealed record RailServiceRow(
-        string TimeText,
+    public sealed record RailServiceSnapshot(
+        string ScheduledText,
+        string LocationText,
         string LocationCode,
+        string PlatformText,
         string StatusText,
         Rgba32 StatusColor,
+        string OperatorText,
+        string CallingText,
+        string DetailTicker,
         DateTimeOffset SortTime);
 
-    private sealed record RailStationPanels(
-        RailStationSection Departures,
-        RailStationSection Arrivals,
-        DateTimeOffset GeneratedAtLocal);
+    public sealed record RailAlertSnapshot(string Message, int SeverityWeight);
+
+    private abstract record RailPage(TimeSpan Duration);
+
+    private sealed record BoardPage(
+        string Header,
+        string StationName,
+        BoardType BoardType,
+        DateTimeOffset UpdatedAt,
+        IReadOnlyList<RailServiceSnapshot> Rows,
+        string TickerText,
+        TimeSpan Duration)
+        : RailPage(Duration);
+
+    private sealed record ServiceDetailPage(
+        string Header,
+        string TimeText,
+        string LocationText,
+        string PlatformText,
+        string StatusText,
+        Rgba32 StatusColor,
+        string OperatorText,
+        string TickerText,
+        TimeSpan Duration)
+        : RailPage(Duration);
+
+    private sealed record JourneyPage(
+        string Header,
+        string Subtitle,
+        string TimeText,
+        string PlatformText,
+        string LocationText,
+        string StatusText,
+        Rgba32 StatusColor,
+        string TickerText,
+        TimeSpan Duration)
+        : RailPage(Duration);
+
+    private sealed record AlertPage(
+        string Header,
+        string StationText,
+        IReadOnlyList<string> Lines,
+        string TickerText,
+        TimeSpan Duration)
+        : RailPage(Duration);
 
     private sealed record RailStationRequest(string Crs, string StationLabel);
 
@@ -650,7 +1306,7 @@ public class RailBoardScene : ISpecialScene
         }
     }
 
-    private enum RailPanelKind
+    private enum BoardType
     {
         Departures,
         Arrivals
@@ -662,21 +1318,36 @@ public sealed record StationBoardDto(
     string? Crs,
     DateTimeOffset? GeneratedAt,
     bool ServicesAreUnavailable,
-    ServiceItemDto[]? TrainServices);
+    ServiceItemDto[]? TrainServices,
+    NrccMessageDto[]? NrccMessages);
 
 public sealed record ServiceItemDto(
     EndPointLocationDto[]? Origin,
     EndPointLocationDto[]? Destination,
+    ServiceLocationDto[]? PreviousLocations,
+    ServiceLocationDto[]? SubsequentLocations,
     string? Sta,
+    string? Ata,
     string? Eta,
     string? Std,
+    string? Atd,
     string? Etd,
     string? Platform,
+    string? Operator,
     bool PlatformIsHidden,
     [property: JsonPropertyName("serviceIsSupressed")] bool ServiceIsSuppressed,
     bool IsCancelled);
+
+public sealed record ServiceLocationDto(
+    string? LocationName,
+    string? Crs);
 
 public sealed record EndPointLocationDto(
     string? LocationName,
     string? Crs,
     string? Via);
+
+public sealed record NrccMessageDto(
+    string? Category,
+    string? Severity,
+    [property: JsonPropertyName("xhtmlMessage")] string? XhtmlMessage);

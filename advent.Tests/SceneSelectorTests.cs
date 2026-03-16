@@ -320,6 +320,35 @@ public class SceneSelectorTests
     }
 
     [Fact]
+    public void TryGetSceneByName_UsesExtendedDuration_ForRailBoard()
+    {
+        var imageDirectory = CreateImageDirectory();
+        var originalEnabled = Environment.GetEnvironmentVariable("ADVENT_RAIL_ENABLED");
+        var originalKey = Environment.GetEnvironmentVariable("ADVENT_RAIL_LDB_CONSUMER_KEY");
+
+        try
+        {
+            Environment.SetEnvironmentVariable("ADVENT_RAIL_ENABLED", "true");
+            Environment.SetEnvironmentVariable("ADVENT_RAIL_LDB_CONSUMER_KEY", "test-key");
+            var sut = new SceneSelector(11, imageSceneDirectory: imageDirectory);
+
+            var found = sut.TryGetSceneByName("UK Rail Board", out var scene);
+
+            Assert.True(found);
+            var field = scene.GetType().GetField("maxDuration", BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.NotNull(field);
+            Assert.Equal(RailBoardScene.MaxSceneDuration, Assert.IsType<TimeSpan>(field!.GetValue(scene)));
+            Assert.IsType<RailBoardScene>(UnwrapTimedScene(scene));
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("ADVENT_RAIL_ENABLED", originalEnabled);
+            Environment.SetEnvironmentVariable("ADVENT_RAIL_LDB_CONSUMER_KEY", originalKey);
+            Directory.Delete(imageDirectory, true);
+        }
+    }
+
+    [Fact]
     public void AllSceneNames_ContainsLoadedScenes()
     {
         var imageDirectory = CreateImageDirectory();
