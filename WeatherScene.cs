@@ -37,10 +37,7 @@ public class WeatherScene : ISpecialScene
     private static readonly double Latitude = ReadCoordinate("ADVENT_WEATHER_LATITUDE", 52.2053);
     private static readonly double Longitude = ReadCoordinate("ADVENT_WEATHER_LONGITUDE", 0.1218);
 
-    private static readonly Font HeaderFont = AppFonts.Create(8f);
-    private static readonly Font MetricFont = AppFonts.Create(6f);
     private static readonly Font HeroTempFont = AppFonts.Create(13f);
-    private static readonly Font DetailFont = AppFonts.Create(6.5f);
     private static readonly DrawingOptions CrispDrawingOptions = new()
     {
         GraphicsOptions = new GraphicsOptions
@@ -133,8 +130,8 @@ public class WeatherScene : ISpecialScene
         DrawHeader(img, "WEATHER", "LIVE");
         DrawWeatherIcon(img, 4, 7, 19, 2, true);
 
-        DrawCenteredText(img, "UPDATING", DetailFont, PrimaryTextColor, 42, 12);
-        DrawCenteredText(img, "FORECAST", DetailFont, SecondaryTextColor, 42, 19);
+        DrawPixelCenteredText(img, "UPDATING", PrimaryTextColor, 43, 12);
+        DrawPixelCenteredText(img, "FORECAST", SecondaryTextColor, 43, 19);
 
         var phase = (int)(elapsedThisScene.TotalMilliseconds / 200) % 3;
         for (var i = 0; i < 3; i++)
@@ -214,15 +211,14 @@ public class WeatherScene : ISpecialScene
         string metric)
     {
         FillRect(img, 0, 0, Width, 8, BackgroundColor);
-        FillRect(img, 0, 8, Width, 1, DividerColor);
+        FillRect(img, 0, 7, Width, 1, DividerColor);
 
-        DrawText(img, title, HeaderFont, HeaderColor, 3, -1);
+        DrawPixelText(img, title, HeaderColor, 2, 1);
 
-        var metricSize = TextMeasurer.MeasureSize(metric, new TextOptions(MetricFont));
-        var badgeWidth = (int)MathF.Ceiling(metricSize.Width) + 6;
+        var badgeWidth = PixelText.MeasureWidth(metric) + 4;
         var badgeX = Width - badgeWidth - 3;
-        FillRect(img, badgeX, 1, badgeWidth, 6, DividerColor);
-        DrawText(img, metric, MetricFont, PrimaryTextColor, badgeX + 3, 0);
+        FillRect(img, badgeX, 1, badgeWidth, 5, DividerColor);
+        DrawPixelText(img, metric, PrimaryTextColor, badgeX + 2, 1);
     }
 
     private static void DrawHeroTemperature(Image<Rgba32> img, string text)
@@ -236,36 +232,31 @@ public class WeatherScene : ISpecialScene
 
     private static void DrawConditionRow(Image<Rgba32> img, string condition)
     {
-        const int rowY = 22;
+        const int rowY = 20;
         FillRect(img, 0, rowY, Width, 1, DividerColor);
-        DrawCenteredText(img, condition, DetailFont, PrimaryTextColor, Width / 2, rowY + 1);
+        DrawPixelCenteredText(img, condition, PrimaryTextColor, Width / 2, rowY + 2);
     }
 
     private static void DrawTemperatureSummary(Image<Rgba32> img, float highTempC, float lowTempC)
     {
-        const int rowY = 27;
+        const int rowY = 25;
         FillRect(img, 0, rowY - 1, Width, 1, DividerColor);
 
         var highText = $"HI {Math.Round(highTempC, MidpointRounding.AwayFromZero):0}C";
         var lowText = $"LO {Math.Round(lowTempC, MidpointRounding.AwayFromZero):0}C";
 
-        DrawText(img, highText, DetailFont, HighTextColor, 3, rowY - 1);
-
-        var lowSize = TextMeasurer.MeasureSize(lowText, new TextOptions(DetailFont));
-        var lowX = Width - (int)MathF.Ceiling(lowSize.Width) - 3;
-        DrawText(img, lowText, DetailFont, LowTextColor, lowX, rowY - 1);
+        DrawPixelText(img, highText, HighTextColor, 3, rowY + 1);
+        DrawPixelRightAlignedText(img, lowText, LowTextColor, Width - 3, rowY + 1);
     }
 
-    private static void DrawCenteredText(Image<Rgba32> img, string text, Font font, Rgba32 color, int centerX, int y)
+    private static void DrawPixelCenteredText(Image<Rgba32> img, string text, Rgba32 color, int centerX, int y)
     {
-        var size = TextMeasurer.MeasureSize(text, new TextOptions(font));
-        var left = Math.Clamp(centerX - size.Width / 2f, 2f, Width - size.Width - 2f);
-        DrawText(img, text, font, color, (int)MathF.Round(left), y);
+        PixelText.DrawCentered(img, text, centerX, y, color);
     }
 
     private static void DrawPageIndicators(Image<Rgba32> img, int panelIndex, float transitionProgress)
     {
-        var y = Height - 2;
+        var y = Height - 1;
         for (var i = 0; i < PanelCount; i++)
         {
             var intensity = i == panelIndex ? 1f : 0.25f;
@@ -277,6 +268,16 @@ public class WeatherScene : ISpecialScene
             var color = Scale(HeaderColor, intensity);
             FillRect(img, 24 + i * 6, y, 4, 1, color);
         }
+    }
+
+    private static void DrawPixelText(Image<Rgba32> img, string text, Rgba32 color, int x, int y)
+    {
+        PixelText.Draw(img, text, x, y, color);
+    }
+
+    private static void DrawPixelRightAlignedText(Image<Rgba32> img, string text, Rgba32 color, int rightX, int y)
+    {
+        PixelText.DrawRightAligned(img, text, rightX, y, color);
     }
 
     private static void DrawText(Image<Rgba32> img, string text, Font font, Rgba32 color, int x, int y)

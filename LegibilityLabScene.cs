@@ -1,11 +1,7 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
-using SixLabors.Fonts;
 using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.Drawing.Processing;
 using SixLabors.ImageSharp.PixelFormats;
-using SixLabors.ImageSharp.Processing;
 
 namespace advent;
 
@@ -16,24 +12,15 @@ public sealed class LegibilityLabScene : ISpecialScene
     private const int Width = 64;
     private const int Height = 32;
 
-    private static readonly TimeSpan SamplePageDuration = TimeSpan.FromSeconds(6);
-    private static readonly TimeSpan LayoutPageDuration = TimeSpan.FromSeconds(8);
+    private static readonly TimeSpan SamplePageDuration = TimeSpan.FromSeconds(8);
 
-    private static readonly DrawingOptions CrispDrawingOptions = new()
-    {
-        GraphicsOptions = new GraphicsOptions
-        {
-            Antialias = false
-        }
-    };
-
-    private static readonly Font HeaderFont = AppFonts.Create(8f);
-    private static readonly Font FooterFont = AppFonts.Create(5.25f);
     private static readonly Rgba32 BackgroundColor = new(0, 0, 0);
     private static readonly Rgba32 DividerColor = new(30, 18, 8);
     private static readonly Rgba32 PrimaryAmber = new(255, 186, 82);
     private static readonly Rgba32 DimAmber = new(156, 98, 34);
     private static readonly Rgba32 SoftAmber = new(214, 150, 62);
+    private static readonly Rgba32 AlertRed = new(255, 100, 84);
+    private static readonly Rgba32 CoolBlue = new(132, 186, 255);
 
     private readonly List<LabPage> pages = [];
     private TimeSpan elapsedOnPage;
@@ -89,8 +76,8 @@ public sealed class LegibilityLabScene : ISpecialScene
         Clear(img);
         if (pages.Count == 0)
         {
-            DrawHeader(img, "LEGIBILITY", "0/0");
-            DrawCenteredText(img, "NO PAGES", FooterFont, PrimaryAmber, Width / 2, 14);
+            DrawHeader(img, "LEG LAB", "0/0");
+            PixelText.DrawCentered(img, "NO PAGES", Width / 2, 13, PrimaryAmber);
             return;
         }
 
@@ -102,194 +89,90 @@ public sealed class LegibilityLabScene : ISpecialScene
 
     private static IReadOnlyList<LabPage> BuildPages()
     {
-        var defaultFamily = AppFonts.Create(6f).Family;
-        var pages = new List<LabPage>
-        {
-            CreateSizePage(defaultFamily, 5.5f),
-            CreateSizePage(defaultFamily, 6.0f),
-            CreateSizePage(defaultFamily, 6.5f),
-            CreateLayoutPage(defaultFamily, oneLine: true),
-            CreateLayoutPage(defaultFamily, oneLine: false),
-            CreateColorPage(defaultFamily, "AMBER 75", Scale(PrimaryAmber, 0.75f)),
-            CreateColorPage(defaultFamily, "AMBER 100", PrimaryAmber)
-        };
-
-        foreach (var family in ResolveComparisonFamilies(defaultFamily).Take(2))
-            pages.Add(CreateFontPage(family));
-
-        return pages;
+        return
+        [
+            new LabPage("BOARD", "2 ROW", SamplePageDuration, DrawTwoRowBoard),
+            new LabPage("BOARD", "3 ROW", SamplePageDuration, DrawThreeRowBoard),
+            new LabPage("DETAIL", "STATUS", SamplePageDuration, DrawDetailCard),
+            new LabPage("ALERT", "WRAP", SamplePageDuration, DrawAlertCard),
+            new LabPage("WX", "LABELS", SamplePageDuration, DrawWeatherCard)
+        ];
     }
 
-    private static IEnumerable<FontFamily> ResolveComparisonFamilies(FontFamily defaultFamily)
+    private static void DrawTwoRowBoard(Image<Rgba32> img)
     {
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-        {
-            defaultFamily.Name
-        };
-
-        foreach (var familyName in new[]
-                 {
-                     "DejaVu Sans",
-                     "Liberation Sans",
-                     "Noto Sans",
-                     "Cantarell",
-                     "Arial",
-                     "Helvetica"
-                 })
-        {
-            FontFamily family;
-            try
-            {
-                family = SystemFonts.Get(familyName);
-            }
-            catch (FontFamilyNotFoundException)
-            {
-                continue;
-            }
-
-            if (seen.Add(family.Name))
-                yield return family;
-        }
+        DrawBoardRow(img, 10, "07:25", "KGX", "P4", "ON TIME", PrimaryAmber, SoftAmber);
+        FillRect(img, 1, 19, Width - 2, 1, DividerColor);
+        DrawBoardRow(img, 20, "07:31", "LST", "P2", "+5", PrimaryAmber, SoftAmber);
     }
 
-    private static LabPage CreateSizePage(FontFamily family, float bodySize)
+    private static void DrawThreeRowBoard(Image<Rgba32> img)
     {
-        var label = bodySize.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture);
-        return new LabPage(
-            $"BODY {label}",
-            $"{ShortFamilyName(family.Name)} 2L",
-            SamplePageDuration,
-            img => DrawTwoLineBoard(img, family, bodySize, PrimaryAmber));
-    }
-
-    private static LabPage CreateLayoutPage(FontFamily family, bool oneLine)
-    {
-        return new LabPage(
-            oneLine ? "LAYOUT 1" : "LAYOUT 2",
-            oneLine ? "1-LINE" : "2-LINE",
-            LayoutPageDuration,
-            img =>
-            {
-                if (oneLine)
-                    DrawOneLineBoard(img, family, 5.5f, PrimaryAmber);
-                else
-                    DrawTwoLineBoard(img, family, 6.0f, PrimaryAmber);
-            });
-    }
-
-    private static LabPage CreateColorPage(FontFamily family, string title, Rgba32 primaryColor)
-    {
-        return new LabPage(
-            title,
-            $"{ShortFamilyName(family.Name)} 6.0",
-            SamplePageDuration,
-            img => DrawTwoLineBoard(img, family, 6.0f, primaryColor));
-    }
-
-    private static LabPage CreateFontPage(FontFamily family)
-    {
-        return new LabPage(
-            $"FONT {ShortFamilyName(family.Name)}",
-            "6.0 2L",
-            SamplePageDuration,
-            img => DrawTwoLineBoard(img, family, 6.0f, PrimaryAmber));
-    }
-
-    private static void DrawTwoLineBoard(Image<Rgba32> img, FontFamily family, float bodySize, Rgba32 primaryColor)
-    {
-        var rowFont = new Font(family, bodySize);
-        var detailFont = new Font(family, Math.Max(5f, bodySize - 1f));
-
-        DrawServiceBlock(img, rowFont, detailFont, primaryColor, 10, "07:25", "KGX", "P4", "ON TIME");
-        FillRect(img, 1, 18, Width - 2, 1, DividerColor);
-        DrawServiceBlock(img, rowFont, detailFont, primaryColor, 20, "07:31", "LIV ST", "P2", "+5 DELAY");
-    }
-
-    private static void DrawServiceBlock(
-        Image<Rgba32> img,
-        Font rowFont,
-        Font detailFont,
-        Rgba32 primaryColor,
-        int topY,
-        string time,
-        string destination,
-        string platform,
-        string status)
-    {
-        DrawText(img, time, rowFont, primaryColor, 2, topY);
-        DrawText(img, FitText(destination, rowFont, 22), rowFont, primaryColor, 19, topY);
-
-        var platformSize = TextMeasurer.MeasureSize(platform, new TextOptions(rowFont));
-        var platformX = Width - (int)MathF.Ceiling(platformSize.Width) - 2;
-        DrawText(img, platform, rowFont, primaryColor, platformX, topY);
-
-        DrawText(img, status, detailFont, SoftAmber, 19, topY + 6);
-    }
-
-    private static void DrawOneLineBoard(Image<Rgba32> img, FontFamily family, float bodySize, Rgba32 primaryColor)
-    {
-        var rowFont = new Font(family, bodySize);
-        DrawOneLineRow(img, rowFont, primaryColor, 10, "07:25", "KGX", "P4", "ON");
+        DrawDenseRow(img, 10, "07:25", "KGX", "P4");
         FillRect(img, 1, 15, Width - 2, 1, DividerColor);
-        DrawOneLineRow(img, rowFont, primaryColor, 17, "07:31", "LIV", "P2", "+5");
-        FillRect(img, 1, 22, Width - 2, 1, DividerColor);
-        DrawOneLineRow(img, rowFont, primaryColor, 24, "08:02", "PBO", "P1", "CAN");
+        DrawDenseRow(img, 16, "07:31", "LST", "+5");
+        FillRect(img, 1, 21, Width - 2, 1, DividerColor);
+        DrawDenseRow(img, 22, "08:02", "PBO", "CAN");
     }
 
-    private static void DrawOneLineRow(
+    private static void DrawDetailCard(Image<Rgba32> img)
+    {
+        PixelText.Draw(img, "07:25", 1, 10, PrimaryAmber);
+        PixelText.DrawRightAligned(img, "P4", Width - 2, 10, PrimaryAmber);
+        PixelText.DrawCentered(img, "LONDON KX", Width / 2, 16, PrimaryAmber);
+        PixelText.Draw(img, "ON TIME", 1, 22, PrimaryAmber);
+        PixelText.DrawRightAligned(img, "GN", Width - 2, 22, SoftAmber);
+    }
+
+    private static void DrawAlertCard(Image<Rgba32> img)
+    {
+        PixelText.DrawCentered(img, "SIGNAL FAIL", Width / 2, 10, AlertRed);
+        PixelText.DrawCentered(img, "DELAYS ON", Width / 2, 16, PrimaryAmber);
+        PixelText.DrawCentered(img, "CAM ROUTE", Width / 2, 22, PrimaryAmber);
+    }
+
+    private static void DrawWeatherCard(Image<Rgba32> img)
+    {
+        DrawSun(img, 4, 10, 10, CoolBlue);
+        PixelText.Draw(img, "WED", 2, 1 + PixelText.Height + 4, PrimaryAmber);
+        PixelText.DrawRightAligned(img, "NOW", Width - 2, 1 + PixelText.Height + 4, PrimaryAmber);
+        PixelText.DrawCentered(img, "CLEAR", 43, 12, PrimaryAmber);
+        PixelText.Draw(img, "HI 16C", 25, 18, PrimaryAmber);
+        PixelText.Draw(img, "LO 09C", 25, 24, CoolBlue);
+    }
+
+    private static void DrawBoardRow(
         Image<Rgba32> img,
-        Font rowFont,
-        Rgba32 primaryColor,
         int y,
         string time,
         string destination,
         string platform,
-        string status)
+        string status,
+        Rgba32 primaryColor,
+        Rgba32 detailColor)
     {
-        DrawText(img, time, rowFont, primaryColor, 2, y);
-        DrawText(img, destination, rowFont, primaryColor, 21, y);
-        DrawText(img, platform, rowFont, primaryColor, 41, y);
-        DrawText(img, status, rowFont, primaryColor, 53, y);
+        PixelText.Draw(img, time, 1, y, primaryColor);
+        PixelText.Draw(img, destination, 25, y, primaryColor);
+        PixelText.DrawRightAligned(img, platform, Width - 2, y, primaryColor);
+        PixelText.Draw(img, status, 25, y + 5, detailColor);
     }
 
-    private static string FitText(string text, Font font, int maxWidth)
+    private static void DrawDenseRow(Image<Rgba32> img, int y, string time, string destination, string right)
     {
-        if (TextMeasurer.MeasureSize(text, new TextOptions(font)).Width <= maxWidth)
-            return text;
-
-        var trimmed = text;
-        while (trimmed.Length > 3 &&
-               TextMeasurer.MeasureSize(trimmed, new TextOptions(font)).Width > maxWidth)
-            trimmed = trimmed[..^1];
-
-        return trimmed;
-    }
-
-    private static string ShortFamilyName(string familyName)
-    {
-        return familyName.Trim().ToUpperInvariant() switch
-        {
-            "DEJAVU SANS" => "DEJAVU",
-            "LIBERATION SANS" => "LIB SANS",
-            "NOTO SANS" => "NOTO",
-            "CANTARELL" => "CANTARELL",
-            "ARIAL" => "ARIAL",
-            "HELVETICA" => "HELV",
-            _ => familyName.Trim().ToUpperInvariant()
-        };
+        PixelText.Draw(img, time, 1, y, PrimaryAmber);
+        PixelText.Draw(img, destination, 25, y, PrimaryAmber);
+        PixelText.DrawRightAligned(img, right, Width - 2, y, SoftAmber);
     }
 
     private static void DrawHeader(Image<Rgba32> img, string title, string badge)
     {
-        FillRect(img, 0, 0, Width, 8, BackgroundColor);
-        FillRect(img, 0, 8, Width, 1, DividerColor);
-        DrawText(img, title, HeaderFont, PrimaryAmber, 2, -1);
+        FillRect(img, 0, 7, Width, 1, DividerColor);
+        PixelText.Draw(img, title, 2, 1, PrimaryAmber);
 
-        var badgeSize = TextMeasurer.MeasureSize(badge, new TextOptions(FooterFont));
-        var badgeWidth = (int)MathF.Ceiling(badgeSize.Width) + 4;
+        var badgeWidth = PixelText.MeasureWidth(badge) + 4;
         var badgeX = Width - badgeWidth - 2;
-        FillRect(img, badgeX, 1, badgeWidth, 5, DividerColor);
-        DrawText(img, badge, FooterFont, PrimaryAmber, badgeX + 2, 0);
+        FillRect(img, badgeX, 1, badgeWidth, PixelText.Height, DividerColor);
+        PixelText.Draw(img, badge, badgeX + 2, 1, PrimaryAmber);
     }
 
     private void DrawPageIndicators(Image<Rgba32> img)
@@ -302,34 +185,26 @@ public sealed class LegibilityLabScene : ISpecialScene
         for (var i = 0; i < pages.Count; i++)
         {
             var color = i == pageIndex ? PrimaryAmber : DimAmber;
-            FillRect(img, startX + i * 4, Height - 2, 3, 1, color);
+            FillRect(img, startX + i * 4, Height - 1, 3, 1, color);
         }
     }
 
-    private static void DrawCenteredText(Image<Rgba32> img, string text, Font font, Rgba32 color, int centerX, int y)
+    private static void DrawSun(Image<Rgba32> img, int x, int y, int size, Rgba32 color)
     {
-        var size = TextMeasurer.MeasureSize(text, new TextOptions(font));
-        var left = Math.Clamp(centerX - size.Width / 2f, 2f, Width - size.Width - 2f);
-        DrawText(img, text, font, color, (int)MathF.Round(left), y);
-    }
+        var centerX = x + size / 2;
+        var centerY = y + size / 2;
 
-    private static void DrawText(Image<Rgba32> img, string text, Font font, Rgba32 color, int x, int y)
-    {
-        img.Mutate(ctx => ctx.DrawText(CrispDrawingOptions, text, font, color, new PointF(x, y)));
+        FillRect(img, centerX - 1, y, 2, 2, color);
+        FillRect(img, centerX - 1, y + size - 2, 2, 2, color);
+        FillRect(img, x, centerY - 1, 2, 2, color);
+        FillRect(img, x + size - 2, centerY - 1, 2, 2, color);
+
+        FillRect(img, centerX - 2, centerY - 2, 5, 5, color);
     }
 
     private static void Clear(Image<Rgba32> img)
     {
         FillRect(img, 0, 0, Width, Height, BackgroundColor);
-    }
-
-    private static Rgba32 Scale(Rgba32 color, float factor)
-    {
-        var clamped = Math.Clamp(factor, 0f, 1f);
-        return new Rgba32(
-            (byte)Math.Clamp((int)Math.Round(color.R * clamped), 0, 255),
-            (byte)Math.Clamp((int)Math.Round(color.G * clamped), 0, 255),
-            (byte)Math.Clamp((int)Math.Round(color.B * clamped), 0, 255));
     }
 
     private static void FillRect(Image<Rgba32> img, int x, int y, int width, int height, Rgba32 color)
