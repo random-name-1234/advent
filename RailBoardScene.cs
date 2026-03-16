@@ -56,16 +56,23 @@ public sealed class RailBoardScene : ISpecialScene
     private static readonly Font WideSmallFont = AppFonts.Create(6f);
     private static readonly Font CompactHeaderFont = AppFonts.Create(6.25f);
     private static readonly Font CompactRowFont = AppFonts.Create(5.75f);
+    private static readonly DrawingOptions CrispDrawingOptions = new()
+    {
+        GraphicsOptions = new GraphicsOptions
+        {
+            Antialias = false
+        }
+    };
 
     private static readonly Rgba32 BackgroundColor = new(0, 0, 0);
-    private static readonly Rgba32 HeaderColor = new(255, 194, 92);
-    private static readonly Rgba32 PrimaryTextColor = new(242, 225, 180);
-    private static readonly Rgba32 SecondaryTextColor = new(156, 138, 108);
-    private static readonly Rgba32 DividerColor = new(48, 36, 18);
-    private static readonly Rgba32 OnTimeColor = new(210, 188, 144);
-    private static readonly Rgba32 DelayedColor = new(255, 184, 64);
+    private static readonly Rgba32 HeaderColor = new(255, 176, 64);
+    private static readonly Rgba32 PrimaryTextColor = new(255, 214, 128);
+    private static readonly Rgba32 SecondaryTextColor = new(122, 90, 44);
+    private static readonly Rgba32 DividerColor = new(32, 24, 12);
+    private static readonly Rgba32 OnTimeColor = new(230, 192, 112);
+    private static readonly Rgba32 DelayedColor = new(255, 152, 40);
     private static readonly Rgba32 CancelledColor = new(255, 96, 84);
-    private static readonly Rgba32 WarningColor = new(168, 212, 255);
+    private static readonly Rgba32 WarningColor = new(255, 214, 128);
     private static readonly Rgba32 AlertColor = new(255, 84, 72);
 
     private readonly RailBoardOptions? options;
@@ -494,23 +501,21 @@ public sealed class RailBoardScene : ISpecialScene
     private static void DrawCompactBoardPage(Image<Rgba32> img, BoardPage page, TimeSpan elapsedOnPage)
     {
         DrawCompactHeader(img, CompactBoardTitle(page), page.UpdatedAt.ToString("HH:mm", CultureInfo.InvariantCulture), HeaderColor);
-        var rowTop = 8;
-        var rowHeight = 10;
+        var rowTop = 9;
+        var rowHeight = 11;
         var rows = page.Rows.Take(CompactBoardRows).ToArray();
         for (var i = 0; i < rows.Length; i++)
         {
             var row = rows[i];
             var y = rowTop + i * rowHeight;
             DrawText(img, row.ScheduledText, CompactRowFont, HeaderColor, 1, y);
-            DrawScrollingField(img, row.LocationText, CompactRowFont, PrimaryTextColor, 18, y, 45, 7, elapsedOnPage, i);
-            DrawText(img, CompactStatus(row.StatusText), CompactRowFont, row.StatusColor, 18, y + 5);
-            DrawRightAlignedText(img, CompactPlatform(row.PlatformText), CompactRowFont, WarningColor, img.Width - 2, y + 5);
+            DrawText(img, FitCompactBoardLocation(row.LocationText), CompactRowFont, PrimaryTextColor, 18, y);
+            DrawRightAlignedText(img, CompactPlatform(row.PlatformText), CompactRowFont, PrimaryTextColor, img.Width - 2, y);
+            DrawText(img, CompactBoardStatus(row.StatusText), CompactRowFont, row.StatusColor, 18, y + 5);
 
             if (i < rows.Length - 1)
                 FillRect(img, 1, y + rowHeight - 1, img.Width - 2, 1, DividerColor);
         }
-
-        DrawCompactFooter(img, BuildCompactBoardFooter(page), elapsedOnPage, 4);
     }
 
     private static void DrawCompactDetailPage(Image<Rgba32> img, ServiceDetailPage page, TimeSpan elapsedOnPage)
@@ -519,7 +524,7 @@ public sealed class RailBoardScene : ISpecialScene
         DrawScrollingField(img, page.LocationText, CompactHeaderFont, PrimaryTextColor, 1, 10, img.Width - 2, 8,
             elapsedOnPage, 0);
         DrawText(img, CompactStatus(page.StatusText), CompactHeaderFont, page.StatusColor, 1, 18);
-        DrawRightAlignedText(img, CompactPlatform(page.PlatformText), CompactHeaderFont, WarningColor, img.Width - 2, 18);
+        DrawRightAlignedText(img, CompactPlatform(page.PlatformText), CompactHeaderFont, PrimaryTextColor, img.Width - 2, 18);
         DrawCompactFooter(img, BuildCompactDetailFooter(page), elapsedOnPage, 1);
     }
 
@@ -528,19 +533,21 @@ public sealed class RailBoardScene : ISpecialScene
         DrawCompactHeader(img, page.Header, page.TimeText, HeaderColor);
         DrawText(img, page.Subtitle, CompactRowFont, SecondaryTextColor, 1, 10);
         DrawText(img, CompactStatus(page.StatusText), CompactHeaderFont, page.StatusColor, 1, 18);
-        DrawRightAlignedText(img, CompactPlatform(page.PlatformText), CompactHeaderFont, WarningColor, img.Width - 2, 18);
+        DrawRightAlignedText(img, CompactPlatform(page.PlatformText), CompactHeaderFont, PrimaryTextColor, img.Width - 2, 18);
         DrawCompactFooter(img, page.TickerText, elapsedOnPage, 0);
     }
 
     private static void DrawCompactAlertPage(Image<Rgba32> img, AlertPage page, TimeSpan elapsedOnPage)
     {
         DrawCompactHeader(img, page.Header, page.StationText, AlertColor);
-        var lines = WrapText(page.TickerText, 16, 2);
+        var lines = WrapText(page.TickerText, 14, 2);
         if (lines.Count > 0)
             DrawText(img, lines[0], CompactHeaderFont, PrimaryTextColor, 1, 10);
         if (lines.Count > 1)
             DrawText(img, lines[1], CompactHeaderFont, PrimaryTextColor, 1, 18);
-        DrawCompactFooter(img, page.TickerText, elapsedOnPage, 0);
+
+        if (NeedsCompactFooter(page.TickerText, 14, 2))
+            DrawCompactFooter(img, page.TickerText, elapsedOnPage, 0);
     }
 
     private static void DrawFallbackPage(Image<Rgba32> img, string title, string line1, string line2)
@@ -615,14 +622,17 @@ public sealed class RailBoardScene : ISpecialScene
 
     private static string BuildCompactDetailFooter(ServiceDetailPage page)
     {
-        var platform = CompactPlatform(page.PlatformText);
         var parts = new List<string>();
-        if (!string.IsNullOrWhiteSpace(platform))
-            parts.Add(platform);
         if (!string.IsNullOrWhiteSpace(page.OperatorText))
-            parts.Add(page.OperatorText.ToUpperInvariant());
-        if (!string.IsNullOrWhiteSpace(page.TickerText))
+            parts.Add(CompactOperatorText(page.OperatorText));
+
+        var callsText = ExtractCallsText(page.TickerText);
+        if (!string.IsNullOrWhiteSpace(callsText))
+            parts.Add(callsText);
+
+        if (parts.Count == 0 && !string.IsNullOrWhiteSpace(page.TickerText))
             parts.Add(page.TickerText);
+
         return string.Join("  •  ", parts);
     }
 
@@ -646,9 +656,80 @@ public sealed class RailBoardScene : ISpecialScene
         return platformText.Trim().ToUpperInvariant();
     }
 
+    private static string CompactBoardStatus(string status)
+    {
+        return status switch
+        {
+            "ON TIME" => "ON",
+            "CANCEL" => "CAN",
+            "SEE FRONT" => "SEE",
+            _ when status.Length > 8 => status[..8],
+            _ => status
+        };
+    }
+
+    private static string FitCompactBoardLocation(string locationText)
+    {
+        var normalized = CompactBoardLocation(locationText);
+        if (TextMeasurer.MeasureSize(normalized, new TextOptions(CompactRowFont)).Width <= 31)
+            return normalized;
+
+        var code = BuildLocationCode(locationText);
+        if (TextMeasurer.MeasureSize(code, new TextOptions(CompactRowFont)).Width <= 31)
+            return code;
+
+        return normalized.Length <= 8 ? normalized : normalized[..8];
+    }
+
+    private static string CompactBoardLocation(string locationText)
+    {
+        return locationText.Trim().ToUpperInvariant() switch
+        {
+            "CAMBRIDGE" => "CAMBRIDGE",
+            "LONDON KX" => "LON KX",
+            "LONDON KINGS CROSS" => "LON KX",
+            "LIV ST" => "LIV ST",
+            "LONDON LIVERPOOL STREET" => "LIV ST",
+            "PETERBORO" => "PETERBRO",
+            "PETERBOROUGH" => "PETERBRO",
+            "FINSBURY PK" => "FPK",
+            _ => locationText.Trim().ToUpperInvariant()
+        };
+    }
+
+    private static string CompactOperatorText(string operatorText)
+    {
+        return operatorText.Trim().ToUpperInvariant() switch
+        {
+            "GREAT NORTHERN" => "GN",
+            "GREATER ANGLIA" => "GA",
+            "THAMESLINK" => "TL",
+            "LNER" => "LNER",
+            _ => operatorText.Trim().ToUpperInvariant()
+        };
+    }
+
+    private static string ExtractCallsText(string tickerText)
+    {
+        if (string.IsNullOrWhiteSpace(tickerText))
+            return string.Empty;
+
+        var callsIndex = tickerText.IndexOf("CALLS ", StringComparison.OrdinalIgnoreCase);
+        return callsIndex >= 0 ? tickerText[callsIndex..].ToUpperInvariant() : string.Empty;
+    }
+
+    private static bool NeedsCompactFooter(string text, int maxCharactersPerLine, int maxLines)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return false;
+
+        var wrapped = WrapText(text, maxCharactersPerLine, maxLines + 1);
+        return wrapped.Count > maxLines;
+    }
+
     private static void DrawText(Image<Rgba32> img, string text, Font font, Rgba32 color, int x, int y)
     {
-        img.Mutate(ctx => ctx.DrawText(text, font, color, new PointF(x, y)));
+        img.Mutate(ctx => ctx.DrawText(CrispDrawingOptions, text, font, color, new PointF(x, y)));
     }
 
     private static void DrawScrollingField(
@@ -676,14 +757,14 @@ public sealed class RailBoardScene : ISpecialScene
         using var field = new Image<Rgba32>(width, height);
         var gap = 18f;
         var cycleWidth = size.Width + gap;
-        var speed = 16f;
+        var speed = 12f;
         var phase = ((float)elapsedOnPage.TotalSeconds * speed + lane * 12f) % cycleWidth;
         var drawX = 2f - phase;
 
         field.Mutate(ctx =>
         {
-            ctx.DrawText(text, font, color, new PointF(drawX, -1));
-            ctx.DrawText(text, font, color, new PointF(drawX + cycleWidth, -1));
+            ctx.DrawText(CrispDrawingOptions, text, font, color, new PointF(drawX, -1));
+            ctx.DrawText(CrispDrawingOptions, text, font, color, new PointF(drawX + cycleWidth, -1));
         });
 
         BlitOpaque(img, field, x, y);
