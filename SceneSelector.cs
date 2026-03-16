@@ -59,6 +59,8 @@ public sealed class SceneSelector
             throw new ArgumentOutOfRangeException(nameof(month), month, "Month must be in the range 1-12.");
 
         var monthSceneDefinitions = BaseSceneDefinitions.ToList();
+        if (RailBoardScene.IsConfiguredFromEnvironment())
+            monthSceneDefinitions.Insert(1, CreateSceneDefinition("UK Rail Board", static () => new RailBoardScene()));
         if (month == 12)
             monthSceneDefinitions.AddRange(DecemberSceneDefinitions);
         monthSceneDefinitions.AddRange(LoadImageSceneDefinitions(month, imageSceneDirectory));

@@ -53,7 +53,7 @@ public class SceneSelectorTests
             Assert.Contains("always-logo", sut.AvailableSceneNames);
             Assert.DoesNotContain("december-gif", sut.AvailableSceneNames);
             Assert.DoesNotContain("Santa", sut.AvailableSceneNames);
-            Assert.Equal(12, sut.AvailableSceneNames.Count);
+            Assert.Equal(ExpectedNonDecemberSceneCount(), sut.AvailableSceneNames.Count);
         }
         finally
         {
@@ -341,6 +341,8 @@ public class SceneSelectorTests
             Assert.Contains("always-logo", sut.AllSceneNames);
             Assert.DoesNotContain("Game of Life", sut.AllSceneNames);
             Assert.DoesNotContain("Plasma SDF", sut.AllSceneNames);
+            if (RailBoardScene.IsConfiguredFromEnvironment())
+                Assert.Contains("UK Rail Board", sut.AllSceneNames);
         }
         finally
         {
@@ -375,6 +377,11 @@ public class SceneSelectorTests
         var directory = Path.Combine(Path.GetTempPath(), $"advent-images-{Guid.NewGuid():N}");
         Directory.CreateDirectory(directory);
         return directory;
+    }
+
+    private static int ExpectedNonDecemberSceneCount()
+    {
+        return RailBoardScene.IsConfiguredFromEnvironment() ? 13 : 12;
     }
 
     private static void CreatePng(string filePath, int width, int height)

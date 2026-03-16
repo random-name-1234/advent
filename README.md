@@ -8,6 +8,7 @@ It renders:
 - snow/rainbow effects by season
 - special scenes (static + animated + procedural), including a full-cycle `--test-mode`
 - live weather scene powered by Open-Meteo (three full-screen forecast cards)
+- optional UK rail board scene for Cambridge and King's Cross
 - optional terminal simulator mode for development on macOS/Linux (`--simulator`)
 
 ## Matrix Library / Bindings Source
@@ -64,6 +65,7 @@ One-time Pi setup:
 3. Ensure `dotnet` and `git` are installed on the Pi.
 4. In GitHub, create environment `advent-pi` and require reviewer approval before deploy.
 5. In GitHub Actions settings, keep workflow permissions at `Read repository contents`.
+6. Put machine-local secrets in `/etc/advent/advent.env` on the Pi; deploys do not overwrite this file.
 
 Public repo hardening notes:
 
@@ -85,10 +87,42 @@ Optional repo variables for deploy customization:
 
 - `ADVENT_LED_ARGS`
 - `ADVENT_SERVICE_UNIT`
+- `ADVENT_ENV_FILE`
 - `ADVENT_STABLE_APP_DIR`
 - `ADVENT_STABLE_SRC_DIR`
 - `ADVENT_NEXT_APP_DIR`
 - `ADVENT_NEXT_SRC_DIR`
+
+Recommended Pi secret file setup:
+
+```bash
+sudo install -d -m 700 -o root -g root /etc/advent
+sudo sh -c 'umask 077; cat > /etc/advent/advent.env <<EOF
+ADVENT_RAIL_LDB_CONSUMER_KEY=put-the-api-key-here
+ADVENT_RAIL_LDB_CONSUMER_SECRET=optional-consumer-secret
+ADVENT_RAIL_CAMBRIDGE_CRS=CBG
+ADVENT_RAIL_KINGS_CROSS_CRS=KGX
+EOF'
+sudo chown root:root /etc/advent/advent.env
+sudo chmod 600 /etc/advent/advent.env
+```
+
+The app will use `ADVENT_RAIL_LDB_CONSUMER_KEY` as the `x-apikey` header by default.
+
+If you need to override that, you can set:
+
+- `ADVENT_RAIL_LDB_AUTH_HEADER_NAME`
+- `ADVENT_RAIL_LDB_AUTH_HEADER_VALUE`
+
+If your Rail Data Marketplace subscription gives you a consumer key / consumer secret pair, put them in the same file as:
+
+- `ADVENT_RAIL_LDB_CONSUMER_KEY`
+- `ADVENT_RAIL_LDB_CONSUMER_SECRET`
+
+The app also accepts the equivalent basic-auth names:
+
+- `ADVENT_RAIL_LDB_USERNAME`
+- `ADVENT_RAIL_LDB_PASSWORD`
 
 ## LAN Control Web UI
 
@@ -164,3 +198,12 @@ dotnet run -c Release --no-launch-profile -- --simulator --test-mode
 - Weather scene configuration is optional via env vars:
     - `ADVENT_WEATHER_LATITUDE` (default `52.2053`, Cambridge UK)
     - `ADVENT_WEATHER_LONGITUDE` (default `0.1218`, Cambridge UK)
+- UK rail board scene is optional and only appears when credentials are configured:
+    - `ADVENT_RAIL_ENABLED` (`true` by default)
+    - `ADVENT_RAIL_LDB_BASE_URL` (default `https://api1.raildata.org.uk/1010-live-arrival-and-departure-boards---staff-version1_0/LDBSVWS`)
+    - `ADVENT_RAIL_LDB_CONSUMER_KEY` (used as `x-apikey` by default)
+    - `ADVENT_RAIL_LDB_CONSUMER_SECRET` (stored only if your subscription issues one)
+    - `ADVENT_RAIL_LDB_AUTH_HEADER_NAME` and `ADVENT_RAIL_LDB_AUTH_HEADER_VALUE`
+    - or `ADVENT_RAIL_LDB_USERNAME` and `ADVENT_RAIL_LDB_PASSWORD`
+    - `ADVENT_RAIL_CAMBRIDGE_CRS` (default `CBG`)
+    - `ADVENT_RAIL_KINGS_CROSS_CRS` (default `KGX`)
