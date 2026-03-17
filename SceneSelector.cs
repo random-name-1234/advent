@@ -11,7 +11,9 @@ namespace advent;
 public sealed class SceneSelector
 {
     private const string DefaultImageDirectory = "advent-images";
+    private const string DefaultLocalImageDirectory = "advent-images.local";
     private const string ImageManifestFileName = "manifest.json";
+    private const string ExtraImageDirectoriesEnvironmentVariable = "ADVENT_EXTRA_IMAGE_DIRECTORIES";
     private const int MatrixWidth = 64;
 
     private static readonly IReadOnlySet<string> SupportedStaticImageExtensions = new HashSet<string>(
@@ -58,7 +60,11 @@ public sealed class SceneSelector
     {
     }
 
-    public SceneSelector(int month, Func<int, int>? nextIndex = null, string imageSceneDirectory = DefaultImageDirectory)
+    public SceneSelector(
+        int month,
+        Func<int, int>? nextIndex = null,
+        string imageSceneDirectory = DefaultImageDirectory,
+        IEnumerable<string>? extraImageSceneDirectories = null)
     {
         if (month is < 1 or > 12)
             throw new ArgumentOutOfRangeException(nameof(month), month, "Month must be in the range 1-12.");
@@ -69,7 +75,8 @@ public sealed class SceneSelector
                 CreateSceneDefinition("UK Rail Board", static () => new RailBoardScene(), RailBoardScene.MaxSceneDuration));
         if (month == 12)
             monthSceneDefinitions.AddRange(DecemberSceneDefinitions);
-        monthSceneDefinitions.AddRange(LoadImageSceneDefinitions(month, imageSceneDirectory));
+        monthSceneDefinitions.AddRange(LoadImageSceneDefinitions(month,
+            ResolveImageSceneDirectories(imageSceneDirectory, extraImageSceneDirectories)));
 
         cycleSceneDefinitions = monthSceneDefinitions.ToArray();
         availableSceneDefinitions = cycleSceneDefinitions.Concat(ManualSceneDefinitions).ToArray();
@@ -134,6 +141,17 @@ public sealed class SceneSelector
         return selectedScene;
     }
 
+    private static IReadOnlyList<SceneDefinition> LoadImageSceneDefinitions(
+        int month,
+        IReadOnlyList<string> imageSceneDirectories)
+    {
+        var definitions = new List<SceneDefinition>();
+        foreach (var imageSceneDirectory in imageSceneDirectories)
+            definitions.AddRange(LoadImageSceneDefinitions(month, imageSceneDirectory));
+
+        return definitions;
+    }
+
     private static IReadOnlyList<SceneDefinition> LoadImageSceneDefinitions(int month, string imageSceneDirectory)
     {
         if (string.IsNullOrWhiteSpace(imageSceneDirectory))
@@ -186,6 +204,55 @@ public sealed class SceneSelector
         }
 
         return definitions;
+    }
+
+    private static IReadOnlyList<string> ResolveImageSceneDirectories(
+        string imageSceneDirectory,
+        IEnumerable<string>? extraImageSceneDirectories)
+    {
+        var directories = new List<string>();
+        AddImageSceneDirectory(directories, imageSceneDirectory);
+
+        if (string.Equals(imageSceneDirectory, DefaultImageDirectory, StringComparison.OrdinalIgnoreCase))
+            AddImageSceneDirectory(directories, DefaultLocalImageDirectory);
+
+        foreach (var extraDirectory in ReadConfiguredExtraImageDirectories(extraImageSceneDirectories))
+            AddImageSceneDirectory(directories, extraDirectory);
+
+        return directories;
+    }
+
+    private static IEnumerable<string> ReadConfiguredExtraImageDirectories(
+        IEnumerable<string>? extraImageSceneDirectories)
+    {
+        if (extraImageSceneDirectories is not null)
+        {
+            foreach (var extraDirectory in extraImageSceneDirectories)
+                yield return extraDirectory;
+        }
+
+        var configuredDirectories = Environment.GetEnvironmentVariable(ExtraImageDirectoriesEnvironmentVariable);
+        if (string.IsNullOrWhiteSpace(configuredDirectories))
+            yield break;
+
+        foreach (var entry in configuredDirectories.Split(GetImageDirectorySeparators(),
+                     StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            yield return entry;
+    }
+
+    private static char[] GetImageDirectorySeparators()
+    {
+        return Path.PathSeparator == ';' ? [';'] : [Path.PathSeparator, ';'];
+    }
+
+    private static void AddImageSceneDirectory(List<string> directories, string? imageSceneDirectory)
+    {
+        if (string.IsNullOrWhiteSpace(imageSceneDirectory))
+            return;
+
+        var normalizedDirectory = imageSceneDirectory.Trim();
+        if (!directories.Contains(normalizedDirectory, StringComparer.OrdinalIgnoreCase))
+            directories.Add(normalizedDirectory);
     }
 
     private static IEnumerable<string> EnumerateImageFiles(string imageSceneDirectory, int month)

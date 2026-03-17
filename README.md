@@ -8,7 +8,7 @@ It renders:
 - snow/rainbow effects by season
 - special scenes (static + animated + procedural), including a full-cycle `--test-mode`
 - live weather scene powered by Open-Meteo (three full-screen forecast cards)
-- optional UK rail board scene for Cambridge and King's Cross
+- optional UK rail board scene for a configurable station corridor
 - optional terminal simulator mode for development on macOS/Linux (`--simulator`)
 
 ## Matrix Library / Bindings Source
@@ -71,7 +71,7 @@ Current limitation: `advent` itself still renders a fixed `64x32` scene, so whil
 
 ## Validate Assets
 
-Run this locally (and in CI) to verify required scene assets and `advent-images/manifest.json` references:
+Run this locally (and in CI) to verify required checked-in scene assets and `advent-images/manifest.json` references:
 
 ```bash
 ./scripts/validate-assets.sh
@@ -100,6 +100,7 @@ Public repo hardening notes:
 
 - Avoid automatic deploy-on-push to self-hosted runners in public repos.
 - Never store Pi SSH password in Actions secrets; this deploy path runs directly on the Pi runner and does not need SSH.
+- Keep checkout credentials disabled on the self-hosted runner; the workflow already uses `persist-credentials: false`.
 - Protect `main` with PR reviews and required status checks (`CI`).
 - Keep `deploy-pi.yml` restricted to `workflow_dispatch` + protected environment approval.
 
@@ -121,6 +122,8 @@ Optional repo variables for deploy customization:
 - `ADVENT_STABLE_SRC_DIR`
 - `ADVENT_NEXT_APP_DIR`
 - `ADVENT_NEXT_SRC_DIR`
+
+By default, deploy staging and live directories sit under the runner user's home directory (`~/advent-next-*` and `~/advent-*`), so you only need those repo variables if you want a custom layout.
 
 Recommended Pi secret file setup:
 
@@ -152,6 +155,17 @@ The app also accepts the equivalent basic-auth names:
 
 - `ADVENT_RAIL_LDB_USERNAME`
 - `ADVENT_RAIL_LDB_PASSWORD`
+
+## Private / Local Images
+
+Keep public assets in `advent-images/`, and put personal or employer-specific images in an untracked
+`advent-images.local/` directory next to it.
+
+- `advent-images.local/` is loaded automatically when present and is ignored by git.
+- It supports the same folder layout and `manifest.json` format as `advent-images/`.
+- `ADVENT_EXTRA_IMAGE_DIRECTORIES` can add more image roots using the normal OS path separator.
+
+A starter example lives in [`advent-images.local.example/manifest.json`](advent-images.local.example/manifest.json).
 
 ## LAN Control Web UI
 
@@ -221,6 +235,10 @@ dotnet run -c Release --no-launch-profile -- --simulator --test-mode
     - `.gif` files use animated playback scenes
     - wide images use scrolling banner scenes
     - other static images use fade-in/out scenes
+- `advent-images.local/` is loaded on top of the public asset directory when present:
+    - keep private logos and banners there instead of checking them in
+    - it supports the same folder layout and `manifest.json` format
+    - `ADVENT_EXTRA_IMAGE_DIRECTORIES` can add more roots
 - Optional overrides are supported in `advent-images/manifest.json`:
     - `file`: relative image path (required)
     - `name`: scene name override
@@ -234,8 +252,8 @@ dotnet run -c Release --no-launch-profile -- --simulator --test-mode
 - Hardware/driver flag details (`--led-*`) are defined by `rpi-rgb-led-matrix`; refer to upstream docs for full options.
 - Random scene requests in normal mode are capped at two per rolling minute.
 - Weather scene configuration is optional via env vars:
-    - `ADVENT_WEATHER_LATITUDE` (default `52.2053`, Cambridge UK)
-    - `ADVENT_WEATHER_LONGITUDE` (default `0.1218`, Cambridge UK)
+    - `ADVENT_WEATHER_LATITUDE` (default sample coords `52.2053`)
+    - `ADVENT_WEATHER_LONGITUDE` (default sample coords `0.1218`)
 - UK rail board scene is optional and only appears when credentials are configured:
     - `ADVENT_RAIL_ENABLED` (`true` by default)
     - `ADVENT_RAIL_LDB_BASE_URL` (default `https://api1.raildata.org.uk/1010-live-arrival-and-departure-boards---staff-version1_0/LDBSVWS`)

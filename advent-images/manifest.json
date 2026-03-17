@@ -1,18 +1,6 @@
 {
   "images": [
     {
-      "file": "PrivateBanner32x180.png",
-      "name": "Private Banner",
-      "type": "scroll",
-      "durationSeconds": 18
-    },
-    {
-      "file": "PrivateLogo32x32.png",
-      "name": "Private Logo",
-      "type": "static",
-      "durationSeconds": 8
-    },
-    {
       "file": "12/christmas-1.gif",
       "name": "Christmas 1",
       "type": "animated",

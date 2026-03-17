@@ -180,6 +180,81 @@ public class SceneSelectorTests
     }
 
     [Fact]
+    public void Constructor_LoadsImagesFromAdditionalDirectories()
+    {
+        var imageDirectory = CreateImageDirectory();
+        var localImageDirectory = CreateImageDirectory();
+
+        try
+        {
+            CreatePng(Path.Combine(imageDirectory, "always-logo.png"), 32, 32);
+            CreatePng(Path.Combine(localImageDirectory, "local-logo.png"), 32, 32);
+            WriteManifest(localImageDirectory, """
+                {
+                  "images": [
+                    {
+                      "file": "local-logo.png",
+                      "name": "Local Logo"
+                    }
+                  ]
+                }
+                """);
+
+            var sut = new SceneSelector(11,
+                imageSceneDirectory: imageDirectory,
+                extraImageSceneDirectories: [localImageDirectory]);
+
+            Assert.Contains("always-logo", sut.AvailableSceneNames);
+            Assert.Contains("Local Logo", sut.AvailableSceneNames);
+        }
+        finally
+        {
+            Directory.Delete(imageDirectory, true);
+            Directory.Delete(localImageDirectory, true);
+        }
+    }
+
+    [Fact]
+    public void Constructor_AutomaticallyLoadsDefaultLocalImageDirectory_WhenPresent()
+    {
+        var rootDirectory = Path.Combine(Path.GetTempPath(), $"advent-root-{Guid.NewGuid():N}");
+        var imageDirectory = Path.Combine(rootDirectory, "advent-images");
+        var localImageDirectory = Path.Combine(rootDirectory, "advent-images.local");
+        var originalCurrentDirectory = Environment.CurrentDirectory;
+
+        Directory.CreateDirectory(imageDirectory);
+        Directory.CreateDirectory(localImageDirectory);
+
+        try
+        {
+            CreatePng(Path.Combine(imageDirectory, "public-logo.png"), 32, 32);
+            CreatePng(Path.Combine(localImageDirectory, "private-logo.png"), 32, 32);
+            WriteManifest(localImageDirectory, """
+                {
+                  "images": [
+                    {
+                      "file": "private-logo.png",
+                      "name": "Private Logo"
+                    }
+                  ]
+                }
+                """);
+
+            Environment.CurrentDirectory = rootDirectory;
+
+            var sut = new SceneSelector(11);
+
+            Assert.Contains("public-logo", sut.AvailableSceneNames);
+            Assert.Contains("Private Logo", sut.AvailableSceneNames);
+        }
+        finally
+        {
+            Environment.CurrentDirectory = originalCurrentDirectory;
+            Directory.Delete(rootDirectory, true);
+        }
+    }
+
+    [Fact]
     public void Constructor_RespectsManifestMonthFilter_ForRootImages()
     {
         var imageDirectory = CreateImageDirectory();

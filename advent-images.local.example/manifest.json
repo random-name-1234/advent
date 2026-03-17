@@ -1,0 +1,16 @@
+{
+  "images": [
+    {
+      "file": "local-banner.png",
+      "name": "Local Banner",
+      "type": "scroll",
+      "durationSeconds": 18
+    },
+    {
+      "file": "local-logo.png",
+      "name": "Local Logo",
+      "type": "static",
+      "durationSeconds": 8
+    }
+  ]
+}

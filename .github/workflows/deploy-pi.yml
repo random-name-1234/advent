@@ -21,6 +21,7 @@ concurrency:
 
 jobs:
   deploy:
+    timeout-minutes: 20
     runs-on:
       - self-hosted
       - linux
@@ -31,12 +32,14 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ inputs.ref || github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 10.0.x
 
@@ -44,9 +47,9 @@ jobs:
         run: ./scripts/deploy-on-pi.sh
         env:
           LED_ARGS: ${{ inputs.led_args != '' && inputs.led_args || vars.ADVENT_LED_ARGS || '--led-gpio-mapping=adafruit-hat-pwm --led-slowdown-gpio=4' }}
-          ADVENT_SERVICE_UNIT: ${{ vars.ADVENT_SERVICE_UNIT || 'advent.service' }}
-          ADVENT_ENV_FILE: ${{ vars.ADVENT_ENV_FILE || '/etc/advent/advent.env' }}
-          ADVENT_STABLE_APP_DIR: ${{ vars.ADVENT_STABLE_APP_DIR || '/home/pi/advent-app' }}
-          ADVENT_STABLE_SRC_DIR: ${{ vars.ADVENT_STABLE_SRC_DIR || '/home/pi/advent-src' }}
-          ADVENT_NEXT_APP_DIR: ${{ vars.ADVENT_NEXT_APP_DIR || '/home/pi/advent-next-app' }}
-          ADVENT_NEXT_SRC_DIR: ${{ vars.ADVENT_NEXT_SRC_DIR || '/home/pi/advent-next-src' }}
+          ADVENT_SERVICE_UNIT: ${{ vars.ADVENT_SERVICE_UNIT }}
+          ADVENT_ENV_FILE: ${{ vars.ADVENT_ENV_FILE }}
+          ADVENT_STABLE_APP_DIR: ${{ vars.ADVENT_STABLE_APP_DIR }}
+          ADVENT_STABLE_SRC_DIR: ${{ vars.ADVENT_STABLE_SRC_DIR }}
+          ADVENT_NEXT_APP_DIR: ${{ vars.ADVENT_NEXT_APP_DIR }}
+          ADVENT_NEXT_SRC_DIR: ${{ vars.ADVENT_NEXT_SRC_DIR }}
