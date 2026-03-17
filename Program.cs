@@ -1,7 +1,6 @@
 using System;
 using System.Linq;
 using System.Threading;
-using MatrixApi;
 using Microsoft.AspNetCore.Builder;
 
 namespace advent;
@@ -16,11 +15,11 @@ internal class Program
     private static void Main(string[] args)
     {
         var isTestMode = args.Any(static arg => string.Equals(arg, "--test-mode", StringComparison.OrdinalIgnoreCase));
-        var isSimulatorMode =
-            args.Any(static arg => string.Equals(arg, "--simulator", StringComparison.OrdinalIgnoreCase));
+        var outputOptions = MatrixOutputOptions.FromEnvironmentAndArgs(args, MatrixWidth, MatrixHeight);
+        var isSimulatorMode = outputOptions.Backend == MatrixBackend.Simulator;
 
         Console.WriteLine("Starting meerkats...");
-        Console.WriteLine(isSimulatorMode ? "Output mode: SIMULATOR" : "Output mode: LED MATRIX");
+        Console.WriteLine($"Output mode: {outputOptions.Backend.ToString().ToUpperInvariant()}");
         Console.WriteLine(isTestMode
             ? "Scene mode: TEST (cycle all scenes)."
             : "Scene mode: NORMAL (random seasonal scenes).");
@@ -42,9 +41,7 @@ internal class Program
             keepRunning = false;
         };
 
-        RGBLedMatrix? matrix = null;
-        RGBLedCanvas? canvas = null;
-        ConsoleMatrixSimulator? simulator = null;
+        IMatrixOutput? output = null;
         WebApplication? webApp = null;
 
         try
@@ -60,21 +57,8 @@ internal class Program
                 Console.WriteLine("Control web UI disabled via ADVENT_WEB_ENABLED.");
             }
 
-            if (isSimulatorMode)
-            {
-                simulator = new ConsoleMatrixSimulator(MatrixWidth, MatrixHeight);
-            }
-            else
-            {
-                matrix = new RGBLedMatrix(new RGBLedMatrixOptions
-                {
-                    ChainLength = 1,
-                    HardwareMapping = "adafruit-hat-pwm",
-                    Rows = MatrixHeight,
-                    Cols = MatrixWidth
-                });
-                canvas = matrix.CreateOffscreenCanvas();
-            }
+            output = MatrixOutputFactory.Create(outputOptions, MatrixWidth, MatrixHeight);
+            Console.WriteLine($"Matrix backend initialized: {output.Name}");
 
             var now = DateTime.UtcNow;
             var prev = now;
@@ -85,23 +69,7 @@ internal class Program
                 var elapsed = now - prev;
                 scene.Elapsed(elapsed);
 
-                if (simulator is not null)
-                {
-                    simulator.Render(scene.Img);
-                }
-                else if (canvas is not null && matrix is not null)
-                {
-                    canvas.Clear();
-
-                    for (var y = 0; y < MatrixHeight; y++)
-                    for (var x = 0; x < MatrixWidth; x++)
-                    {
-                        var pixel = scene.Img[x, y];
-                        canvas.SetPixel(x, y, new Color(pixel.R, pixel.G, pixel.B));
-                    }
-
-                    matrix.SwapOnVsync(canvas);
-                }
+                output.Present(scene.Img);
 
                 prev = now;
                 Thread.Sleep(isSimulatorMode ? SimulatorFrameDelayMs : HardwareFrameDelayMs);
@@ -109,8 +77,7 @@ internal class Program
         }
         finally
         {
-            simulator?.Dispose();
-            matrix?.Dispose();
+            output?.Dispose();
             if (webApp is not null)
             {
                 try

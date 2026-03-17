@@ -12,6 +12,11 @@ namespace advent;
 
 public class Scene
 {
+    private const string WidestClockSample = "88:88:88";
+    private const float PreferredClockFontSize = 16f;
+    private const float MinimumClockFontSize = 8f;
+    private const float ClockMaxWidth = 62f;
+
     private readonly bool drawSnow;
     private readonly Action<Image<Rgba32>> drawClockOverlay;
     private readonly Font font;
@@ -32,7 +37,7 @@ public class Scene
 
         Img = new Image<Rgba32>(64, 32);
         drawClockOverlay = clockOverlayRenderer ?? DrawClockOverlay;
-        font = AppFonts.Create(16);
+        font = AppFonts.CreateFitting(WidestClockSample, PreferredClockFontSize, MinimumClockFontSize, ClockMaxWidth);
 
         if (DateTime.Now.Month == 12 || DateTime.Now.Month == 6)
         {

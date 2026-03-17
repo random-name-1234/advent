@@ -13,18 +13,22 @@ It renders:
 
 ## Matrix Library / Bindings Source
 
-This project uses local C# bindings in [`MatrixApi/`](MatrixApi/) to call the native RGB matrix library (
-`librgbmatrix.so`).
+This project uses:
+
+- local C# bindings in [`MatrixApi/`](MatrixApi/) for the Pi 4 `rpi-rgb-led-matrix` path
+- the published [`Pi5MatrixSharp`](https://github.com/random-name-1234/Pi5MatrixSharp) NuGet package for the Pi 5 path
 
 Upstream source for the underlying matrix library:
 
 - https://github.com/hzeller/rpi-rgb-led-matrix
+- https://github.com/random-name-1234/Pi5MatrixSharp
 
 ## Requirements
 
 - Raspberry Pi with supported RGB matrix hardware
 - .NET runtime compatible with this project target (`net10.0`)
-- Native `librgbmatrix.so` available next to the app
+- Native `librgbmatrix.so` available next to the app when using the Pi 4 backend
+- `Pi5MatrixSharp` provides the bundled Pi 5 native runtime when using the Pi 5 backend
 
 ## Rebuild Native Library (Upstream Latest)
 
@@ -39,6 +43,31 @@ Optional:
 
 - `RGBMATRIX_REF=<branch-or-tag>` to build a specific ref
 - `RGBMATRIX_REPO_URL=<git-url>` to use a fork
+
+## Pi 5 Binding (Adafruit PioMatter)
+
+Pi 5 support now comes from the published [`Pi5MatrixSharp`](https://www.nuget.org/packages/Pi5MatrixSharp/)
+package rather than a vendored local binding.
+
+Current scope in `advent`:
+
+- simple framebuffer + `show()` workflow
+- Adafruit Matrix Bonnet / Active3 pinouts
+- RGB565 / RGB888 / packed RGB888 framebuffers
+- simple geometry constructor (`width`, `height`, address lines, serpentine, rotation, planes)
+- backend selection in `advent` via `--backend=pi5` or `ADVENT_MATRIX_BACKEND=pi5`
+
+Useful Pi 5 environment variables:
+
+- `ADVENT_MATRIX_BACKEND=pi5`
+- `ADVENT_PI5_PINOUT=AdafruitMatrixBonnet` or `Active3`
+- `ADVENT_PI5_ADDR_LINES=4`
+- `ADVENT_PI5_SERPENTINE=true`
+- `ADVENT_PI5_ORIENTATION=Normal`
+- `ADVENT_PI5_PLANES=10`
+- `ADVENT_PI5_TEMPORAL_PLANES=2`
+
+Current limitation: `advent` itself still renders a fixed `64x32` scene, so while the Pi 5 binding can support other geometries, this app currently assumes `64x32`.
 
 ## Validate Assets
 
@@ -149,18 +178,26 @@ Web control environment variables:
 
 ## Run
 
-Important: pass app args after `--` so they are forwarded to the program/native matrix options.
+Important: pass app args after `--`. Pi 4-specific `--led-*` flags are still forwarded to `rpi-rgb-led-matrix` when using the Pi 4 backend.
 
-Normal mode:
+Pi 4 normal mode:
 
 ```bash
 dotnet run -c Release --no-launch-profile -- --led-slowdown-gpio=4 --led-gpio-mapping=adafruit-hat
 ```
 
-Test mode (cycles through all scenes in order):
+Pi 4 test mode (cycles through all scenes in order):
 
 ```bash
 dotnet run -c Release --no-launch-profile -- --led-slowdown-gpio=4 --led-gpio-mapping=adafruit-hat --test-mode
+```
+
+Pi 5 mode:
+
+```bash
+ADVENT_MATRIX_BACKEND=pi5 \
+ADVENT_PI5_PINOUT=AdafruitMatrixBonnet \
+dotnet run -c Release --no-launch-profile -- --backend=pi5
 ```
 
 Simulator mode (no Pi hardware required):
@@ -193,6 +230,7 @@ dotnet run -c Release --no-launch-profile -- --simulator --test-mode
 - Core scene assets (cat/error/santa/space-invaders sprites) are stored under `assets/`.
 - `--test-mode` ignores random seasonal selection and continuously cycles the full scene catalog.
 - `--simulator` renders a live ANSI/terminal preview of the 64x32 output, useful on macOS while developing.
+- `--backend=pi4|pi5|simulator` selects the output backend. `--simulator` remains a shorthand for the simulator backend.
 - Hardware/driver flag details (`--led-*`) are defined by `rpi-rgb-led-matrix`; refer to upstream docs for full options.
 - Random scene requests in normal mode are capped at two per rolling minute.
 - Weather scene configuration is optional via env vars:
