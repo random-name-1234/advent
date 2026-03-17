@@ -96,6 +96,8 @@ One-time Pi setup:
 5. In GitHub Actions settings, keep workflow permissions at `Read repository contents`.
 6. Put machine-local secrets in `/etc/advent/advent.env` on the Pi; deploys do not overwrite this file.
 
+By default, the deploy script installs the service to run as the self-hosted runner user rather than `root`.
+
 Public repo hardening notes:
 
 - Avoid automatic deploy-on-push to self-hosted runners in public repos.
@@ -117,6 +119,9 @@ Optional repo variables for deploy customization:
 
 - `ADVENT_LED_ARGS`
 - `ADVENT_SERVICE_UNIT`
+- `ADVENT_SERVICE_USER`
+- `ADVENT_SERVICE_GROUP`
+- `ADVENT_SERVICE_SUPPLEMENTARY_GROUPS`
 - `ADVENT_ENV_FILE`
 - `ADVENT_STABLE_APP_DIR`
 - `ADVENT_STABLE_SRC_DIR`

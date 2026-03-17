@@ -48,6 +48,9 @@ jobs:
         env:
           LED_ARGS: ${{ inputs.led_args != '' && inputs.led_args || vars.ADVENT_LED_ARGS || '--led-gpio-mapping=adafruit-hat-pwm --led-slowdown-gpio=4' }}
           ADVENT_SERVICE_UNIT: ${{ vars.ADVENT_SERVICE_UNIT }}
+          ADVENT_SERVICE_USER: ${{ vars.ADVENT_SERVICE_USER }}
+          ADVENT_SERVICE_GROUP: ${{ vars.ADVENT_SERVICE_GROUP }}
+          ADVENT_SERVICE_SUPPLEMENTARY_GROUPS: ${{ vars.ADVENT_SERVICE_SUPPLEMENTARY_GROUPS }}
           ADVENT_ENV_FILE: ${{ vars.ADVENT_ENV_FILE }}
           ADVENT_STABLE_APP_DIR: ${{ vars.ADVENT_STABLE_APP_DIR }}
           ADVENT_STABLE_SRC_DIR: ${{ vars.ADVENT_STABLE_SRC_DIR }}

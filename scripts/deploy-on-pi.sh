@@ -26,6 +26,13 @@ configuration="${DOTNET_CONFIGURATION:-Release}"
 service_unit="${ADVENT_SERVICE_UNIT:-advent.service}"
 led_args="${LED_ARGS:---led-gpio-mapping=adafruit-hat-pwm --led-slowdown-gpio=4}"
 env_file="${ADVENT_ENV_FILE:-/etc/advent/advent.env}"
+service_user="${ADVENT_SERVICE_USER:-$USER}"
+service_group="${ADVENT_SERVICE_GROUP:-$(id -gn "${service_user}")}"
+service_supplementary_groups="${ADVENT_SERVICE_SUPPLEMENTARY_GROUPS:-$(id -Gn "${service_user}" | tr ' ' '\n' | grep -vx "${service_group}" | paste -sd' ' -)}"
+supplementary_groups_line=""
+if [[ -n "${service_supplementary_groups}" ]]; then
+  supplementary_groups_line="SupplementaryGroups=${service_supplementary_groups}"
+fi
 
 next_src_dir="${ADVENT_NEXT_SRC_DIR:-$HOME/advent-next-src}"
 stable_src_dir="${ADVENT_STABLE_SRC_DIR:-$HOME/advent-src}"
@@ -74,7 +81,9 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=root
+User=${service_user}
+Group=${service_group}
+${supplementary_groups_line}
 EnvironmentFile=-${env_file}
 WorkingDirectory=${stable_app_dir}
 ExecStart=${stable_app_dir}/advent ${led_args}
