@@ -1,6 +1,11 @@
+![advent logo](assets/advent-logo.svg)
+
 # advent
 
 [![CI](https://github.com/random-name-1234/advent/actions/workflows/ci.yml/badge.svg)](https://github.com/random-name-1234/advent/actions/workflows/ci.yml)
+[![License](https://img.shields.io/github/license/random-name-1234/advent)](https://github.com/random-name-1234/advent/blob/main/LICENSE.txt)
+[![.NET 10](https://img.shields.io/badge/.NET-10-512bd4)](https://dotnet.microsoft.com/)
+[![Pi 4 + Pi 5](https://img.shields.io/badge/Pi4%20%2B%20Pi5-supported-16a34a)](https://github.com/random-name-1234/advent)
 
 `advent` is a C#-first LED matrix scene runner for Raspberry Pi.
 
