@@ -76,8 +76,7 @@ mv "${next_src_dir}" "${stable_src_dir}"
 sudo tee "/etc/systemd/system/${service_unit}" >/dev/null <<UNIT
 [Unit]
 Description=Advent LED Matrix
-After=network-online.target
-Wants=network-online.target
+After=network.target
 
 [Service]
 Type=simple
