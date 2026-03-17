@@ -266,7 +266,7 @@ public sealed class RailBoardScene : ISpecialScene
         var boardRows = BuildBoardRows(station, boardType, services);
         var tickerText = BuildBoardTicker(station, boardType, boardRows);
         return new BoardPage(
-            $"{CompactStationLabel(station.StationName)} {BoardTitle(boardType)}",
+            $"{FullStationLabel(station.StationName)} {BoardTitle(boardType)}",
             station.StationName,
             boardType,
             updatedAt,
@@ -366,8 +366,8 @@ public sealed class RailBoardScene : ISpecialScene
 
         var statusText = station.IsUnavailable ? "NO DATA" : "CHECK";
         var detailTicker = station.IsUnavailable
-            ? $"{CompactStationLabel(station.StationName)} board data unavailable"
-            : $"{CompactStationLabel(station.StationName)} has no services in the current window";
+            ? $"{FullStationLabel(station.StationName)} board data unavailable"
+            : $"{FullStationLabel(station.StationName)} has no services in the current window";
 
         return
         [
@@ -404,9 +404,9 @@ public sealed class RailBoardScene : ISpecialScene
     {
         var ticker = string.IsNullOrWhiteSpace(service.CallingText)
             ? service.DetailTicker
-            : $"Calls {service.CallingText}";
+            : BuildServicePatternText(service.LocationText, service.LocationCode, service.CallingText);
         return new JourneyPage(
-            $"{station.HeaderLabel} -> KGX",
+            $"{FullStationLabel(station.StationName)} trip",
             "Next service",
             service.ScheduledText,
             service.PlatformText,
@@ -434,13 +434,13 @@ public sealed class RailBoardScene : ISpecialScene
         IReadOnlyList<RailServiceSnapshot> services)
     {
         if (station.IsUnavailable)
-            return $"{CompactStationLabel(station.StationName)} board data unavailable";
+            return $"{FullStationLabel(station.StationName)} board data unavailable";
 
         if (services.Count == 0)
         {
             return station.Alerts.Count > 0
                 ? station.Alerts[0].Message
-                : $"{CompactStationLabel(station.StationName)} {BoardTitle(boardType).ToLowerInvariant()}";
+                : $"{FullStationLabel(station.StationName)} {BoardTitle(boardType).ToLowerInvariant()}";
         }
 
         var focus = services[0];
@@ -561,7 +561,7 @@ public sealed class RailBoardScene : ISpecialScene
 
     private static void DrawCompactBoardPage(Image<Rgba32> img, BoardPage page, TimeSpan elapsedOnPage)
     {
-        DrawCompactBoardHeader(img, CompactStationLabel(page.StationName), page.BoardType, elapsedOnPage);
+        DrawCompactBoardHeader(img, FullStationLabel(page.StationName), page.BoardType, elapsedOnPage);
         var timeColumnWidth = RailDmiText.MeasureWidth("00:00") + 2;
         var lowerLeftWidth = timeColumnWidth - 1;
         var rowTopPositions = new[] { 7, 21 };
@@ -577,7 +577,7 @@ public sealed class RailBoardScene : ISpecialScene
             var locationWidth = Math.Max(0, img.Width - timeColumnWidth - platformReserve - 1);
 
             DrawPixelText(img, row.ScheduledText, HeaderColor, 0, y);
-            DrawPixelBouncingField(
+            DrawPixelScrollingField(
                 img,
                 row.LocationText,
                 PrimaryTextColor,
@@ -592,12 +592,12 @@ public sealed class RailBoardScene : ISpecialScene
             if (!string.IsNullOrWhiteSpace(compactStatus))
                 DrawPixelText(img, compactStatus, row.StatusColor, 0, statusY);
 
-            var callingText = CompactBoardCallingText(row.CallingText);
+            var callingText = CompactBoardCallingText(row);
             if (!string.IsNullOrWhiteSpace(callingText))
                 DrawPixelScrollingField(
                     img,
                     callingText,
-                    SecondaryTextColor,
+                    CompactBoardCallingColor(row),
                     timeColumnWidth,
                     statusY,
                     img.Width - timeColumnWidth,
@@ -685,8 +685,8 @@ public sealed class RailBoardScene : ISpecialScene
         DrawPixelRightAlignedText(img, rightText, SecondaryTextColor, img.Width - 1, 0);
 
         var rightWidth = RailDmiText.MeasureWidth(rightText);
-        var leftWidth = Math.Max(0, img.Width - rightWidth - 2);
-        DrawPixelBouncingField(img, stationName, HeaderColor, 0, 0, leftWidth, elapsedOnPage, 0);
+        var leftWidth = Math.Max(0, img.Width - rightWidth - 1);
+        DrawPixelScrollingField(img, stationName, HeaderColor, 0, 0, leftWidth, elapsedOnPage, 0);
     }
 
     private static void DrawCompactFooter(Image<Rgba32> img, string text, TimeSpan elapsedOnPage, int lane)
@@ -746,6 +746,28 @@ public sealed class RailBoardScene : ISpecialScene
         };
     }
 
+    private static string FullStationLabel(string stationName)
+    {
+        if (string.IsNullOrWhiteSpace(stationName))
+            return "---";
+
+        return NormalizeLocationKey(stationName) switch
+        {
+            "CAM" => "Cambridge",
+            "CBG" => "Cambridge",
+            "KGX" => "London Kings Cross",
+            "KINGS CROSS" => "London Kings Cross",
+            "LONDON KINGS CROSS" => "London Kings Cross",
+            "LST" => "London Liverpool Street",
+            "LIVERPOOL STREET" => "London Liverpool Street",
+            "LONDON LIVERPOOL STREET" => "London Liverpool Street",
+            "FPK" => "Finsbury Park",
+            "PBO" => "Peterborough",
+            "SVG" => "Stevenage",
+            _ => CultureInfo.InvariantCulture.TextInfo.ToTitleCase(NormalizeLocationKey(stationName).ToLowerInvariant())
+        };
+    }
+
     private static string CompactPlatform(string platformText)
     {
         if (string.IsNullOrWhiteSpace(platformText) || platformText == "--")
@@ -768,11 +790,14 @@ public sealed class RailBoardScene : ISpecialScene
         return RailDmiText.TrimToWidth(compact, maxWidth);
     }
 
-    private static string CompactBoardCallingText(string callingText)
+    private static string CompactBoardCallingText(RailServiceSnapshot service)
     {
-        return string.IsNullOrWhiteSpace(callingText)
-            ? string.Empty
-            : callingText;
+        return BuildServicePatternText(service.LocationText, service.LocationCode, service.CallingText);
+    }
+
+    private static Rgba32 CompactBoardCallingColor(RailServiceSnapshot service)
+    {
+        return IsFastService(service) ? WarningColor : SecondaryTextColor;
     }
 
     private static string CompactOperatorText(string operatorText)
@@ -784,6 +809,14 @@ public sealed class RailBoardScene : ISpecialScene
     {
         if (string.IsNullOrWhiteSpace(tickerText))
             return string.Empty;
+
+        var fastViaIndex = tickerText.IndexOf("Fast via ", StringComparison.OrdinalIgnoreCase);
+        if (fastViaIndex >= 0)
+            return tickerText[fastViaIndex..];
+
+        var viaIndex = tickerText.IndexOf("Via ", StringComparison.OrdinalIgnoreCase);
+        if (viaIndex >= 0)
+            return tickerText[viaIndex..];
 
         var callsIndex = tickerText.IndexOf("Calls ", StringComparison.OrdinalIgnoreCase);
         return callsIndex >= 0 ? tickerText[callsIndex..] : string.Empty;
@@ -881,57 +914,6 @@ public sealed class RailBoardScene : ISpecialScene
         DrawPixelText(field, text, color, drawX, 0);
         DrawPixelText(field, text, color, drawX + (int)MathF.Round(cycleWidth), 0);
 
-        BlitOpaque(img, field, x, y);
-    }
-
-    private static void DrawPixelBouncingField(
-        Image<Rgba32> img,
-        string text,
-        Rgba32 color,
-        int x,
-        int y,
-        int width,
-        TimeSpan elapsedOnPage,
-        int lane)
-    {
-        if (string.IsNullOrWhiteSpace(text) || width <= 0)
-            return;
-
-        var measuredWidth = RailDmiText.MeasureWidth(text);
-        if (measuredWidth <= width)
-        {
-            DrawPixelText(img, text, color, x, y);
-            return;
-        }
-
-        using var field = new Image<Rgba32>(width, RailDmiText.Height);
-        var overflow = measuredWidth - width;
-        const float speed = 10f;
-        const float holdDuration = 0.8f;
-        var travelDuration = overflow / speed;
-        var cycleDuration = holdDuration + travelDuration + holdDuration + travelDuration;
-        var phase = ((float)elapsedOnPage.TotalSeconds + lane * 0.35f) % cycleDuration;
-
-        float offset;
-        if (phase < holdDuration)
-        {
-            offset = 0f;
-        }
-        else if (phase < holdDuration + travelDuration)
-        {
-            offset = (phase - holdDuration) * speed;
-        }
-        else if (phase < holdDuration + travelDuration + holdDuration)
-        {
-            offset = overflow;
-        }
-        else
-        {
-            var returnPhase = phase - holdDuration - travelDuration - holdDuration;
-            offset = overflow - returnPhase * speed;
-        }
-
-        DrawPixelText(field, text, color, -(int)MathF.Round(offset), 0);
         BlitOpaque(img, field, x, y);
     }
 
@@ -1089,7 +1071,7 @@ public sealed class RailBoardScene : ISpecialScene
             : service.PreviousLocations);
 
         var (statusText, statusColor) = BuildStatus(service, planned, estimated);
-        var detailTicker = BuildDetailTicker(locationText, service.Operator, callingPoints, statusText);
+        var detailTicker = BuildDetailTicker(locationText, locationCode, service.Operator, callingPoints, statusText);
 
         return new RailServiceSnapshot(
             planned?.ToString("HH:mm", CultureInfo.InvariantCulture) ?? "--:--",
@@ -1104,18 +1086,88 @@ public sealed class RailBoardScene : ISpecialScene
             estimated ?? planned ?? DateTimeOffset.MaxValue);
     }
 
-    private static string BuildDetailTicker(string locationText, string? operatorName, string callingPoints, string statusText)
+    private static string BuildDetailTicker(
+        string locationText,
+        string locationCode,
+        string? operatorName,
+        string callingPoints,
+        string statusText)
     {
         var parts = new List<string>();
         if (!string.IsNullOrWhiteSpace(locationText))
             parts.Add(locationText);
         if (!string.IsNullOrWhiteSpace(operatorName))
             parts.Add(operatorName);
-        if (!string.IsNullOrWhiteSpace(callingPoints))
-            parts.Add($"Calls {callingPoints}");
+        var servicePattern = BuildServicePatternText(locationText, locationCode, callingPoints);
+        if (!string.IsNullOrWhiteSpace(servicePattern))
+            parts.Add(servicePattern);
         if (!string.IsNullOrWhiteSpace(statusText))
             parts.Add(statusText);
         return string.Join("  •  ", parts);
+    }
+
+    private static string BuildServicePatternText(string locationText, string locationCode, string callingPoints)
+    {
+        var normalizedCallingPoints = NormalizeCallingPoints(callingPoints);
+        if (normalizedCallingPoints.Count == 0)
+            return string.Empty;
+
+        var prefix = IsFastService(locationText, locationCode, normalizedCallingPoints)
+            ? "Fast via"
+            : "Via";
+
+        return $"{prefix} {string.Join(", ", normalizedCallingPoints)}";
+    }
+
+    private static IReadOnlyList<string> NormalizeCallingPoints(string callingPoints)
+    {
+        if (string.IsNullOrWhiteSpace(callingPoints))
+            return [];
+
+        var trimmed = callingPoints.Trim();
+        if (trimmed.StartsWith("Calls ", StringComparison.OrdinalIgnoreCase))
+            trimmed = trimmed[6..].Trim();
+        if (trimmed.StartsWith("Via ", StringComparison.OrdinalIgnoreCase))
+            trimmed = trimmed[4..].Trim();
+        if (trimmed.StartsWith("Fast via ", StringComparison.OrdinalIgnoreCase))
+            trimmed = trimmed[9..].Trim();
+
+        return trimmed
+            .Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+            .Select(FullStationLabel)
+            .Where(static point => !string.IsNullOrWhiteSpace(point))
+            .ToArray();
+    }
+
+    private static bool IsFastService(RailServiceSnapshot service)
+    {
+        return IsFastService(service.LocationText, service.LocationCode, NormalizeCallingPoints(service.CallingText));
+    }
+
+    private static bool IsFastService(
+        string locationText,
+        string locationCode,
+        IReadOnlyList<string> normalizedCallingPoints)
+    {
+        if (normalizedCallingPoints.Count == 0)
+            return false;
+
+        var locationKey = NormalizeLocationKey(!string.IsNullOrWhiteSpace(locationCode) ? locationCode : locationText);
+        if (locationKey is not ("CAM" or "CBG" or "KGX" or "CAMBRIDGE" or "KINGS CROSS" or "LONDON KINGS CROSS"))
+            return false;
+
+        var coreStops = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "ROYSTON",
+            "STEVENAGE",
+            "FINSBURY PARK"
+        };
+
+        var calledCoreStops = normalizedCallingPoints
+            .Select(NormalizeLocationKey)
+            .Count(coreStops.Contains);
+
+        return normalizedCallingPoints.Count <= 2 || calledCoreStops < coreStops.Count;
     }
 
     private static IReadOnlyList<RailAlertSnapshot> BuildAlerts(NrccMessageDto[]? messages)
@@ -1275,7 +1327,7 @@ public sealed class RailBoardScene : ISpecialScene
         if (string.IsNullOrWhiteSpace(locationName))
             return "---";
 
-        return FormatLocationDisplayName(locationName);
+        return FullStationLabel(locationName);
     }
 
     private static string NormalizeLocationKey(string locationName)
@@ -1286,6 +1338,7 @@ public sealed class RailBoardScene : ISpecialScene
             "KING'S CROSS" => "KINGS CROSS",
             "LONDON KX" => "LONDON KINGS CROSS",
             "LIV ST" => "LONDON LIVERPOOL STREET",
+            "LIVERPOOL STREET" => "LONDON LIVERPOOL STREET",
             "LONDON LIVERPOOL ST" => "LONDON LIVERPOOL STREET",
             "PETERBORO" => "PETERBOROUGH",
             "FINSBURY PK" => "FINSBURY PARK",

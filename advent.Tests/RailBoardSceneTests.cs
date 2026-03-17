@@ -162,6 +162,8 @@ public class RailBoardSceneTests
     [InlineData("CBG", null, "Cambridge")]
     [InlineData("KGX", null, "London Kings Cross")]
     [InlineData(null, "London King's Cross", "London Kings Cross")]
+    [InlineData(null, "Kings Cross", "London Kings Cross")]
+    [InlineData(null, "Liverpool Street", "London Liverpool Street")]
     [InlineData(null, "Finsbury Pk", "Finsbury Park")]
     public void RailBoardScene_FormatsFullStationNames(string? crs, string? locationName, string expected)
     {
@@ -186,6 +188,62 @@ public class RailBoardSceneTests
         var compact = method!.Invoke(null, [status, maxWidth]);
 
         Assert.Equal(expected, compact);
+    }
+
+    [Fact]
+    public void RailBoardScene_BuildsBoardTickerWithFullStationNames_WhenBoardIsEmpty()
+    {
+        var method = typeof(RailBoardScene).GetMethod("BuildBoardTicker", BindingFlags.Static | BindingFlags.NonPublic);
+        var boardType = typeof(RailBoardScene).GetNestedType("BoardType", BindingFlags.NonPublic);
+        Assert.NotNull(method);
+        Assert.NotNull(boardType);
+
+        var station = new RailBoardScene.RailStationSnapshot(
+            "KGX",
+            "London King's Cross",
+            [],
+            [],
+            [],
+            new DateTimeOffset(2026, 3, 16, 18, 10, 0, TimeSpan.Zero),
+            false);
+
+        var ticker = method!.Invoke(null,
+            [station, Enum.Parse(boardType!, "Departures"), Array.Empty<RailBoardScene.RailServiceSnapshot>()]);
+
+        Assert.Equal("London Kings Cross departures", ticker);
+    }
+
+    [Fact]
+    public void RailBoardScene_BuildsCompactCallingText_WithFastCueAndFullNames()
+    {
+        var method = typeof(RailBoardScene).GetMethod("CompactBoardCallingText", BindingFlags.Static | BindingFlags.NonPublic);
+        Assert.NotNull(method);
+
+        var fastService = CreateService(
+            "18:12",
+            "London Kings Cross",
+            "KGX",
+            "P5",
+            "On time",
+            new Rgba32(210, 188, 144),
+            "Great Northern",
+            "CALLS ROYSTON, STEVENAGE");
+
+        var stoppingService = CreateService(
+            "18:28",
+            "Cambridge",
+            "CBG",
+            "P8",
+            "+4",
+            new Rgba32(255, 184, 64),
+            "Great Northern",
+            "CALLS FINSBURY PARK, STEVENAGE, ROYSTON");
+
+        var fastText = method!.Invoke(null, [fastService]);
+        var stoppingText = method.Invoke(null, [stoppingService]);
+
+        Assert.Equal("Fast via Royston, Stevenage", fastText);
+        Assert.Equal("Via Finsbury Park, Stevenage, Royston", stoppingText);
     }
 
     private static RailBoardScene.RailServiceSnapshot CreateService(
