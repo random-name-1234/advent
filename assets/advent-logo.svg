@@ -46,16 +46,19 @@
     <circle cx="150" cy="30" r="8" fill="#22c55e"/>
   </g>
 
-  <g transform="translate(260 72)">
-    <text x="0" y="48" font-family="'Avenir Next', 'Segoe UI', sans-serif" font-size="72" font-weight="800" fill="#f8fafc" letter-spacing="1">
+  <g transform="translate(252 68)">
+    <text x="0" y="48" font-family="'Avenir Next', 'Segoe UI', sans-serif" font-size="70" font-weight="800" fill="#f8fafc" letter-spacing="1">
       advent
     </text>
-    <rect x="0" y="70" width="520" height="10" rx="5" fill="url(#accent)"/>
-    <text x="0" y="122" font-family="'Avenir Next', 'Segoe UI', sans-serif" font-size="28" font-weight="600" fill="#dbeafe">
+    <rect x="0" y="70" width="500" height="10" rx="5" fill="url(#accent)"/>
+    <text x="0" y="118" font-family="'Avenir Next', 'Segoe UI', sans-serif" font-size="26" font-weight="600" fill="#dbeafe">
       C# LED matrix scenes for Raspberry Pi
     </text>
-    <text x="0" y="162" font-family="'Avenir Next', 'Segoe UI', sans-serif" font-size="24" font-weight="500" fill="#bfdbfe">
-      Clock. Weather. Pixel-art nonsense. Web control. Appliance mode.
+    <text x="0" y="154" font-family="'Avenir Next', 'Segoe UI', sans-serif" font-size="20" font-weight="500" fill="#bfdbfe">
+      Clock. Weather. Pixel-art nonsense.
+    </text>
+    <text x="0" y="184" font-family="'Avenir Next', 'Segoe UI', sans-serif" font-size="20" font-weight="500" fill="#bfdbfe">
+      Web control. Appliance mode.
     </text>
   </g>
 </svg>
