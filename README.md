@@ -1,63 +1,147 @@
 # advent
 
-`advent` is a .NET LED matrix scene runner for Raspberry Pi (64x32 panel setup in the current defaults).
+[![CI](https://github.com/random-name-1234/advent/actions/workflows/ci.yml/badge.svg)](https://github.com/random-name-1234/advent/actions/workflows/ci.yml)
 
-It renders:
+`advent` is a C#-first LED matrix scene runner for Raspberry Pi.
 
-- a clock overlay
-- snow/rainbow effects by season
-- special scenes (static + animated + procedural), including a full-cycle `--test-mode`
-- live weather scene powered by Open-Meteo (three full-screen forecast cards)
-- optional UK rail board scene for a configurable station corridor
-- optional terminal simulator mode for development on macOS/Linux (`--simulator`)
+It started life as a festive matrix display and gradually picked up a few extra hobbies: clocks, weather, pixel-art chaos, message overlays, rail boards, web control, and just enough automation to behave like a tiny appliance.
 
-## Matrix Library / Bindings Source
+If you like the idea of a 64x32 RGB panel acting somewhere between "seasonal art installation" and "tiny control room", this repo is for you.
 
-This project uses:
+## Highlights
 
-- local C# bindings in [`MatrixApi/`](MatrixApi/) for the Pi 4 `rpi-rgb-led-matrix` path
-- the published [`Pi5MatrixSharp`](https://github.com/random-name-1234/Pi5MatrixSharp) NuGet package for the Pi 5 path
+- C# all the way down for app logic and rendering
+- works on both Raspberry Pi 4 and Raspberry Pi 5
+- simulator mode for development on macOS/Linux without touching real hardware
+- image-driven scenes from checked-in assets and local-only private overlays
+- a lightweight LAN web UI for scene control and message injection
+- appliance-friendly deployment with GitHub Actions and `systemd`
 
-Upstream source for the underlying matrix library:
+## Scene Sampler
 
-- https://github.com/hzeller/rpi-rgb-led-matrix
-- https://github.com/random-name-1234/Pi5MatrixSharp
+Out of the box, `advent` can rotate through things like:
 
-## Requirements
+- weather cards
+- snowfall and rainbow snowfall
+- Santa in December
+- cat mode
+- Donkey Kong
+- Space Invaders
+- Bonkers Parade
+- Synthwave Grid
+- Orbital
+- Fireworks
+- image scenes from your own files
+- an optional UK rail board scene
 
-- Raspberry Pi with supported RGB matrix hardware
-- .NET runtime compatible with this project target (`net10.0`)
-- Native `librgbmatrix.so` available next to the app when using the Pi 4 backend
-- `Pi5MatrixSharp` provides the bundled Pi 5 native runtime when using the Pi 5 backend
+There is also a `--test-mode` that runs the full catalogue in sequence instead of picking seasonal scenes at random.
 
-## Rebuild Native Library (Upstream Latest)
+## Backends
 
-Run this on the Raspberry Pi to rebuild from upstream and overwrite the vendored
-`librgbmatrix.so` in this repo:
+| Backend | Stack | Notes |
+| --- | --- | --- |
+| `pi4` | local bindings over [`rpi-rgb-led-matrix`](https://github.com/hzeller/rpi-rgb-led-matrix) | expects `librgbmatrix.so` next to the app |
+| `pi5` | [`Pi5MatrixSharp`](https://github.com/random-name-1234/Pi5MatrixSharp) | bundled native runtime, Pi 5 friendly |
+| `simulator` | terminal framebuffer preview | great for hacking on scenes locally |
+
+The app currently assumes a `64x32` render target even though the Pi 5 backend can support broader geometry options underneath.
+
+## Quick Start
+
+### Simulator
 
 ```bash
-./scripts/rebuild-librgbmatrix.sh
+dotnet run -c Release --no-launch-profile -- --simulator
 ```
 
-Optional:
+### Simulator test mode
 
-- `RGBMATRIX_REF=<branch-or-tag>` to build a specific ref
-- `RGBMATRIX_REPO_URL=<git-url>` to use a fork
+```bash
+dotnet run -c Release --no-launch-profile -- --simulator --test-mode
+```
 
-## Pi 5 Binding (Adafruit PioMatter)
+### Pi 5
 
-Pi 5 support now comes from the published [`Pi5MatrixSharp`](https://www.nuget.org/packages/Pi5MatrixSharp/)
-package rather than a vendored local binding.
+```bash
+ADVENT_MATRIX_BACKEND=pi5 \
+ADVENT_PI5_PINOUT=AdafruitMatrixBonnet \
+dotnet run -c Release --no-launch-profile -- --backend=pi5
+```
 
-Current scope in `advent`:
+### Pi 4
 
-- simple framebuffer + `show()` workflow
-- Adafruit Matrix Bonnet / Active3 pinouts
-- RGB565 / RGB888 / packed RGB888 framebuffers
-- simple geometry constructor (`width`, `height`, address lines, serpentine, rotation, planes)
-- backend selection in `advent` via `--backend=pi5` or `ADVENT_MATRIX_BACKEND=pi5`
+```bash
+dotnet run -c Release --no-launch-profile -- --led-slowdown-gpio=4 --led-gpio-mapping=adafruit-hat
+```
 
-Useful Pi 5 environment variables:
+### Pi 4 test mode
+
+```bash
+dotnet run -c Release --no-launch-profile -- --led-slowdown-gpio=4 --led-gpio-mapping=adafruit-hat --test-mode
+```
+
+## Private Images Without Public Repo Regret
+
+Checked-in image scenes live in `advent-images/`.
+
+Private, personal, or employer-specific assets should live in `advent-images.local/`, which is:
+
+- loaded automatically when present
+- ignored by git
+- compatible with the same folder layout and `manifest.json` format
+
+That means you can keep custom banners, logos, and one-off local scenes on your Pi or dev machine without smuggling them into the public repo.
+
+A starter manifest is included at [`advent-images.local.example/manifest.json`](advent-images.local.example/manifest.json).
+
+You can also add extra image roots with:
+
+- `ADVENT_EXTRA_IMAGE_DIRECTORIES`
+
+## Image Scene Rules
+
+- files in `advent-images/` are available all year
+- files in `advent-images/<month>/` only load in that month
+- `.gif` files become animated scenes
+- wide static images become scrolling banner scenes
+- other static images become fade-in/out scenes
+
+Manifest overrides support:
+
+- `file`: relative image path
+- `name`: custom scene name
+- `type`: `auto`, `animated`/`gif`, `static`, or `scroll`
+- `months`: month whitelist (`1-12`)
+- `durationSeconds`: custom duration, capped at `20`
+
+## Web Control
+
+The app exposes a simple control UI on:
+
+- `http://<pi-hostname-or-ip>:8080`
+
+Useful endpoints:
+
+- `GET /api/scenes`
+- `GET /api/status`
+- `POST /api/scene/play` with `{ "name": "Fireworks" }`
+- `POST /api/scene/next`
+- `POST /api/message/show` with `{ "text": "Dinner in 5", "durationSeconds": 8 }`
+- `POST /api/mode` with `{ "mode": "normal" | "test" }`
+- `POST /api/queue/clear`
+
+Web UI environment variables:
+
+- `ADVENT_WEB_ENABLED` (`true` by default)
+- `ADVENT_WEB_BIND` (`0.0.0.0` by default)
+- `ADVENT_WEB_PORT` (`8080` by default)
+- `ADVENT_WEB_TOKEN` (optional but strongly recommended on a real network)
+
+## Pi 5 Notes
+
+Pi 5 support comes from [`Pi5MatrixSharp`](https://www.nuget.org/packages/Pi5MatrixSharp/), which wraps the Adafruit PioMatter path in a C#-friendly API.
+
+Useful Pi 5 settings:
 
 - `ADVENT_MATRIX_BACKEND=pi5`
 - `ADVENT_PI5_PINOUT=AdafruitMatrixBonnet` or `Active3`
@@ -67,55 +151,71 @@ Useful Pi 5 environment variables:
 - `ADVENT_PI5_PLANES=10`
 - `ADVENT_PI5_TEMPORAL_PLANES=2`
 
-Current limitation: `advent` itself still renders a fixed `64x32` scene, so while the Pi 5 binding can support other geometries, this app currently assumes `64x32`.
+## Pi 4 Notes
 
-## Validate Assets
+Pi 4 uses local bindings in [`MatrixApi/`](MatrixApi/) over [`rpi-rgb-led-matrix`](https://github.com/hzeller/rpi-rgb-led-matrix).
 
-Run this locally (and in CI) to verify required checked-in scene assets and `advent-images/manifest.json` references:
+If you need to rebuild the native library on the Pi:
 
 ```bash
-./scripts/validate-assets.sh
+./scripts/rebuild-librgbmatrix.sh
 ```
 
-## GitHub Actions Deploy (Pi Native)
+Optional overrides:
 
-Deployment is now handled by GitHub Actions running on a self-hosted runner on the Pi.
+- `RGBMATRIX_REF=<branch-or-tag>`
+- `RGBMATRIX_REPO_URL=<git-url>`
+
+## Optional Scene Configuration
+
+Weather scene:
+
+- `ADVENT_WEATHER_LATITUDE`
+- `ADVENT_WEATHER_LONGITUDE`
+
+UK rail board scene:
+
+- `ADVENT_RAIL_ENABLED`
+- `ADVENT_RAIL_LDB_BASE_URL`
+- `ADVENT_RAIL_LDB_CONSUMER_KEY`
+- `ADVENT_RAIL_LDB_CONSUMER_SECRET`
+- `ADVENT_RAIL_LDB_AUTH_HEADER_NAME`
+- `ADVENT_RAIL_LDB_AUTH_HEADER_VALUE`
+- `ADVENT_RAIL_LDB_USERNAME`
+- `ADVENT_RAIL_LDB_PASSWORD`
+- `ADVENT_RAIL_CAMBRIDGE_CRS`
+- `ADVENT_RAIL_KINGS_CROSS_CRS`
+
+The rail env var names are legacy from the original corridor this scene targeted; the scene itself is now just a configurable corridor board.
+
+## Appliance / Pi Deploy
+
+This repo includes a GitHub Actions deployment path aimed at a self-hosted runner living on the Pi itself.
 
 Included workflows:
 
-- `.github/workflows/ci.yml`: build + test on PRs and pushes to `main`
-- `.github/workflows/deploy-pi.yml`: deploy by manual dispatch only
+- `.github/workflows/ci.yml`: build and test
+- `.github/workflows/deploy-pi.yml`: manual Pi deploy
 
-One-time Pi setup:
+Deploy flow:
 
-1. Register the Pi as a self-hosted runner for this repo with labels:
-   `self-hosted`, `linux`, `arm64`, `advent`.
-2. Ensure runner user can run passwordless sudo for `systemctl` and writing unit files.
-3. Ensure `dotnet` and `git` are installed on the Pi.
-4. In GitHub, create environment `advent-pi` and require reviewer approval before deploy.
-5. In GitHub Actions settings, keep workflow permissions at `Read repository contents`.
-6. Put machine-local secrets in `/etc/advent/advent.env` on the Pi; deploys do not overwrite this file.
+1. publish the app for `linux-arm64`
+2. stage source and app output into `~/advent-next-*`
+3. promote them into `~/advent-*`
+4. write or refresh `/etc/systemd/system/advent.service`
+5. restart the service
 
-By default, the deploy script installs the service to run as the self-hosted runner user rather than `root`.
+By default the installed service runs as the self-hosted runner user, not `root`.
 
-Public repo hardening notes:
+One-time setup checklist:
 
-- Avoid automatic deploy-on-push to self-hosted runners in public repos.
-- Never store Pi SSH password in Actions secrets; this deploy path runs directly on the Pi runner and does not need SSH.
-- Keep checkout credentials disabled on the self-hosted runner; the workflow already uses `persist-credentials: false`.
-- Protect `main` with PR reviews and required status checks (`CI`).
-- Keep `deploy-pi.yml` restricted to `workflow_dispatch` + protected environment approval.
+1. Register the Pi as a self-hosted runner with labels `self-hosted`, `linux`, `arm64`, `advent`.
+2. Ensure the runner user has passwordless `sudo` for the `systemctl` work this deploy needs.
+3. Put machine-local secrets in `/etc/advent/advent.env`.
+4. Protect the `advent-pi` GitHub environment so deploys require approval.
+5. Keep the repo on manual deploys only for the Pi workflow.
 
-Deploy behavior (from `scripts/deploy-on-pi.sh`):
-
-- `dotnet publish -c Release -r linux-arm64` on Pi
-- stage source to `~/advent-next-src` using `git archive`
-- stage publish output to `~/advent-next-app`
-- promote to `~/advent-src` and `~/advent-app` with timestamped backups
-- write `/etc/systemd/system/advent.service`
-- `systemctl daemon-reload`, `enable`, and `restart`
-
-Optional repo variables for deploy customization:
+Useful repo variables:
 
 - `ADVENT_LED_ARGS`
 - `ADVENT_SERVICE_UNIT`
@@ -128,9 +228,7 @@ Optional repo variables for deploy customization:
 - `ADVENT_NEXT_APP_DIR`
 - `ADVENT_NEXT_SRC_DIR`
 
-By default, deploy staging and live directories sit under the runner user's home directory (`~/advent-next-*` and `~/advent-*`), so you only need those repo variables if you want a custom layout.
-
-Recommended Pi secret file setup:
+Recommended secret file shape:
 
 ```bash
 sudo install -d -m 700 -o root -g root /etc/advent
@@ -144,127 +242,16 @@ sudo chown root:root /etc/advent/advent.env
 sudo chmod 600 /etc/advent/advent.env
 ```
 
-The app will use `ADVENT_RAIL_LDB_CONSUMER_KEY` as the `x-apikey` header by default.
+## Development
 
-If you need to override that, you can set:
-
-- `ADVENT_RAIL_LDB_AUTH_HEADER_NAME`
-- `ADVENT_RAIL_LDB_AUTH_HEADER_VALUE`
-
-If your Rail Data Marketplace subscription gives you a consumer key / consumer secret pair, put them in the same file as:
-
-- `ADVENT_RAIL_LDB_CONSUMER_KEY`
-- `ADVENT_RAIL_LDB_CONSUMER_SECRET`
-
-The app also accepts the equivalent basic-auth names:
-
-- `ADVENT_RAIL_LDB_USERNAME`
-- `ADVENT_RAIL_LDB_PASSWORD`
-
-## Private / Local Images
-
-Keep public assets in `advent-images/`, and put personal or employer-specific images in an untracked
-`advent-images.local/` directory next to it.
-
-- `advent-images.local/` is loaded automatically when present and is ignored by git.
-- It supports the same folder layout and `manifest.json` format as `advent-images/`.
-- `ADVENT_EXTRA_IMAGE_DIRECTORIES` can add more image roots using the normal OS path separator.
-
-A starter example lives in [`advent-images.local.example/manifest.json`](advent-images.local.example/manifest.json).
-
-## LAN Control Web UI
-
-The app now serves a simple control page from the Pi on:
-
-- `http://<pi-hostname-or-ip>:8080`
-
-Supported API endpoints:
-
-- `GET /api/scenes`
-- `GET /api/status`
-- `POST /api/scene/play` with `{ "name": "Fireworks" }`
-- `POST /api/scene/next`
-- `POST /api/message/show` with `{ "text": "Dinner in 5", "durationSeconds": 8 }` (`durationSeconds` max `20`)
-- `POST /api/mode` with `{ "mode": "normal" | "test" }`
-- `POST /api/queue/clear`
-
-Web control environment variables:
-
-- `ADVENT_WEB_ENABLED` (`true` by default)
-- `ADVENT_WEB_BIND` (`0.0.0.0` by default)
-- `ADVENT_WEB_PORT` (`8080` by default)
-- `ADVENT_WEB_TOKEN` (optional; if set, API requires `X-Advent-Token` header)
-
-## Run
-
-Important: pass app args after `--`. Pi 4-specific `--led-*` flags are still forwarded to `rpi-rgb-led-matrix` when using the Pi 4 backend.
-
-Pi 4 normal mode:
+Validate the checked-in assets and manifest references with:
 
 ```bash
-dotnet run -c Release --no-launch-profile -- --led-slowdown-gpio=4 --led-gpio-mapping=adafruit-hat
+./scripts/validate-assets.sh
 ```
 
-Pi 4 test mode (cycles through all scenes in order):
+The simulator is usually the fastest way to iterate on scene timing, layout, and legibility before moving to real hardware.
 
-```bash
-dotnet run -c Release --no-launch-profile -- --led-slowdown-gpio=4 --led-gpio-mapping=adafruit-hat --test-mode
-```
+## Why This Repo Exists
 
-Pi 5 mode:
-
-```bash
-ADVENT_MATRIX_BACKEND=pi5 \
-ADVENT_PI5_PINOUT=AdafruitMatrixBonnet \
-dotnet run -c Release --no-launch-profile -- --backend=pi5
-```
-
-Simulator mode (no Pi hardware required):
-
-```bash
-dotnet run -c Release --no-launch-profile -- --simulator
-```
-
-Simulator + test mode:
-
-```bash
-dotnet run -c Release --no-launch-profile -- --simulator --test-mode
-```
-
-## Notes
-
-- Scene selection is seasonal in normal mode (December gets the Christmas scene set).
-- Image scenes are loaded automatically from `advent-images/`:
-    - files in `advent-images/` are available all year
-    - files in `advent-images/<month>/` (for example `advent-images/12/`) are only loaded in that month
-    - `.gif` files use animated playback scenes
-    - wide images use scrolling banner scenes
-    - other static images use fade-in/out scenes
-- `advent-images.local/` is loaded on top of the public asset directory when present:
-    - keep private logos and banners there instead of checking them in
-    - it supports the same folder layout and `manifest.json` format
-    - `ADVENT_EXTRA_IMAGE_DIRECTORIES` can add more roots
-- Optional overrides are supported in `advent-images/manifest.json`:
-    - `file`: relative image path (required)
-    - `name`: scene name override
-    - `type`: `auto`, `animated`/`gif`, `static`, or `scroll`
-    - `months`: month whitelist (1-12)
-    - `durationSeconds`: custom scene duration (must be `> 0`; runtime capped to `20` seconds)
-- Core scene assets (cat/error/santa/space-invaders sprites) are stored under `assets/`.
-- `--test-mode` ignores random seasonal selection and continuously cycles the full scene catalog.
-- `--simulator` renders a live ANSI/terminal preview of the 64x32 output, useful on macOS while developing.
-- `--backend=pi4|pi5|simulator` selects the output backend. `--simulator` remains a shorthand for the simulator backend.
-- Hardware/driver flag details (`--led-*`) are defined by `rpi-rgb-led-matrix`; refer to upstream docs for full options.
-- Random scene requests in normal mode are capped at two per rolling minute.
-- Weather scene configuration is optional via env vars:
-    - `ADVENT_WEATHER_LATITUDE` (default sample coords `52.2053`)
-    - `ADVENT_WEATHER_LONGITUDE` (default sample coords `0.1218`)
-- UK rail board scene is optional and only appears when credentials are configured:
-    - `ADVENT_RAIL_ENABLED` (`true` by default)
-    - `ADVENT_RAIL_LDB_BASE_URL` (default `https://api1.raildata.org.uk/1010-live-arrival-and-departure-boards---staff-version1_0/LDBSVWS`)
-    - `ADVENT_RAIL_LDB_CONSUMER_KEY` (used as `x-apikey` by default)
-    - `ADVENT_RAIL_LDB_CONSUMER_SECRET` (stored only if your subscription issues one)
-    - `ADVENT_RAIL_LDB_AUTH_HEADER_NAME` and `ADVENT_RAIL_LDB_AUTH_HEADER_VALUE`
-    - or `ADVENT_RAIL_LDB_USERNAME` and `ADVENT_RAIL_LDB_PASSWORD`
-    - `ADVENT_RAIL_CAMBRIDGE_CRS` (default `CBG`)
-    - `ADVENT_RAIL_KINGS_CROSS_CRS` (default `KGX`)
+Because writing C# for a Raspberry Pi LED matrix is more fun than it has any right to be.
