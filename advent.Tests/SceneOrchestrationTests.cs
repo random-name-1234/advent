@@ -154,6 +154,31 @@ public class SceneOrchestrationTests
     }
 
     [Fact]
+    public void QueuedFadingScene_KeepsClockHiddenAtStartOfFadeOut_ThenCrossfadesItBackIn()
+    {
+        var scene = new Scene(img => img[7, 7] = new Rgba32(0, 255, 0));
+        var special = new FadingScene(new TestSpecialScene
+        {
+            IsActive = true,
+            HidesTime = true,
+            OnDraw = img => img[7, 7] = new Rgba32(255, 0, 0),
+            OnElapsed = testScene => testScene.IsActive = false
+        });
+        scene.SpecialScenes.Enqueue(special);
+
+        scene.Elapsed(TimeSpan.FromMilliseconds(500));
+        scene.Elapsed(TimeSpan.FromMilliseconds(600));
+
+        Assert.Equal(new Rgba32(255, 0, 0), scene.Img[7, 7]);
+
+        scene.Elapsed(TimeSpan.FromMilliseconds(500));
+
+        var pixel = scene.Img[7, 7];
+        Assert.True(pixel.R > 0);
+        Assert.True(pixel.G > 0);
+    }
+
+    [Fact]
     public void QueuedScene_NotDrawn_WhenItBecomesInactiveDuringElapsed()
     {
         var scene = new Scene();

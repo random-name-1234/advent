@@ -10,6 +10,7 @@ public class FadingScene : ISpecialScene
     private static readonly TimeSpan FadeDuration = TimeSpan.FromSeconds(1);
 
     private readonly ISpecialScene mainScene;
+    private bool clockHiddenDuringMain;
     private Image<Rgba32>? frameBuffer;
     private Phase phase;
     private TimeSpan elapsedInPhase;
@@ -21,16 +22,17 @@ public class FadingScene : ISpecialScene
 
     public bool IsActive { get; private set; }
 
-    public bool HidesTime => IsActive && mainScene.HidesTime;
+    public bool HidesTime => IsActive && (phase == Phase.Main ? mainScene.HidesTime : CrossfadesClock);
 
     public bool RainbowSnow => IsActive && mainScene.RainbowSnow;
     public string Name => mainScene.Name;
     public float Opacity => GetOpacity();
-    public bool CrossfadesClock => mainScene.HidesTime;
+    public bool CrossfadesClock => clockHiddenDuringMain || mainScene.HidesTime;
 
     public void Activate()
     {
         mainScene.Activate();
+        clockHiddenDuringMain = mainScene.HidesTime;
         phase = Phase.FadeIn;
         elapsedInPhase = TimeSpan.Zero;
         IsActive = true;
@@ -68,7 +70,9 @@ public class FadingScene : ISpecialScene
                     break;
 
                 case Phase.Main:
+                    clockHiddenDuringMain |= mainScene.HidesTime;
                     mainScene.Elapsed(remaining);
+                    clockHiddenDuringMain |= mainScene.HidesTime;
                     remaining = TimeSpan.Zero;
                     if (!mainScene.IsActive)
                     {
