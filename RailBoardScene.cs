@@ -35,6 +35,7 @@ public sealed class RailBoardScene : ISpecialScene
     private static readonly TimeSpan JourneyPageDuration = TimeSpan.FromSeconds(8);
     private static readonly TimeSpan AlertPageDuration = TimeSpan.FromSeconds(8);
     private static readonly TimeSpan LoadingPageDuration = TimeSpan.FromSeconds(6);
+    private static readonly TimeSpan PageSwipeDuration = TimeSpan.FromMilliseconds(700);
 
     private static readonly HttpClient HttpClient = new()
     {
@@ -81,8 +82,10 @@ public sealed class RailBoardScene : ISpecialScene
     private Task<RailSceneSnapshot>? fetchTask;
     private IReadOnlyList<RailPage> pages = [];
     private int currentPageIndex;
+    private Image<Rgba32>? currentPageBuffer;
     private TimeSpan elapsedOnPage;
     private TimeSpan elapsedThisScene;
+    private Image<Rgba32>? nextPageBuffer;
 
     public RailBoardScene()
         : this(
@@ -210,15 +213,82 @@ public sealed class RailBoardScene : ISpecialScene
         }
 
         var page = pages[Math.Clamp(currentPageIndex, 0, pages.Count - 1)];
+        if (ShouldSwipeToNextPage(page))
+        {
+            EnsurePageBuffers(img.Width, img.Height);
+
+            RenderPage(currentPageBuffer!, page, elapsedOnPage);
+            RenderPage(nextPageBuffer!, pages[currentPageIndex + 1], TimeSpan.Zero);
+
+            var transitionStart = page.Duration - PageSwipeDuration;
+            var progress = (float)((elapsedOnPage - transitionStart).TotalMilliseconds /
+                                   PageSwipeDuration.TotalMilliseconds);
+            progress = Math.Clamp(progress, 0f, 1f);
+
+            var currentOffset = -(int)MathF.Round(progress * img.Width);
+            var nextOffset = img.Width + currentOffset;
+            BlitPage(img, currentPageBuffer!, currentOffset);
+            BlitPage(img, nextPageBuffer!, nextOffset);
+            return;
+        }
+
+        RenderPage(img, page, elapsedOnPage);
+    }
+
+    private static bool IsWide(Image<Rgba32> img)
+    {
+        return img.Width >= WideMinWidth && img.Height >= WideMinHeight;
+    }
+
+    private static bool ShouldSwipeToNextPage(RailPage page, int currentPageIndex, int pageCount, TimeSpan elapsedOnPage)
+    {
+        if (currentPageIndex >= pageCount - 1 || page.Duration <= PageSwipeDuration)
+            return false;
+
+        return elapsedOnPage >= page.Duration - PageSwipeDuration;
+    }
+
+    private bool ShouldSwipeToNextPage(RailPage page)
+    {
+        return ShouldSwipeToNextPage(page, currentPageIndex, pages.Count, elapsedOnPage);
+    }
+
+    private static void RenderPage(Image<Rgba32> img, RailPage page, TimeSpan elapsedOnPage)
+    {
+        Clear(img);
+
         if (IsWide(img))
             DrawWidePage(img, page, elapsedOnPage);
         else
             DrawCompactPage(img, page, elapsedOnPage);
     }
 
-    private static bool IsWide(Image<Rgba32> img)
+    private void EnsurePageBuffers(int width, int height)
     {
-        return img.Width >= WideMinWidth && img.Height >= WideMinHeight;
+        if (currentPageBuffer is null || currentPageBuffer.Width != width || currentPageBuffer.Height != height)
+        {
+            currentPageBuffer?.Dispose();
+            currentPageBuffer = new Image<Rgba32>(width, height);
+        }
+
+        if (nextPageBuffer is null || nextPageBuffer.Width != width || nextPageBuffer.Height != height)
+        {
+            nextPageBuffer?.Dispose();
+            nextPageBuffer = new Image<Rgba32>(width, height);
+        }
+    }
+
+    private static void BlitPage(Image<Rgba32> destination, Image<Rgba32> source, int offsetX)
+    {
+        for (var y = 0; y < destination.Height; y++)
+        for (var x = 0; x < source.Width; x++)
+        {
+            var destX = x + offsetX;
+            if ((uint)destX >= (uint)destination.Width)
+                continue;
+
+            destination[destX, y] = source[x, y];
+        }
     }
 
     private static IReadOnlyList<RailPage> BuildPages(RailSceneSnapshot railSnapshot)

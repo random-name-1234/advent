@@ -21,6 +21,7 @@ public class Scene
     private readonly Action<Image<Rgba32>> drawClockOverlay;
     private readonly Font font;
     private readonly Queue<TimeSpan> recentRandomSceneRequests = new();
+    private readonly Image<Rgba32> specialSceneLayer;
 
     private readonly SnowMachine snowMachine = new();
     private bool hasPendingSceneRequest;
@@ -36,6 +37,7 @@ public class Scene
         ContinuousSceneRequests = false;
 
         Img = new Image<Rgba32>(64, 32);
+        specialSceneLayer = new Image<Rgba32>(64, 32);
         drawClockOverlay = clockOverlayRenderer ?? DrawClockOverlay;
         font = AppFonts.CreateFitting(WidestClockSample, PreferredClockFontSize, MinimumClockFontSize, ClockMaxWidth);
 
@@ -66,6 +68,7 @@ public class Scene
         elapsedSinceStartup += timeSpan;
         snowMachine.Elapsed(timeSpan);
         var hidesTime = false;
+        var clockHandledByTransition = false;
 
         Img.Mutate(x =>
             x.FillPolygon(Color.Black, new PointF(0, 0), new PointF(64, 0), new PointF(64, 32), new PointF(0, 32)));
@@ -101,7 +104,25 @@ public class Scene
             }
         }
 
-        if (specialScene != null) specialScene.Draw(Img);
+        if (specialScene != null)
+        {
+            if (specialScene is FadingScene fadingScene &&
+                fadingScene.CrossfadesClock &&
+                fadingScene.Opacity > 0f &&
+                fadingScene.Opacity < 1f)
+            {
+                drawClockOverlay(Img);
+                ClearSpecialSceneLayer();
+                specialScene.Draw(specialSceneLayer);
+                Img.Mutate(ctx => ctx.DrawImage(specialSceneLayer, new Point(0, 0), fadingScene.Opacity));
+                clockHandledByTransition = true;
+                hidesTime = false;
+            }
+            else
+            {
+                specialScene.Draw(Img);
+            }
+        }
 
         if (drawSnow)
         {
@@ -113,8 +134,15 @@ public class Scene
                     new EllipsePolygon(flake.Position.X, 32f - flake.Position.Y, flake.Width, flake.Width)));
         }
 
-        if (!hidesTime)
+        if (!hidesTime && !clockHandledByTransition)
             drawClockOverlay(Img);
+    }
+
+    private void ClearSpecialSceneLayer()
+    {
+        for (var y = 0; y < specialSceneLayer.Height; y++)
+        for (var x = 0; x < specialSceneLayer.Width; x++)
+            specialSceneLayer[x, y] = Color.Black;
     }
 
     private void RequestSceneIfNeeded()

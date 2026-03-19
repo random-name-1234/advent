@@ -25,6 +25,8 @@ public class FadingScene : ISpecialScene
 
     public bool RainbowSnow => IsActive && mainScene.RainbowSnow;
     public string Name => mainScene.Name;
+    public float Opacity => GetOpacity();
+    public bool CrossfadesClock => mainScene.HidesTime;
 
     public void Activate()
     {
