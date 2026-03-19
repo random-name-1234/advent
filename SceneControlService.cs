@@ -22,6 +22,7 @@ public sealed class SceneControlService
 
     public IReadOnlyList<string> AvailableSceneNames => sceneSelector.AvailableSceneNames;
     public IReadOnlyList<string> AllSceneNames => sceneSelector.AllSceneNames;
+    public IReadOnlyList<string> KnownSceneNames => sceneSelector.KnownSceneNames;
 
     public void EnqueueNextScene()
     {

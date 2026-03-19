@@ -277,7 +277,6 @@ public class WeatherScene : ISpecialScene
         var textSize = TextMeasurer.MeasureSize(text, new TextOptions(HeroTempFont));
         var x = Width - textSize.Width - 5f;
         var y = 8f;
-        DrawText(img, text, HeroTempFont, SecondaryTextColor, (int)x + 1, (int)y + 1);
         DrawText(img, text, HeroTempFont, color, (int)x, (int)y);
     }
 

@@ -158,6 +158,54 @@ public class RailBoardSceneTests
         AssertBoardRows(pages[3], "London Kings Cross", "Arrivals", "Cambridge");
     }
 
+    [Fact]
+    public void RailBoardScene_UsesGenericOriginAndDestinationEnvironmentVariables()
+    {
+        var originalEnabled = Environment.GetEnvironmentVariable("ADVENT_RAIL_ENABLED");
+        var originalKey = Environment.GetEnvironmentVariable("ADVENT_RAIL_LDB_CONSUMER_KEY");
+        var originalOrigin = Environment.GetEnvironmentVariable("ADVENT_RAIL_ORIGIN_CRS");
+        var originalDestination = Environment.GetEnvironmentVariable("ADVENT_RAIL_DESTINATION_CRS");
+        var originalLegacyOrigin = Environment.GetEnvironmentVariable("ADVENT_RAIL_CAMBRIDGE_CRS");
+        var originalLegacyDestination = Environment.GetEnvironmentVariable("ADVENT_RAIL_KINGS_CROSS_CRS");
+        var originalOriginLabel = Environment.GetEnvironmentVariable("ADVENT_RAIL_ORIGIN_LABEL");
+        var originalDestinationLabel = Environment.GetEnvironmentVariable("ADVENT_RAIL_DESTINATION_LABEL");
+
+        try
+        {
+            Environment.SetEnvironmentVariable("ADVENT_RAIL_ENABLED", "true");
+            Environment.SetEnvironmentVariable("ADVENT_RAIL_LDB_CONSUMER_KEY", "test-key");
+            Environment.SetEnvironmentVariable("ADVENT_RAIL_ORIGIN_CRS", "cbg");
+            Environment.SetEnvironmentVariable("ADVENT_RAIL_DESTINATION_CRS", "lst");
+            Environment.SetEnvironmentVariable("ADVENT_RAIL_CAMBRIDGE_CRS", null);
+            Environment.SetEnvironmentVariable("ADVENT_RAIL_KINGS_CROSS_CRS", null);
+            Environment.SetEnvironmentVariable("ADVENT_RAIL_ORIGIN_LABEL", null);
+            Environment.SetEnvironmentVariable("ADVENT_RAIL_DESTINATION_LABEL", null);
+
+            var scene = new RailBoardScene();
+            var optionsField = typeof(RailBoardScene).GetField("options", BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.NotNull(optionsField);
+
+            var options = optionsField!.GetValue(scene);
+            Assert.NotNull(options);
+
+            Assert.Equal("CBG", options!.GetType().GetProperty("OriginCrs")!.GetValue(options));
+            Assert.Equal("LST", options.GetType().GetProperty("DestinationCrs")!.GetValue(options));
+            Assert.Equal("Cambridge", options.GetType().GetProperty("OriginLabel")!.GetValue(options));
+            Assert.Equal("London Liverpool Street", options.GetType().GetProperty("DestinationLabel")!.GetValue(options));
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("ADVENT_RAIL_ENABLED", originalEnabled);
+            Environment.SetEnvironmentVariable("ADVENT_RAIL_LDB_CONSUMER_KEY", originalKey);
+            Environment.SetEnvironmentVariable("ADVENT_RAIL_ORIGIN_CRS", originalOrigin);
+            Environment.SetEnvironmentVariable("ADVENT_RAIL_DESTINATION_CRS", originalDestination);
+            Environment.SetEnvironmentVariable("ADVENT_RAIL_CAMBRIDGE_CRS", originalLegacyOrigin);
+            Environment.SetEnvironmentVariable("ADVENT_RAIL_KINGS_CROSS_CRS", originalLegacyDestination);
+            Environment.SetEnvironmentVariable("ADVENT_RAIL_ORIGIN_LABEL", originalOriginLabel);
+            Environment.SetEnvironmentVariable("ADVENT_RAIL_DESTINATION_LABEL", originalDestinationLabel);
+        }
+    }
+
     [Theory]
     [InlineData("CBG", null, "Cambridge")]
     [InlineData("KGX", null, "London Kings Cross")]

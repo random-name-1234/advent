@@ -479,6 +479,43 @@ public class SceneSelectorTests
     }
 
     [Fact]
+    public void KnownSceneNames_IncludesRailBoard_WhenRailIsNotConfigured()
+    {
+        var imageDirectory = CreateImageDirectory();
+        var originalEnabled = Environment.GetEnvironmentVariable("ADVENT_RAIL_ENABLED");
+        var originalKey = Environment.GetEnvironmentVariable("ADVENT_RAIL_LDB_CONSUMER_KEY");
+        var originalHeaderName = Environment.GetEnvironmentVariable("ADVENT_RAIL_LDB_AUTH_HEADER_NAME");
+        var originalHeaderValue = Environment.GetEnvironmentVariable("ADVENT_RAIL_LDB_AUTH_HEADER_VALUE");
+        var originalUsername = Environment.GetEnvironmentVariable("ADVENT_RAIL_LDB_USERNAME");
+        var originalPassword = Environment.GetEnvironmentVariable("ADVENT_RAIL_LDB_PASSWORD");
+
+        try
+        {
+            Environment.SetEnvironmentVariable("ADVENT_RAIL_ENABLED", "true");
+            Environment.SetEnvironmentVariable("ADVENT_RAIL_LDB_CONSUMER_KEY", null);
+            Environment.SetEnvironmentVariable("ADVENT_RAIL_LDB_AUTH_HEADER_NAME", null);
+            Environment.SetEnvironmentVariable("ADVENT_RAIL_LDB_AUTH_HEADER_VALUE", null);
+            Environment.SetEnvironmentVariable("ADVENT_RAIL_LDB_USERNAME", null);
+            Environment.SetEnvironmentVariable("ADVENT_RAIL_LDB_PASSWORD", null);
+
+            var sut = new SceneSelector(11, imageSceneDirectory: imageDirectory);
+
+            Assert.DoesNotContain("UK Rail Board", sut.AvailableSceneNames);
+            Assert.Contains("UK Rail Board", sut.KnownSceneNames);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("ADVENT_RAIL_ENABLED", originalEnabled);
+            Environment.SetEnvironmentVariable("ADVENT_RAIL_LDB_CONSUMER_KEY", originalKey);
+            Environment.SetEnvironmentVariable("ADVENT_RAIL_LDB_AUTH_HEADER_NAME", originalHeaderName);
+            Environment.SetEnvironmentVariable("ADVENT_RAIL_LDB_AUTH_HEADER_VALUE", originalHeaderValue);
+            Environment.SetEnvironmentVariable("ADVENT_RAIL_LDB_USERNAME", originalUsername);
+            Environment.SetEnvironmentVariable("ADVENT_RAIL_LDB_PASSWORD", originalPassword);
+            Directory.Delete(imageDirectory, true);
+        }
+    }
+
+    [Fact]
     public void GetNextSceneNameInCycle_ReturnsAllScenesInOrder_ThenWraps()
     {
         var imageDirectory = CreateImageDirectory();

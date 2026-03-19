@@ -2,7 +2,7 @@
 set -euo pipefail
 
 base_url="${ADVENT_RAIL_LDB_BASE_URL:-https://api1.raildata.org.uk/1010-live-arrival-and-departure-boards---staff-version1_0/LDBSVWS}"
-crs="${1:-${ADVENT_RAIL_CAMBRIDGE_CRS:-CBG}}"
+crs="${1:-${ADVENT_RAIL_ORIGIN_CRS:-${ADVENT_RAIL_CAMBRIDGE_CRS:-CBG}}}"
 board_time="${2:-$(TZ=Europe/London date +%Y%m%dT%H%M%S)}"
 upper_crs="$(printf '%s' "${crs}" | tr '[:lower:]' '[:upper:]')"
 temp_body="$(mktemp)"

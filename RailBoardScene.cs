@@ -960,8 +960,8 @@ public sealed class RailBoardScene : ISpecialScene
 
         var requests = new[]
         {
-            new RailStationRequest(railOptions.CambridgeCrs, "CAM"),
-            new RailStationRequest(railOptions.KingsCrossCrs, "KGX")
+            new RailStationRequest(railOptions.OriginCrs, railOptions.OriginLabel),
+            new RailStationRequest(railOptions.DestinationCrs, railOptions.DestinationLabel)
         };
 
         var tasks = requests
@@ -1539,8 +1539,10 @@ public sealed class RailBoardScene : ISpecialScene
 
     private sealed record RailBoardOptions(
         string BaseUrl,
-        string CambridgeCrs,
-        string KingsCrossCrs,
+        string OriginCrs,
+        string DestinationCrs,
+        string OriginLabel,
+        string DestinationLabel,
         string? AuthHeaderName,
         string? AuthHeaderValue,
         string? Username,
@@ -1573,13 +1575,20 @@ public sealed class RailBoardScene : ISpecialScene
             if (!hasHeaderAuth && !hasBasicAuth)
                 return null;
 
+            var originCrs = ReadStationCrs("ADVENT_RAIL_ORIGIN_CRS", "ADVENT_RAIL_CAMBRIDGE_CRS", "CBG");
+            var destinationCrs = ReadStationCrs("ADVENT_RAIL_DESTINATION_CRS", "ADVENT_RAIL_LONDON_CRS", "KGX",
+                "ADVENT_RAIL_KINGS_CROSS_CRS");
+
             return new RailBoardOptions(
                 ReadString(
                     "ADVENT_RAIL_LDB_BASE_URL",
                     "https://api1.raildata.org.uk/1010-live-arrival-and-departure-boards---staff-version1_0/LDBSVWS")
                     .TrimEnd('/'),
-                NormalizeCrs(ReadString("ADVENT_RAIL_CAMBRIDGE_CRS", "CBG")),
-                NormalizeCrs(ReadString("ADVENT_RAIL_KINGS_CROSS_CRS", "KGX")),
+                originCrs,
+                destinationCrs,
+                ReadStationLabel("ADVENT_RAIL_ORIGIN_LABEL", "ADVENT_RAIL_CAMBRIDGE_LABEL", originCrs),
+                ReadStationLabel("ADVENT_RAIL_DESTINATION_LABEL", "ADVENT_RAIL_LONDON_LABEL", destinationCrs,
+                    "ADVENT_RAIL_KINGS_CROSS_LABEL"),
                 authHeaderName,
                 authHeaderValue,
                 username,
@@ -1592,6 +1601,8 @@ public sealed class RailBoardScene : ISpecialScene
                 "https://example.invalid",
                 "CBG",
                 "KGX",
+                "Cambridge",
+                "London Kings Cross",
                 "X-Test",
                 "dummy",
                 null,
@@ -1603,10 +1614,42 @@ public sealed class RailBoardScene : ISpecialScene
             return string.IsNullOrWhiteSpace(value) ? "CBG" : value.Trim().ToUpperInvariant();
         }
 
+        private static string ReadStationCrs(string primaryEnvironmentVariable, string legacyEnvironmentVariable,
+            string fallback, string? secondaryLegacyEnvironmentVariable = null)
+        {
+            var value = ReadOptionalString(primaryEnvironmentVariable)
+                        ?? ReadOptionalString(legacyEnvironmentVariable)
+                        ?? ReadOptionalString(secondaryLegacyEnvironmentVariable)
+                        ?? fallback;
+
+            return NormalizeCrs(value);
+        }
+
+        private static string ReadStationLabel(string primaryEnvironmentVariable, string legacyEnvironmentVariable,
+            string fallbackCrs, string? secondaryLegacyEnvironmentVariable = null)
+        {
+            var value = ReadOptionalString(primaryEnvironmentVariable)
+                        ?? ReadOptionalString(legacyEnvironmentVariable)
+                        ?? ReadOptionalString(secondaryLegacyEnvironmentVariable);
+
+            return string.IsNullOrWhiteSpace(value)
+                ? FormatStationDisplayName(fallbackCrs, null)
+                : FullStationLabel(value);
+        }
+
         private static string ReadString(string environmentVariable, string fallback)
         {
             var value = Environment.GetEnvironmentVariable(environmentVariable);
             return string.IsNullOrWhiteSpace(value) ? fallback : value.Trim();
+        }
+
+        private static string? ReadOptionalString(string? environmentVariable)
+        {
+            if (string.IsNullOrWhiteSpace(environmentVariable))
+                return null;
+
+            var value = Environment.GetEnvironmentVariable(environmentVariable);
+            return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
         }
 
         private static bool ReadBool(string environmentVariable, bool fallback)

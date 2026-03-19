@@ -188,8 +188,10 @@ UK rail board scene:
 - `ADVENT_RAIL_LDB_AUTH_HEADER_VALUE`
 - `ADVENT_RAIL_LDB_USERNAME`
 - `ADVENT_RAIL_LDB_PASSWORD`
-- `ADVENT_RAIL_CAMBRIDGE_CRS`
-- `ADVENT_RAIL_KINGS_CROSS_CRS`
+- `ADVENT_RAIL_ORIGIN_CRS` (`ADVENT_RAIL_CAMBRIDGE_CRS` still works)
+- `ADVENT_RAIL_DESTINATION_CRS` (`ADVENT_RAIL_LONDON_CRS` and `ADVENT_RAIL_KINGS_CROSS_CRS` still work)
+- `ADVENT_RAIL_ORIGIN_LABEL` (optional)
+- `ADVENT_RAIL_DESTINATION_LABEL` (optional)
 
 The rail env var names are legacy from the original corridor this scene targeted; the scene itself is now just a configurable corridor board.
 
@@ -240,8 +242,10 @@ sudo install -d -m 700 -o root -g root /etc/advent
 sudo sh -c 'umask 077; cat > /etc/advent/advent.env <<EOF
 ADVENT_RAIL_LDB_CONSUMER_KEY=put-the-api-key-here
 ADVENT_RAIL_LDB_CONSUMER_SECRET=optional-consumer-secret
-ADVENT_RAIL_CAMBRIDGE_CRS=CBG
-ADVENT_RAIL_KINGS_CROSS_CRS=KGX
+ADVENT_RAIL_ORIGIN_CRS=CBG
+ADVENT_RAIL_DESTINATION_CRS=KGX
+ADVENT_RAIL_ORIGIN_LABEL="Cambridge"
+ADVENT_RAIL_DESTINATION_LABEL="London Kings Cross"
 EOF'
 sudo chown root:root /etc/advent/advent.env
 sudo chmod 600 /etc/advent/advent.env

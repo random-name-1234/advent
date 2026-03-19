@@ -65,6 +65,11 @@
       cursor: pointer;
     }
     button:hover { background: #35509a; }
+    button:disabled {
+      cursor: not-allowed;
+      opacity: 0.55;
+      background: #1f2a4f;
+    }
     button.primary { background: #227eb8; }
     button.good { background: #207950; }
     button.warn { background: #8a5d1a; }
@@ -176,14 +181,15 @@
 
     function renderScenes() {
       scenesEl.innerHTML = "";
-      for (const name of state.scenes) {
+      for (const scene of state.scenes) {
         const button = document.createElement("button");
         button.className = "scene";
-        button.textContent = name;
+        button.textContent = scene.available ? scene.name : `${scene.name} (setup needed)`;
+        button.disabled = !scene.available;
         button.addEventListener("click", async () => {
           try {
-            await api("/api/scene/play", "POST", { name });
-            log(`Queued scene: ${name}`);
+            await api("/api/scene/play", "POST", { name: scene.name });
+            log(`Queued scene: ${scene.name}`);
             await refreshStatus();
           } catch (err) {
             log(`Error: ${err.message}`);
@@ -196,7 +202,9 @@
     async function refreshScenes() {
       try {
         const data = await api("/api/scenes");
-        state.scenes = data.available || [];
+        const available = new Set(data.available || []);
+        const known = data.known || data.available || [];
+        state.scenes = known.map((name) => ({ name, available: available.has(name) }));
         renderScenes();
       } catch (err) {
         log(`Error loading scenes: ${err.message}`);

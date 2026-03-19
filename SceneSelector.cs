@@ -85,11 +85,13 @@ public sealed class SceneSelector
         this.nextIndex = nextIndex ?? Random.Shared.Next;
         AvailableSceneNames = availableSceneDefinitions.Select(static x => x.Name).ToArray();
         AllSceneNames = cycleSceneDefinitions.Select(static x => x.Name).ToArray();
+        KnownSceneNames = BuildKnownSceneNames(availableSceneDefinitions);
         cycleIndex = 0;
     }
 
     public IReadOnlyList<string> AvailableSceneNames { get; }
     public IReadOnlyList<string> AllSceneNames { get; }
+    public IReadOnlyList<string> KnownSceneNames { get; }
 
     public ISpecialScene GetScene()
     {
@@ -139,6 +141,23 @@ public sealed class SceneSelector
         var selectedScene = cycleSceneDefinitions[cycleIndex];
         cycleIndex = (cycleIndex + 1) % cycleSceneDefinitions.Count;
         return selectedScene;
+    }
+
+    private static IReadOnlyList<string> BuildKnownSceneNames(IReadOnlyList<SceneDefinition> availableDefinitions)
+    {
+        var knownNames = new List<string>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var definition in availableDefinitions)
+        {
+            if (seen.Add(definition.Name))
+                knownNames.Add(definition.Name);
+        }
+
+        if (!RailBoardScene.IsConfiguredFromEnvironment() && seen.Add("UK Rail Board"))
+            knownNames.Insert(Math.Min(1, knownNames.Count), "UK Rail Board");
+
+        return knownNames;
     }
 
     private static IReadOnlyList<SceneDefinition> LoadImageSceneDefinitions(
