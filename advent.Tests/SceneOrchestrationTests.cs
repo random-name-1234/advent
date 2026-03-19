@@ -158,6 +158,63 @@ public class SceneOrchestrationTests
     }
 
     [Fact]
+    public void QueuedClockFadingScene_FadesClockOutBeforeActivatingInnerScene()
+    {
+        using var renderer = new SceneRenderer(img => img[8, 8] = new Rgba32(0, 255, 0));
+        var playbackEngine = new ScenePlaybackEngine();
+        var innerScene = new TestSpecialScene
+        {
+            IsActive = true,
+            HidesTime = true,
+            OnDraw = img => img[8, 8] = new Rgba32(255, 0, 0)
+        };
+        playbackEngine.Enqueue(new ClockFadingScene(innerScene));
+
+        playbackEngine.Advance(TimeSpan.FromMilliseconds(500));
+        renderer.AdvanceAndRender(TimeSpan.FromMilliseconds(500), playbackEngine.ActiveScene);
+
+        Assert.Equal(0, innerScene.ActivateCount);
+        var fadedClockPixel = renderer.Img[8, 8];
+        Assert.Equal(0, fadedClockPixel.R);
+        Assert.True(fadedClockPixel.G > 0);
+
+        playbackEngine.Advance(TimeSpan.FromMilliseconds(600));
+        renderer.AdvanceAndRender(TimeSpan.FromMilliseconds(600), playbackEngine.ActiveScene);
+
+        Assert.Equal(1, innerScene.ActivateCount);
+        Assert.Equal(new Rgba32(255, 0, 0), renderer.Img[8, 8]);
+    }
+
+    [Fact]
+    public void QueuedClockFadingScene_FadesClockBackInAfterInnerSceneEnds()
+    {
+        using var renderer = new SceneRenderer(img => img[9, 9] = new Rgba32(0, 255, 0));
+        var playbackEngine = new ScenePlaybackEngine();
+        var innerScene = new TestSpecialScene
+        {
+            IsActive = true,
+            HidesTime = true,
+            OnDraw = img => img[9, 9] = new Rgba32(255, 0, 0),
+            OnElapsed = testScene => testScene.IsActive = false
+        };
+        playbackEngine.Enqueue(new ClockFadingScene(innerScene));
+
+        playbackEngine.Advance(TimeSpan.FromMilliseconds(1000));
+        renderer.AdvanceAndRender(TimeSpan.FromMilliseconds(1000), playbackEngine.ActiveScene);
+
+        Assert.Equal(new Rgba32(255, 0, 0), renderer.Img[9, 9]);
+
+        playbackEngine.Advance(TimeSpan.FromMilliseconds(100));
+        renderer.AdvanceAndRender(TimeSpan.FromMilliseconds(100), playbackEngine.ActiveScene);
+        playbackEngine.Advance(TimeSpan.FromMilliseconds(500));
+        renderer.AdvanceAndRender(TimeSpan.FromMilliseconds(500), playbackEngine.ActiveScene);
+
+        var fadedClockPixel = renderer.Img[9, 9];
+        Assert.Equal(0, fadedClockPixel.R);
+        Assert.True(fadedClockPixel.G > 0);
+    }
+
+    [Fact]
     public void QueuedScene_NotDrawn_WhenItBecomesInactiveDuringElapsed()
     {
         using var renderer = new SceneRenderer();

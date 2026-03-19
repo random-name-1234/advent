@@ -8,7 +8,7 @@ internal sealed class BuiltinSceneModule : ISceneModule
     {
         return
         [
-            new SceneCatalogRegistration("Cat", static () => new CatScene(), TransitionStyle: SceneTransitionStyle.Cut),
+            new SceneCatalogRegistration("Cat", static () => new CatScene(), TransitionStyle: SceneTransitionStyle.CutWithClockFade),
             new SceneCatalogRegistration("Starfield Parallax", static () => new StarfieldParallaxScene()),
             new SceneCatalogRegistration("Metaballs", static () => new MetaballsScene()),
             new SceneCatalogRegistration("Donkey Kong", static () => new DonkeyKongScene()),

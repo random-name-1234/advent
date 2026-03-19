@@ -21,6 +21,7 @@ internal sealed record SceneModuleContext(
 internal enum SceneTransitionStyle
 {
     Cut,
+    CutWithClockFade,
     Crossfade
 }
 
@@ -53,6 +54,7 @@ internal sealed record SceneCatalogRegistration(
         return TransitionStyle switch
         {
             SceneTransitionStyle.Cut => timedScene,
+            SceneTransitionStyle.CutWithClockFade => new ClockFadingScene(timedScene),
             SceneTransitionStyle.Crossfade => new FadingScene(timedScene),
             _ => throw new ArgumentOutOfRangeException(nameof(TransitionStyle), TransitionStyle, "Unknown transition style.")
         };

@@ -198,6 +198,13 @@ public class SceneControlServiceTests
             Assert.NotNull(fadingField);
             scene = Assert.IsAssignableFrom<ISpecialScene>(fadingField!.GetValue(scene));
         }
+        else if (scene is ClockFadingScene)
+        {
+            var clockField = typeof(ClockFadingScene).GetField("mainScene",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+            Assert.NotNull(clockField);
+            scene = Assert.IsAssignableFrom<ISpecialScene>(clockField!.GetValue(scene));
+        }
 
         if (scene.GetType().Name != "TimedScene")
             return scene;

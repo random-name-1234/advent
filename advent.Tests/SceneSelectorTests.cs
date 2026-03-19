@@ -462,8 +462,7 @@ public class SceneSelectorTests
 
             Assert.True(found);
             Assert.NotNull(scene);
-            Assert.IsNotType<FadingScene>(scene);
-            Assert.IsType<TimedScene>(scene);
+            Assert.IsType<ClockFadingScene>(scene);
             Assert.IsType<CatScene>(UnwrapTimedScene(scene));
         }
         finally
@@ -558,7 +557,7 @@ public class SceneSelectorTests
             var found = sut.TryGetSceneByName("UK Rail Board", out var scene);
 
             Assert.True(found);
-            var timedScene = UnwrapFadingScene(scene);
+            var timedScene = UnwrapTransitionScene(scene);
             var field = timedScene.GetType().GetField("maxDuration", BindingFlags.Instance | BindingFlags.NonPublic);
             Assert.NotNull(field);
             Assert.Equal(RailBoardScene.MaxSceneDuration, Assert.IsType<TimeSpan>(field!.GetValue(timedScene)));
@@ -583,7 +582,7 @@ public class SceneSelectorTests
             var found = sut.TryGetSceneByName("Legibility Lab", out var scene);
 
             Assert.True(found);
-            var timedScene = UnwrapFadingScene(scene);
+            var timedScene = UnwrapTransitionScene(scene);
             var field = timedScene.GetType().GetField("maxDuration", BindingFlags.Instance | BindingFlags.NonPublic);
             Assert.NotNull(field);
             Assert.Equal(LegibilityLabScene.MaxSceneDuration, Assert.IsType<TimeSpan>(field!.GetValue(timedScene)));
@@ -748,7 +747,7 @@ public class SceneSelectorTests
 
     private static ISpecialScene UnwrapTimedScene(ISpecialScene scene)
     {
-        scene = UnwrapFadingScene(scene);
+        scene = UnwrapTransitionScene(scene);
 
         if (scene.GetType().Name != "TimedScene")
             return scene;
@@ -758,14 +757,23 @@ public class SceneSelectorTests
         return Assert.IsAssignableFrom<ISpecialScene>(field!.GetValue(scene));
     }
 
-    private static ISpecialScene UnwrapFadingScene(ISpecialScene scene)
+    private static ISpecialScene UnwrapTransitionScene(ISpecialScene scene)
     {
-        if (scene is not FadingScene)
-            return scene;
+        if (scene is FadingScene)
+        {
+            var fadingField = typeof(FadingScene).GetField("mainScene", BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.NotNull(fadingField);
+            return Assert.IsAssignableFrom<ISpecialScene>(fadingField!.GetValue(scene));
+        }
 
-        var field = typeof(FadingScene).GetField("mainScene", BindingFlags.Instance | BindingFlags.NonPublic);
-        Assert.NotNull(field);
-        return Assert.IsAssignableFrom<ISpecialScene>(field!.GetValue(scene));
+        if (scene is ClockFadingScene)
+        {
+            var clockField = typeof(ClockFadingScene).GetField("mainScene", BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.NotNull(clockField);
+            return Assert.IsAssignableFrom<ISpecialScene>(clockField!.GetValue(scene));
+        }
+
+        return scene;
     }
 
     private sealed class MutableWeatherSnapshotSource : IWeatherSnapshotSource
