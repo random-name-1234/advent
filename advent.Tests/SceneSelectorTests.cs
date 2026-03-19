@@ -1,6 +1,8 @@
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
 using System.Reflection;
+using advent.Data.Rail;
+using advent.Data.Weather;
 using Xunit;
 
 namespace advent.Tests;
@@ -52,6 +54,7 @@ public class SceneSelectorTests
 
             Assert.Contains("always-logo", sut.AvailableSceneNames);
             Assert.Contains("Legibility Lab", sut.AvailableSceneNames);
+            Assert.DoesNotContain("Weather", sut.AvailableSceneNames);
             Assert.DoesNotContain("december-gif", sut.AvailableSceneNames);
             Assert.DoesNotContain("Santa", sut.AvailableSceneNames);
             Assert.Equal(ExpectedNonDecemberSceneCount(), sut.AvailableSceneNames.Count);
@@ -335,6 +338,98 @@ public class SceneSelectorTests
     }
 
     [Fact]
+    public void AvailableSceneNames_UpdatesWhenWeatherSnapshotBecomesReady()
+    {
+        var imageDirectory = CreateImageDirectory();
+        var weatherSource = new MutableWeatherSnapshotSource();
+
+        try
+        {
+            var sut = new SceneSelector(
+                11,
+                nextIndex: null,
+                imageSceneDirectory: imageDirectory,
+                extraImageSceneDirectories: null,
+                weatherSnapshotSource: weatherSource,
+                railSnapshotSource: null);
+
+            Assert.DoesNotContain("Weather", sut.AvailableSceneNames);
+
+            weatherSource.Snapshot = CreateWeatherSnapshot();
+
+            Assert.Contains("Weather", sut.AvailableSceneNames);
+        }
+        finally
+        {
+            Directory.Delete(imageDirectory, true);
+        }
+    }
+
+    [Fact]
+    public void GetScene_SkipsUnavailableDataScenes_WhenSelectingRandomScene()
+    {
+        var imageDirectory = CreateImageDirectory();
+        var originalEnabled = Environment.GetEnvironmentVariable("ADVENT_RAIL_ENABLED");
+        var originalKey = Environment.GetEnvironmentVariable("ADVENT_RAIL_LDB_CONSUMER_KEY");
+
+        try
+        {
+            Environment.SetEnvironmentVariable("ADVENT_RAIL_ENABLED", "true");
+            Environment.SetEnvironmentVariable("ADVENT_RAIL_LDB_CONSUMER_KEY", "test-key");
+
+            var sut = new SceneSelector(
+                11,
+                nextIndex: static _ => 0,
+                imageSceneDirectory: imageDirectory,
+                extraImageSceneDirectories: null,
+                weatherSnapshotSource: new MutableWeatherSnapshotSource(),
+                railSnapshotSource: new MutableRailSnapshotSource());
+
+            var scene = sut.GetScene();
+
+            Assert.Equal("Cat", scene.Name);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("ADVENT_RAIL_ENABLED", originalEnabled);
+            Environment.SetEnvironmentVariable("ADVENT_RAIL_LDB_CONSUMER_KEY", originalKey);
+            Directory.Delete(imageDirectory, true);
+        }
+    }
+
+    [Fact]
+    public void GetNextSceneInCycle_SkipsUnavailableDataScenes()
+    {
+        var imageDirectory = CreateImageDirectory();
+        var originalEnabled = Environment.GetEnvironmentVariable("ADVENT_RAIL_ENABLED");
+        var originalKey = Environment.GetEnvironmentVariable("ADVENT_RAIL_LDB_CONSUMER_KEY");
+
+        try
+        {
+            Environment.SetEnvironmentVariable("ADVENT_RAIL_ENABLED", "true");
+            Environment.SetEnvironmentVariable("ADVENT_RAIL_LDB_CONSUMER_KEY", "test-key");
+
+            var sut = new SceneSelector(
+                11,
+                nextIndex: null,
+                imageSceneDirectory: imageDirectory,
+                extraImageSceneDirectories: null,
+                weatherSnapshotSource: new MutableWeatherSnapshotSource(),
+                railSnapshotSource: new MutableRailSnapshotSource());
+
+            var scene = sut.GetNextSceneInCycle();
+
+            Assert.Equal("Cat", scene.Name);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("ADVENT_RAIL_ENABLED", originalEnabled);
+            Environment.SetEnvironmentVariable("ADVENT_RAIL_LDB_CONSUMER_KEY", originalKey);
+            Directory.Delete(imageDirectory, true);
+        }
+    }
+
+    [Fact]
     public void TryGetSceneByName_ReturnsScene_ForKnownName()
     {
         var imageDirectory = CreateImageDirectory();
@@ -363,6 +458,24 @@ public class SceneSelectorTests
         {
             var sut = new SceneSelector(11, imageSceneDirectory: imageDirectory);
             var found = sut.TryGetSceneByName("does-not-exist", out _);
+            Assert.False(found);
+        }
+        finally
+        {
+            Directory.Delete(imageDirectory, true);
+        }
+    }
+
+    [Fact]
+    public void TryGetSceneByName_ReturnsFalse_ForUnavailableKnownScene()
+    {
+        var imageDirectory = CreateImageDirectory();
+        try
+        {
+            var sut = new SceneSelector(11, imageSceneDirectory: imageDirectory);
+
+            var found = sut.TryGetSceneByName("Weather", out _);
+
             Assert.False(found);
         }
         finally
@@ -409,7 +522,16 @@ public class SceneSelectorTests
         {
             Environment.SetEnvironmentVariable("ADVENT_RAIL_ENABLED", "true");
             Environment.SetEnvironmentVariable("ADVENT_RAIL_LDB_CONSUMER_KEY", "test-key");
-            var sut = new SceneSelector(11, imageSceneDirectory: imageDirectory);
+            var sut = new SceneSelector(
+                11,
+                nextIndex: null,
+                imageSceneDirectory: imageDirectory,
+                extraImageSceneDirectories: null,
+                weatherSnapshotSource: null,
+                railSnapshotSource: new MutableRailSnapshotSource
+                {
+                    Snapshot = CreateRailSnapshot()
+                });
 
             var found = sut.TryGetSceneByName("UK Rail Board", out var scene);
 
@@ -551,7 +673,33 @@ public class SceneSelectorTests
 
     private static int ExpectedNonDecemberSceneCount()
     {
-        return RailBoardScene.IsConfiguredFromEnvironment() ? 14 : 13;
+        return 12;
+    }
+
+    private static WeatherSnapshot CreateWeatherSnapshot()
+    {
+        return new WeatherSnapshot(12.5f, 1, true, [new DailyForecast("TODAY", 1, 14f, 7f)]);
+    }
+
+    private static RailSceneSnapshot CreateRailSnapshot()
+    {
+        var station = new RailStationSnapshot(
+            "CBG",
+            "Cambridge",
+            [],
+            [],
+            [],
+            DateTimeOffset.UtcNow,
+            false);
+
+        return new RailSceneSnapshot(
+            station,
+            station with
+            {
+                HeaderLabel = "KGX",
+                StationName = "London Kings Cross"
+            },
+            DateTimeOffset.UtcNow);
     }
 
     private static void CreatePng(string filePath, int width, int height)
@@ -596,5 +744,39 @@ public class SceneSelectorTests
         var field = typeof(FadingScene).GetField("mainScene", BindingFlags.Instance | BindingFlags.NonPublic);
         Assert.NotNull(field);
         return Assert.IsAssignableFrom<ISpecialScene>(field!.GetValue(scene));
+    }
+
+    private sealed class MutableWeatherSnapshotSource : IWeatherSnapshotSource
+    {
+        public WeatherSnapshot? Snapshot { get; set; }
+
+        public bool TryGetSnapshot(out WeatherSnapshot snapshot)
+        {
+            if (Snapshot is null)
+            {
+                snapshot = default!;
+                return false;
+            }
+
+            snapshot = Snapshot;
+            return true;
+        }
+    }
+
+    private sealed class MutableRailSnapshotSource : IRailSnapshotSource
+    {
+        public RailSceneSnapshot? Snapshot { get; set; }
+
+        public bool TryGetSnapshot(out RailSceneSnapshot snapshot)
+        {
+            if (Snapshot is null)
+            {
+                snapshot = default!;
+                return false;
+            }
+
+            snapshot = Snapshot;
+            return true;
+        }
     }
 }

@@ -1,5 +1,6 @@
 using System;
 using System.Reflection;
+using advent.Data.Weather;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
 using Xunit;
@@ -11,10 +12,7 @@ public class WeatherSceneTests
     [Fact]
     public void Activate_UsesPreparedSnapshotAndExpires()
     {
-        ResetCache();
-        SetCachedSnapshot(CreateSnapshot());
-
-        var scene = new WeatherScene();
+        var scene = new WeatherScene(new FixedWeatherSnapshotSource(CreateSnapshot()));
         scene.Activate();
 
         using var canvas = new Image<Rgba32>(64, 32);
@@ -48,7 +46,7 @@ public class WeatherSceneTests
     [Fact]
     public void DrawForecastPanel_RendersHeaderBodyAndSummaryZones()
     {
-        var scene = new WeatherScene();
+        var scene = new WeatherScene(new FixedWeatherSnapshotSource(CreateSnapshot()));
         var drawMethod = typeof(WeatherScene).GetMethod("DrawForecastPanel", BindingFlags.Instance | BindingFlags.NonPublic);
         Assert.NotNull(drawMethod);
 
@@ -65,7 +63,7 @@ public class WeatherSceneTests
     [Fact]
     public void Draw_DoesNotRenderBottomCenterIndicatorArtifacts()
     {
-        var scene = new WeatherScene();
+        var scene = new WeatherScene(new FixedWeatherSnapshotSource(CreateSnapshot()));
         SetBackingField(scene, "<IsActive>k__BackingField", true);
         SetPrivateField(scene, "snapshot", CreateSnapshot());
 
@@ -75,33 +73,16 @@ public class WeatherSceneTests
         Assert.True(CountLitPixels(canvas, 22, 31, 20, 1) <= 3);
     }
 
-    private static object CreateSnapshot()
-    {
-        var weatherSnapshotType = typeof(WeatherScene).GetNestedType("WeatherSnapshot", BindingFlags.NonPublic);
-        var dailyForecastType = typeof(WeatherScene).GetNestedType("DailyForecast", BindingFlags.NonPublic);
-        Assert.NotNull(weatherSnapshotType);
-        Assert.NotNull(dailyForecastType);
-
-        var forecasts = Array.CreateInstance(dailyForecastType!, 3);
-        forecasts.SetValue(CreateNonPublicInstance(dailyForecastType!, "TODAY", 1, 15f, 9f), 0);
-        forecasts.SetValue(CreateNonPublicInstance(dailyForecastType!, "TOM", 61, 12f, 7f), 1);
-        forecasts.SetValue(CreateNonPublicInstance(dailyForecastType!, "WED", 3, 11f, 5f), 2);
-
-        return CreateNonPublicInstance(weatherSnapshotType!, 10f, 1, true, forecasts);
-    }
-
-    private static object CreateNonPublicInstance(Type type, params object[] args)
-    {
-        var instance = Activator.CreateInstance(
-            type,
-            BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
-            binder: null,
-            args: args,
-            culture: null);
-
-        Assert.NotNull(instance);
-        return instance!;
-    }
+    private static WeatherSnapshot CreateSnapshot()
+        => new(
+            10f,
+            1,
+            true,
+            [
+                new DailyForecast("TODAY", 1, 15f, 9f),
+                new DailyForecast("TOM", 61, 12f, 7f),
+                new DailyForecast("WED", 3, 11f, 5f)
+            ]);
 
     private static void SetBackingField(object target, string fieldName, object value)
     {
@@ -117,24 +98,13 @@ public class WeatherSceneTests
         field!.SetValue(target, value);
     }
 
-    private static void ResetCache()
+    private sealed class FixedWeatherSnapshotSource(WeatherSnapshot snapshot) : IWeatherSnapshotSource
     {
-        var snapshotField = typeof(WeatherScene).GetField("cachedSnapshot", BindingFlags.Static | BindingFlags.NonPublic);
-        var updatedAtField = typeof(WeatherScene).GetField("cacheUpdatedAtUtc", BindingFlags.Static | BindingFlags.NonPublic);
-        Assert.NotNull(snapshotField);
-        Assert.NotNull(updatedAtField);
-        snapshotField!.SetValue(null, null);
-        updatedAtField!.SetValue(null, DateTimeOffset.MinValue);
-    }
-
-    private static void SetCachedSnapshot(object snapshot)
-    {
-        var snapshotField = typeof(WeatherScene).GetField("cachedSnapshot", BindingFlags.Static | BindingFlags.NonPublic);
-        var updatedAtField = typeof(WeatherScene).GetField("cacheUpdatedAtUtc", BindingFlags.Static | BindingFlags.NonPublic);
-        Assert.NotNull(snapshotField);
-        Assert.NotNull(updatedAtField);
-        snapshotField!.SetValue(null, snapshot);
-        updatedAtField!.SetValue(null, DateTimeOffset.UtcNow);
+        public bool TryGetSnapshot(out WeatherSnapshot weatherSnapshot)
+        {
+            weatherSnapshot = snapshot;
+            return true;
+        }
     }
 
     private static int CountLitPixels(Image<Rgba32> image, int x, int y, int width, int height)

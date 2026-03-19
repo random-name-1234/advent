@@ -13,6 +13,8 @@ It started life as a festive matrix display and gradually picked up a few extra 
 
 If you like the idea of a 64x32 RGB panel acting somewhere between "seasonal art installation" and "tiny control room", this repo is for you.
 
+If you want the "how would we design this properly now that it has grown up?" version, see [`docs/architecture-proposal.md`](docs/architecture-proposal.md).
+
 ## Highlights
 
 - C# all the way down for app logic and rendering

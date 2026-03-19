@@ -1,10 +1,19 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-base_url="${ADVENT_RAIL_LDB_BASE_URL:-https://api1.raildata.org.uk/1010-live-arrival-and-departure-boards---staff-version1_0/LDBSVWS}"
+base_url="${ADVENT_RAIL_LDB_BASE_URL:-https://api1.raildata.org.uk/1010-live-departure-board---staff-version1_0/LDBSVWS}"
 crs="${1:-${ADVENT_RAIL_ORIGIN_CRS:-${ADVENT_RAIL_CAMBRIDGE_CRS:-CBG}}}"
 board_time="${2:-$(TZ=Europe/London date +%Y%m%dT%H%M%S)}"
 upper_crs="$(printf '%s' "${crs}" | tr '[:lower:]' '[:upper:]')"
+default_filter_crs="${ADVENT_RAIL_DESTINATION_CRS:-${ADVENT_RAIL_LONDON_CRS:-${ADVENT_RAIL_KINGS_CROSS_CRS:-KGX}}}"
+filter_crs="${3:-${default_filter_crs}}"
+upper_filter_crs="$(printf '%s' "${filter_crs}" | tr '[:lower:]' '[:upper:]')"
+
+if [[ "${upper_filter_crs}" == "${upper_crs}" ]]; then
+  fallback_filter_crs="${ADVENT_RAIL_ORIGIN_CRS:-${ADVENT_RAIL_CAMBRIDGE_CRS:-CBG}}"
+  upper_filter_crs="$(printf '%s' "${fallback_filter_crs}" | tr '[:lower:]' '[:upper:]')"
+fi
+
 temp_body="$(mktemp)"
 trap 'rm -f "${temp_body}"' EXIT
 
@@ -16,7 +25,7 @@ if [[ -z "${header_name}" && -n "${ADVENT_RAIL_LDB_CONSUMER_KEY:-}" ]]; then
   header_value="${ADVENT_RAIL_LDB_CONSUMER_KEY}"
 fi
 
-url="${base_url%/}/api/20220120/GetArrDepBoardWithDetails/${upper_crs}/${board_time}?numRows=5&timeWindow=90&services=P"
+url="${base_url%/}/api/20220120/GetDepBoardWithDetails/${upper_crs}/${board_time}?numRows=5&timeWindow=90&filterCRS=${upper_filter_crs}&filterType=to&services=P"
 
 echo "Requesting ${url}" >&2
 

@@ -106,6 +106,7 @@
       <div class="meta">Control scenes from your LAN. Current status updates every 2 seconds.</div>
       <div class="row">
         <span class="badge" id="mode">mode: ?</span>
+        <span class="badge" id="activeScene">active: ?</span>
         <span class="badge" id="queue">queue: ?</span>
         <span class="badge" id="tokenState">token: off</span>
       </div>
@@ -137,6 +138,7 @@
     const tokenInput = document.getElementById("token");
     const tokenState = document.getElementById("tokenState");
     const modeEl = document.getElementById("mode");
+    const activeSceneEl = document.getElementById("activeScene");
     const queueEl = document.getElementById("queue");
     const scenesEl = document.getElementById("scenes");
     const logEl = document.getElementById("log");
@@ -202,9 +204,17 @@
     async function refreshScenes() {
       try {
         const data = await api("/api/scenes");
-        const available = new Set(data.available || []);
-        const known = data.known || data.available || [];
-        state.scenes = known.map((name) => ({ name, available: available.has(name) }));
+        if (Array.isArray(data.items) && data.items.length > 0) {
+          state.scenes = data.items.map((item) => ({
+            name: item.name,
+            available: Boolean(item.available),
+            includedInCycle: Boolean(item.includedInCycle)
+          }));
+        } else {
+          const available = new Set(data.available || []);
+          const known = data.known || data.available || [];
+          state.scenes = known.map((name) => ({ name, available: available.has(name), includedInCycle: true }));
+        }
         renderScenes();
       } catch (err) {
         log(`Error loading scenes: ${err.message}`);
@@ -217,6 +227,8 @@
         modeEl.textContent = `mode: ${data.mode}`;
         modeEl.className = data.mode === "test" ? "badge warn" : "badge ok";
         queueEl.textContent = `queue: ${data.queueLength}`;
+        activeSceneEl.textContent = `active: ${data.activeSceneName || "clock"}`;
+        activeSceneEl.className = data.hasActiveScene ? "badge ok" : "badge";
       } catch (err) {
         log(`Error loading status: ${err.message}`);
       }

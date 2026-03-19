@@ -1,10 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
-using System.Net.Http;
-using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using advent.Data.Weather;
 using SixLabors.Fonts;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.Drawing.Processing;
@@ -23,20 +22,6 @@ public class WeatherScene : ISpecialScene, IDeferredActivationScene
     private static readonly TimeSpan PanelDuration =
         TimeSpan.FromMilliseconds(SceneDuration.TotalMilliseconds / PanelCount);
     private static readonly TimeSpan TransitionDuration = TimeSpan.FromMilliseconds(900);
-    private static readonly TimeSpan CacheLifetime = TimeSpan.FromMinutes(10);
-
-    private static readonly HttpClient HttpClient = new()
-    {
-        Timeout = TimeSpan.FromSeconds(4)
-    };
-    private static readonly TimeSpan PreparationTimeout = HttpClient.Timeout + TimeSpan.FromSeconds(2);
-
-    private static readonly Lock CacheLock = new();
-    private static DateTimeOffset cacheUpdatedAtUtc = DateTimeOffset.MinValue;
-    private static WeatherSnapshot? cachedSnapshot;
-
-    private static readonly double Latitude = ReadCoordinate("ADVENT_WEATHER_LATITUDE", 52.2053);
-    private static readonly double Longitude = ReadCoordinate("ADVENT_WEATHER_LONGITUDE", 0.1218);
 
     private static readonly Font HeroTempFont = AppFonts.Create(10.5f);
     private static readonly DrawingOptions CrispDrawingOptions = new()
@@ -105,25 +90,22 @@ public class WeatherScene : ISpecialScene, IDeferredActivationScene
         "010000"
     ];
 
-    private readonly Func<CancellationToken, Task<WeatherSnapshot>> fetchWeatherAsync;
+    private readonly IWeatherSnapshotSource snapshotSource;
 
     private Image<Rgba32>? currentPanelBuffer;
     private TimeSpan elapsedThisScene;
-    private TimeSpan elapsedWaitingForData;
-    private bool fetchAttemptStarted;
-    private Task<WeatherSnapshot>? fetchTask;
     private Image<Rgba32>? nextPanelBuffer;
     private bool shouldSkipActivation;
     private WeatherSnapshot? snapshot;
 
     public WeatherScene()
-        : this(static cancellationToken => FetchWeatherAsync(cancellationToken))
+        : this(EmptyWeatherSnapshotSource.Instance)
     {
     }
 
-    private WeatherScene(Func<CancellationToken, Task<WeatherSnapshot>> fetchWeatherAsync)
+    internal WeatherScene(IWeatherSnapshotSource snapshotSource)
     {
-        this.fetchWeatherAsync = fetchWeatherAsync ?? throw new ArgumentNullException(nameof(fetchWeatherAsync));
+        this.snapshotSource = snapshotSource ?? throw new ArgumentNullException(nameof(snapshotSource));
     }
 
     public bool IsActive { get; private set; }
@@ -135,45 +117,23 @@ public class WeatherScene : ISpecialScene, IDeferredActivationScene
 
     public void Prepare()
     {
-        elapsedWaitingForData = TimeSpan.Zero;
-        shouldSkipActivation = false;
-
-        TryApplyFetchResult();
-        snapshot ??= TryGetCachedSnapshot();
-        if (snapshot is not null)
-            return;
-
-        StartFetchIfNeeded();
+        shouldSkipActivation = !snapshotSource.TryGetSnapshot(out var weatherSnapshot);
+        snapshot = weatherSnapshot;
     }
 
     public void AdvancePreparation(TimeSpan timeSpan)
     {
-        if (snapshot is not null || shouldSkipActivation)
-            return;
-
-        elapsedWaitingForData += timeSpan;
-        TryApplyFetchResult();
-        snapshot ??= TryGetCachedSnapshot();
-
         if (snapshot is not null)
             return;
 
-        StartFetchIfNeeded();
-        if (elapsedWaitingForData < PreparationTimeout)
-            return;
-
-        shouldSkipActivation = true;
-        Console.WriteLine("Weather scene skipped: live data was not ready in time.");
+        shouldSkipActivation = !snapshotSource.TryGetSnapshot(out var weatherSnapshot);
+        snapshot = weatherSnapshot;
     }
 
     public void Activate()
     {
         if (snapshot is null)
-        {
             Prepare();
-            TryApplyFetchResult();
-            snapshot ??= TryGetCachedSnapshot();
-        }
 
         if (snapshot is null)
         {
@@ -195,7 +155,6 @@ public class WeatherScene : ISpecialScene, IDeferredActivationScene
         if (!IsActive)
             return;
 
-        TryApplyFetchResult();
         elapsedThisScene += timeSpan;
         if (elapsedThisScene > SceneDuration)
         {
@@ -429,78 +388,6 @@ public class WeatherScene : ISpecialScene, IDeferredActivationScene
         }
     }
 
-    private static async Task<WeatherSnapshot> FetchWeatherAsync(CancellationToken cancellationToken)
-    {
-        var lat = Latitude.ToString("0.####", CultureInfo.InvariantCulture);
-        var lon = Longitude.ToString("0.####", CultureInfo.InvariantCulture);
-        var url =
-            $"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current=temperature_2m,weather_code,is_day&daily=weather_code,temperature_2m_max,temperature_2m_min&timezone=auto&forecast_days=4";
-
-        using var response = await HttpClient.GetAsync(url, cancellationToken).ConfigureAwait(false);
-        response.EnsureSuccessStatusCode();
-
-        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
-        using var json = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken).ConfigureAwait(false);
-
-        var root = json.RootElement;
-        if (root.TryGetProperty("error", out var hasError) &&
-            hasError.ValueKind == JsonValueKind.True)
-        {
-            var reason = root.TryGetProperty("reason", out var reasonEl)
-                ? reasonEl.GetString()
-                : "Unknown weather API error.";
-            throw new InvalidOperationException(reason);
-        }
-
-        var current = root.GetProperty("current");
-        var currentTemperature = ReadRequiredFloat(current, "temperature_2m");
-        var currentWeatherCode = ReadRequiredInt(current, "weather_code");
-        var isDay = ReadRequiredInt(current, "is_day") == 1;
-
-        var daily = root.GetProperty("daily");
-        var time = ReadStringArray(daily, "time");
-        var codes = ReadIntArray(daily, "weather_code");
-        var maxTemps = ReadFloatArray(daily, "temperature_2m_max");
-        var minTemps = ReadFloatArray(daily, "temperature_2m_min");
-
-        var count = Math.Min(time.Length, Math.Min(codes.Length, Math.Min(maxTemps.Length, minTemps.Length)));
-        var forecasts = new List<DailyForecast>(PanelCount);
-
-        for (var i = 0; i < count && forecasts.Count < PanelCount; i++)
-        {
-            forecasts.Add(new DailyForecast(
-                BuildPanelLabel(time[i], i),
-                codes[i],
-                maxTemps[i],
-                minTemps[i]));
-        }
-
-        if (forecasts.Count == 0)
-        {
-            forecasts.Add(new DailyForecast("TODAY", currentWeatherCode, currentTemperature, currentTemperature));
-        }
-
-        return new WeatherSnapshot(currentTemperature, currentWeatherCode, isDay, forecasts.ToArray());
-    }
-
-    private static string BuildPanelLabel(string isoDate, int offset)
-    {
-        if (offset == 0)
-            return "TODAY";
-        if (offset == 1)
-            return "TOM";
-
-        if (DateTime.TryParseExact(
-                isoDate,
-                "yyyy-MM-dd",
-                CultureInfo.InvariantCulture,
-                DateTimeStyles.None,
-                out var parsedDate))
-            return parsedDate.ToString("ddd", CultureInfo.InvariantCulture).ToUpperInvariant();
-
-        return DateTime.UtcNow.Date.AddDays(offset).ToString("ddd", CultureInfo.InvariantCulture).ToUpperInvariant();
-    }
-
     private static string ConditionLabel(int weatherCode)
     {
         return MapWeatherType(weatherCode) switch
@@ -515,129 +402,6 @@ public class WeatherScene : ISpecialScene, IDeferredActivationScene
             WeatherType.Thunder => "STORM",
             _ => "OUTLOOK"
         };
-    }
-
-    private static float ReadRequiredFloat(JsonElement parent, string propertyName)
-    {
-        if (!parent.TryGetProperty(propertyName, out var element) ||
-            !element.TryGetDouble(out var value))
-            throw new InvalidOperationException($"Weather API response missing '{propertyName}'.");
-
-        return (float)value;
-    }
-
-    private static int ReadRequiredInt(JsonElement parent, string propertyName)
-    {
-        if (!parent.TryGetProperty(propertyName, out var element) ||
-            !element.TryGetInt32(out var value))
-            throw new InvalidOperationException($"Weather API response missing '{propertyName}'.");
-
-        return value;
-    }
-
-    private static string[] ReadStringArray(JsonElement parent, string propertyName)
-    {
-        if (!parent.TryGetProperty(propertyName, out var element) ||
-            element.ValueKind != JsonValueKind.Array)
-            return Array.Empty<string>();
-
-        var values = new string[element.GetArrayLength()];
-        var i = 0;
-        foreach (var item in element.EnumerateArray())
-            values[i++] = item.GetString() ?? string.Empty;
-
-        return values;
-    }
-
-    private static int[] ReadIntArray(JsonElement parent, string propertyName)
-    {
-        if (!parent.TryGetProperty(propertyName, out var element) ||
-            element.ValueKind != JsonValueKind.Array)
-            return Array.Empty<int>();
-
-        var values = new int[element.GetArrayLength()];
-        var i = 0;
-        foreach (var item in element.EnumerateArray())
-            values[i++] = item.TryGetInt32(out var value) ? value : 0;
-
-        return values;
-    }
-
-    private static float[] ReadFloatArray(JsonElement parent, string propertyName)
-    {
-        if (!parent.TryGetProperty(propertyName, out var element) ||
-            element.ValueKind != JsonValueKind.Array)
-            return Array.Empty<float>();
-
-        var values = new float[element.GetArrayLength()];
-        var i = 0;
-        foreach (var item in element.EnumerateArray())
-            values[i++] = item.TryGetDouble(out var value) ? (float)value : 0f;
-
-        return values;
-    }
-
-    private static double ReadCoordinate(string environmentVariable, double fallback)
-    {
-        var value = Environment.GetEnvironmentVariable(environmentVariable);
-        if (string.IsNullOrWhiteSpace(value))
-            return fallback;
-
-        if (!double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var coordinate))
-            return fallback;
-
-        return coordinate;
-    }
-
-    private static WeatherSnapshot? TryGetCachedSnapshot()
-    {
-        lock (CacheLock)
-        {
-            if (cachedSnapshot == null)
-                return null;
-
-            if (DateTimeOffset.UtcNow - cacheUpdatedAtUtc > CacheLifetime)
-                return null;
-
-            return cachedSnapshot;
-        }
-    }
-
-    private static void UpdateCache(WeatherSnapshot weatherSnapshot)
-    {
-        lock (CacheLock)
-        {
-            cachedSnapshot = weatherSnapshot;
-            cacheUpdatedAtUtc = DateTimeOffset.UtcNow;
-        }
-    }
-
-    private void StartFetchIfNeeded()
-    {
-        if (fetchTask is not null || fetchAttemptStarted)
-            return;
-
-        fetchAttemptStarted = true;
-        fetchTask = fetchWeatherAsync(CancellationToken.None);
-    }
-
-    private void TryApplyFetchResult()
-    {
-        if (fetchTask is null || !fetchTask.IsCompleted)
-            return;
-
-        if (fetchTask.IsCompletedSuccessfully)
-        {
-            snapshot = fetchTask.Result;
-            UpdateCache(snapshot);
-        }
-        else
-        {
-            var baseException = fetchTask.Exception?.GetBaseException();
-            Console.WriteLine($"Weather fetch failed: {baseException?.Message ?? "Unknown error"}");
-        }
-
-        fetchTask = null;
     }
 
     private void EnsurePanelBuffers()
@@ -936,18 +700,6 @@ public class WeatherScene : ISpecialScene, IDeferredActivationScene
         img[x, y] = color;
     }
 
-    private sealed record WeatherSnapshot(
-        float CurrentTemperatureC,
-        int CurrentWeatherCode,
-        bool IsDay,
-        DailyForecast[] Forecasts);
-
-    private readonly record struct DailyForecast(
-        string DayLabel,
-        int WeatherCode,
-        float MaxTempC,
-        float MinTempC);
-
     private enum WeatherType
     {
         Unknown,
@@ -959,5 +711,16 @@ public class WeatherScene : ISpecialScene, IDeferredActivationScene
         Rain,
         Snow,
         Thunder
+    }
+
+    private sealed class EmptyWeatherSnapshotSource : IWeatherSnapshotSource
+    {
+        public static readonly EmptyWeatherSnapshotSource Instance = new();
+
+        public bool TryGetSnapshot(out WeatherSnapshot snapshot)
+        {
+            snapshot = default!;
+            return false;
+        }
     }
 }

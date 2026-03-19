@@ -2,7 +2,7 @@ using System;
 using System.Collections;
 using System.Linq;
 using System.Reflection;
-using System.Threading.Tasks;
+using advent.Data.Rail;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
 using Xunit;
@@ -14,10 +14,8 @@ public class RailBoardSceneTests
     [Fact]
     public void RailBoardScene_RendersCompactPages_AndRunsLongerThanTwentySeconds()
     {
-        ResetCache();
-
-        var snapshot = new RailBoardScene.RailSceneSnapshot(
-            new RailBoardScene.RailStationSnapshot(
+        var snapshot = new RailSceneSnapshot(
+            new RailStationSnapshot(
                 "CAM",
                 "Cambridge",
                 [
@@ -28,11 +26,11 @@ public class RailBoardSceneTests
                 ],
                 [],
                 [
-                    new RailBoardScene.RailAlertSnapshot("Signal failure between Foxton and Royston. Delays expected.", 3)
+                    new RailAlertSnapshot("Signal failure between Foxton and Royston. Delays expected.", 3)
                 ],
                 new DateTimeOffset(2026, 3, 16, 18, 10, 0, TimeSpan.Zero),
                 false),
-            new RailBoardScene.RailStationSnapshot(
+            new RailStationSnapshot(
                 "KGX",
                 "London Kings Cross",
                 [],
@@ -47,7 +45,7 @@ public class RailBoardSceneTests
                 false),
             new DateTimeOffset(2026, 3, 16, 18, 10, 0, TimeSpan.Zero));
 
-        var scene = new RailBoardScene((_, _) => Task.FromResult(snapshot));
+        var scene = new RailBoardScene(new FixedRailSnapshotSource(snapshot));
 
         scene.Activate();
         Assert.True(scene.IsActive);
@@ -70,10 +68,8 @@ public class RailBoardSceneTests
     [Fact]
     public void RailBoardScene_ShowsGracefulNoDataBoard_WhenStationDataIsUnavailable()
     {
-        ResetCache();
-
-        var snapshot = new RailBoardScene.RailSceneSnapshot(
-            new RailBoardScene.RailStationSnapshot(
+        var snapshot = new RailSceneSnapshot(
+            new RailStationSnapshot(
                 "CAM",
                 "Cambridge",
                 [],
@@ -81,7 +77,7 @@ public class RailBoardSceneTests
                 [],
                 new DateTimeOffset(2026, 3, 16, 18, 10, 0, TimeSpan.Zero),
                 true),
-            new RailBoardScene.RailStationSnapshot(
+            new RailStationSnapshot(
                 "KGX",
                 "London Kings Cross",
                 [],
@@ -91,7 +87,7 @@ public class RailBoardSceneTests
                 true),
             new DateTimeOffset(2026, 3, 16, 18, 10, 0, TimeSpan.Zero));
 
-        var scene = new RailBoardScene((_, _) => Task.FromResult(snapshot));
+        var scene = new RailBoardScene(new FixedRailSnapshotSource(snapshot));
 
         scene.Activate();
         scene.Elapsed(TimeSpan.FromMilliseconds(50));
@@ -106,8 +102,8 @@ public class RailBoardSceneTests
     public void RailBoardScene_BuildsFourCorridorBoards_ForCambridgeAndConfiguredLondonCorridor()
     {
         var updatedAt = new DateTimeOffset(2026, 3, 16, 18, 10, 0, TimeSpan.Zero);
-        var snapshot = new RailBoardScene.RailSceneSnapshot(
-            new RailBoardScene.RailStationSnapshot(
+        var snapshot = new RailSceneSnapshot(
+            new RailStationSnapshot(
                 "CAM",
                 "Cambridge",
                 [
@@ -122,27 +118,21 @@ public class RailBoardSceneTests
                     CreateService("18:02", "London Kings Cross", "KGX", "P4", "On time", new Rgba32(210, 188, 144),
                         "Great Northern", "CALLS ROYSTON"),
                     CreateService("18:05", "Finsbury Park", "FPK", "P6", "On time", new Rgba32(210, 188, 144),
-                        "Great Northern", "CALLS ROYSTON"),
-                    CreateService("18:09", "Norwich", "NRW", "P7", "On time", new Rgba32(210, 188, 144),
-                        "Greater Anglia", "CALLS ELY")
+                        "Great Northern", "CALLS ROYSTON")
                 ],
                 [],
                 updatedAt,
                 false),
-            new RailBoardScene.RailStationSnapshot(
+            new RailStationSnapshot(
                 "KGX",
                 "London Kings Cross",
                 [
                     CreateService("18:28", "Cambridge", "CBG", "P8", "+4", new Rgba32(255, 184, 64),
-                        "Great Northern", "CALLS FINSBURY PARK, STEVENAGE"),
-                    CreateService("18:34", "Leeds", "LDS", "P2", "On time", new Rgba32(210, 188, 144),
-                        "LNER", "CALLS DONCASTER")
+                        "Great Northern", "CALLS FINSBURY PARK, STEVENAGE")
                 ],
                 [
                     CreateService("18:25", "Cambridge", "CBG", "P9", "On time", new Rgba32(210, 188, 144),
-                        "Great Northern", "CALLS STEVENAGE"),
-                    CreateService("18:39", "Edinburgh", "EDB", "P0", "On time", new Rgba32(210, 188, 144),
-                        "LNER", "CALLS YORK")
+                        "Great Northern", "CALLS STEVENAGE")
                 ],
                 [],
                 updatedAt,
@@ -162,8 +152,8 @@ public class RailBoardSceneTests
     public void RailBoardScene_IncludesThroughServicesThatCallAtCambridgeOnLondonBoards()
     {
         var updatedAt = new DateTimeOffset(2026, 3, 16, 18, 10, 0, TimeSpan.Zero);
-        var snapshot = new RailBoardScene.RailSceneSnapshot(
-            new RailBoardScene.RailStationSnapshot(
+        var snapshot = new RailSceneSnapshot(
+            new RailStationSnapshot(
                 "CAM",
                 "Cambridge",
                 [],
@@ -171,24 +161,20 @@ public class RailBoardSceneTests
                 [],
                 updatedAt,
                 false),
-            new RailBoardScene.RailStationSnapshot(
+            new RailStationSnapshot(
                 "KGX",
                 "London Kings Cross",
                 [
                     CreateService("18:28", "Cambridge", "CBG", "P8", "+4", new Rgba32(255, 184, 64),
                         "Great Northern", "CALLS FINSBURY PARK, STEVENAGE"),
                     CreateService("18:31", "Kings Lynn", "KLN", "P9", "On time", new Rgba32(210, 188, 144),
-                        "Great Northern", "CALLS FINSBURY PARK, STEVENAGE, CAMBRIDGE, ELY"),
-                    CreateService("18:34", "Leeds", "LDS", "P2", "On time", new Rgba32(210, 188, 144),
-                        "LNER", "CALLS DONCASTER")
+                        "Great Northern", "CALLS FINSBURY PARK, STEVENAGE, CAMBRIDGE, ELY")
                 ],
                 [
                     CreateService("18:25", "Cambridge", "CBG", "P7", "On time", new Rgba32(210, 188, 144),
                         "Great Northern", "CALLS STEVENAGE, FINSBURY PARK"),
                     CreateService("18:27", "Kings Lynn", "KLN", "P10", "+2", new Rgba32(255, 184, 64),
-                        "Great Northern", "CALLS CAMBRIDGE, STEVENAGE, FINSBURY PARK"),
-                    CreateService("18:39", "Edinburgh", "EDB", "P0", "On time", new Rgba32(210, 188, 144),
-                        "LNER", "CALLS YORK")
+                        "Great Northern", "CALLS CAMBRIDGE, STEVENAGE, FINSBURY PARK")
                 ],
                 [],
                 updatedAt,
@@ -224,17 +210,13 @@ public class RailBoardSceneTests
             Environment.SetEnvironmentVariable("ADVENT_RAIL_ORIGIN_LABEL", null);
             Environment.SetEnvironmentVariable("ADVENT_RAIL_DESTINATION_LABEL", null);
 
-            var scene = new RailBoardScene();
-            var optionsField = typeof(RailBoardScene).GetField("options", BindingFlags.Instance | BindingFlags.NonPublic);
-            Assert.NotNull(optionsField);
+            var options = RailBoardOptions.TryFromEnvironment();
 
-            var options = optionsField!.GetValue(scene);
             Assert.NotNull(options);
-
-            Assert.Equal("CBG", options!.GetType().GetProperty("OriginCrs")!.GetValue(options));
-            Assert.Equal("LST", options.GetType().GetProperty("DestinationCrs")!.GetValue(options));
-            Assert.Equal("Cambridge", options.GetType().GetProperty("OriginLabel")!.GetValue(options));
-            Assert.Equal("London Liverpool Street", options.GetType().GetProperty("DestinationLabel")!.GetValue(options));
+            Assert.Equal("CBG", options!.OriginCrs);
+            Assert.Equal("LST", options.DestinationCrs);
+            Assert.Equal("Cambridge", options.OriginLabel);
+            Assert.Equal("London Liverpool Street", options.DestinationLabel);
         }
         finally
         {
@@ -259,11 +241,7 @@ public class RailBoardSceneTests
     [InlineData(null, "Finsbury Pk", "Finsbury Park")]
     public void RailBoardScene_FormatsFullStationNames(string? crs, string? locationName, string expected)
     {
-        var method = typeof(RailBoardScene).GetMethod("FormatStationDisplayName", BindingFlags.Static | BindingFlags.NonPublic);
-        Assert.NotNull(method);
-
-        var formatted = method!.Invoke(null, [crs, locationName]);
-
+        var formatted = RailStationNames.DisplayName(crs, locationName);
         Assert.Equal(expected, formatted);
     }
 
@@ -290,7 +268,7 @@ public class RailBoardSceneTests
         Assert.NotNull(method);
         Assert.NotNull(boardType);
 
-        var station = new RailBoardScene.RailStationSnapshot(
+        var station = new RailStationSnapshot(
             "KGX",
             "London King's Cross",
             [],
@@ -300,7 +278,7 @@ public class RailBoardSceneTests
             false);
 
         var ticker = method!.Invoke(null,
-            [station, Enum.Parse(boardType!, "Departures"), Array.Empty<RailBoardScene.RailServiceSnapshot>()]);
+            [station, Enum.Parse(boardType!, "Departures"), Array.Empty<RailServiceSnapshot>()]);
 
         Assert.Equal("London Kings Cross departures", ticker);
     }
@@ -338,7 +316,7 @@ public class RailBoardSceneTests
         Assert.Equal("Via Finsbury Park, Stevenage, Royston", stoppingText);
     }
 
-    private static RailBoardScene.RailServiceSnapshot CreateService(
+    private static RailServiceSnapshot CreateService(
         string scheduledText,
         string locationText,
         string locationCode,
@@ -348,7 +326,7 @@ public class RailBoardSceneTests
         string operatorText,
         string callingText)
     {
-        return new RailBoardScene.RailServiceSnapshot(
+        return new RailServiceSnapshot(
             scheduledText,
             locationText,
             locationCode,
@@ -375,17 +353,7 @@ public class RailBoardSceneTests
         return litPixels;
     }
 
-    private static void ResetCache()
-    {
-        var snapshotField = typeof(RailBoardScene).GetField("cachedSnapshot", BindingFlags.Static | BindingFlags.NonPublic);
-        var updatedAtField = typeof(RailBoardScene).GetField("cacheUpdatedAtUtc", BindingFlags.Static | BindingFlags.NonPublic);
-        Assert.NotNull(snapshotField);
-        Assert.NotNull(updatedAtField);
-        snapshotField!.SetValue(null, null);
-        updatedAtField!.SetValue(null, DateTimeOffset.MinValue);
-    }
-
-    private static object[] InvokeBuildPages(RailBoardScene.RailSceneSnapshot snapshot)
+    private static object[] InvokeBuildPages(RailSceneSnapshot snapshot)
     {
         var method = typeof(RailBoardScene).GetMethod("BuildPages", BindingFlags.Static | BindingFlags.NonPublic);
         Assert.NotNull(method);
@@ -402,8 +370,17 @@ public class RailBoardSceneTests
         Assert.Equal(boardType, pageType.GetProperty("BoardType")?.GetValue(page)?.ToString());
 
         var rowsValue = pageType.GetProperty("Rows")?.GetValue(page);
-        var rows = Assert.IsAssignableFrom<IReadOnlyList<RailBoardScene.RailServiceSnapshot>>(rowsValue);
+        var rows = Assert.IsAssignableFrom<IReadOnlyList<RailServiceSnapshot>>(rowsValue);
 
         Assert.Equal(expectedLocations, rows.Select(row => row.LocationText).ToArray());
+    }
+
+    private sealed class FixedRailSnapshotSource(RailSceneSnapshot snapshot) : IRailSnapshotSource
+    {
+        public bool TryGetSnapshot(out RailSceneSnapshot railSnapshot)
+        {
+            railSnapshot = snapshot;
+            return true;
+        }
     }
 }

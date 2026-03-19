@@ -2,15 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
-using System.Net;
-using System.Net.Http;
-using System.Net.Http.Headers;
-using System.Text;
-using System.Text.Json;
-using System.Text.Json.Serialization;
-using System.Text.RegularExpressions;
-using System.Threading;
-using System.Threading.Tasks;
+using advent.Data.Rail;
 using SixLabors.Fonts;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.Drawing.Processing;
@@ -25,32 +17,14 @@ public sealed class RailBoardScene : ISpecialScene, IDeferredActivationScene
 
     private const int WideMinWidth = 100;
     private const int WideMinHeight = 48;
-    private const int StationFetchRows = 10;
     private const int WideBoardRows = 3;
     private const int CompactBoardRows = 2;
 
-    private static readonly TimeSpan CacheLifetime = TimeSpan.FromSeconds(45);
     private static readonly TimeSpan BoardPageDuration = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan DetailPageDuration = TimeSpan.FromSeconds(8);
     private static readonly TimeSpan JourneyPageDuration = TimeSpan.FromSeconds(8);
     private static readonly TimeSpan AlertPageDuration = TimeSpan.FromSeconds(8);
     private static readonly TimeSpan PageSwipeDuration = TimeSpan.FromMilliseconds(700);
-
-    private static readonly HttpClient HttpClient = new()
-    {
-        Timeout = TimeSpan.FromSeconds(4)
-    };
-    private static readonly TimeSpan PreparationTimeout = HttpClient.Timeout + TimeSpan.FromSeconds(2);
-
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        PropertyNameCaseInsensitive = true
-    };
-
-    private static readonly Regex HtmlTagRegex = new("<.*?>", RegexOptions.Compiled);
-    private static readonly Lock CacheLock = new();
-    private static DateTimeOffset cacheUpdatedAtUtc = DateTimeOffset.MinValue;
-    private static RailSceneSnapshot? cachedSnapshot;
 
     private static readonly Font WideHeaderFont = AppFonts.Create(10f);
     private static readonly Font WideRowFont = AppFonts.Create(8f);
@@ -74,14 +48,9 @@ public sealed class RailBoardScene : ISpecialScene, IDeferredActivationScene
     private static readonly Rgba32 WarningColor = new(255, 214, 128);
     private static readonly Rgba32 AlertColor = new(255, 84, 72);
 
-    private readonly RailBoardOptions? options;
-    private readonly Func<RailBoardOptions, DateTimeOffset, CancellationToken, Task<RailSceneSnapshot>> fetchSnapshotAsync;
-    private readonly Func<DateTimeOffset> nowProvider;
+    private readonly IRailSnapshotSource snapshotSource;
 
     private RailSceneSnapshot? snapshot;
-    private TimeSpan elapsedWaitingForData;
-    private bool fetchAttemptStarted;
-    private Task<RailSceneSnapshot>? fetchTask;
     private IReadOnlyList<RailPage> pages = [];
     private int currentPageIndex;
     private Image<Rgba32>? currentPageBuffer;
@@ -90,31 +59,13 @@ public sealed class RailBoardScene : ISpecialScene, IDeferredActivationScene
     private bool shouldSkipActivation;
 
     public RailBoardScene()
-        : this(
-            RailBoardOptions.TryFromEnvironment(),
-            static (options, now, cancellationToken) => FetchSnapshotAsync(options, now, cancellationToken),
-            static () => DateTimeOffset.UtcNow)
+        : this(EmptyRailSnapshotSource.Instance)
     {
     }
 
-    public RailBoardScene(
-        Func<DateTimeOffset, CancellationToken, Task<RailSceneSnapshot>> fetchSnapshotAsync,
-        Func<DateTimeOffset>? nowProvider = null)
-        : this(
-            RailBoardOptions.CreateForTesting(),
-            (_, now, cancellationToken) => fetchSnapshotAsync(now, cancellationToken),
-            nowProvider ?? (() => DateTimeOffset.UtcNow))
+    internal RailBoardScene(IRailSnapshotSource snapshotSource)
     {
-    }
-
-    private RailBoardScene(
-        RailBoardOptions? options,
-        Func<RailBoardOptions, DateTimeOffset, CancellationToken, Task<RailSceneSnapshot>> fetchSnapshotAsync,
-        Func<DateTimeOffset> nowProvider)
-    {
-        this.options = options;
-        this.fetchSnapshotAsync = fetchSnapshotAsync;
-        this.nowProvider = nowProvider;
+        this.snapshotSource = snapshotSource ?? throw new ArgumentNullException(nameof(snapshotSource));
     }
 
     public bool IsActive { get; private set; }
@@ -131,57 +82,25 @@ public sealed class RailBoardScene : ISpecialScene, IDeferredActivationScene
 
     public void Prepare()
     {
-        elapsedWaitingForData = TimeSpan.Zero;
-        shouldSkipActivation = false;
-
-        TryApplyFetchResult();
-        snapshot = TryGetCachedSnapshot();
+        shouldSkipActivation = !snapshotSource.TryGetSnapshot(out var railSnapshot);
+        snapshot = railSnapshot;
         pages = snapshot is not null ? BuildPages(snapshot) : [];
-
-        if (pages.Count > 0)
-            return;
-
-        if (options is null)
-        {
-            shouldSkipActivation = true;
-            return;
-        }
-
-        StartFetchIfNeeded();
     }
 
     public void AdvancePreparation(TimeSpan timeSpan)
     {
-        if (pages.Count > 0 || shouldSkipActivation)
-            return;
-
-        elapsedWaitingForData += timeSpan;
-        TryApplyFetchResult();
-
         if (pages.Count > 0)
             return;
 
-        if (options is null)
-        {
-            shouldSkipActivation = true;
-            return;
-        }
-
-        StartFetchIfNeeded();
-        if (elapsedWaitingForData < PreparationTimeout)
-            return;
-
-        shouldSkipActivation = true;
-        Console.WriteLine("Rail board scene skipped: live data was not ready in time.");
+        shouldSkipActivation = !snapshotSource.TryGetSnapshot(out var railSnapshot);
+        snapshot = railSnapshot;
+        pages = snapshot is not null ? BuildPages(snapshot) : [];
     }
 
     public void Activate()
     {
         if (pages.Count == 0)
-        {
             Prepare();
-            TryApplyFetchResult();
-        }
 
         if (pages.Count == 0)
         {
@@ -344,7 +263,6 @@ public sealed class RailBoardScene : ISpecialScene, IDeferredActivationScene
         DateTimeOffset updatedAt)
     {
         var services = boardType == BoardType.Departures ? station.Departures : station.Arrivals;
-        services = FilterServicesForBoard(station, services, counterpart);
         var boardRows = BuildBoardRows(station, boardType, services);
         var tickerText = BuildBoardTicker(station, boardType, boardRows);
         return new BoardPage(
@@ -355,104 +273,6 @@ public sealed class RailBoardScene : ISpecialScene, IDeferredActivationScene
             boardRows,
             tickerText,
             DurationForText(BoardPageDuration, tickerText));
-    }
-
-    private static IReadOnlyList<RailServiceSnapshot> FilterServicesForBoard(
-        RailStationSnapshot station,
-        IReadOnlyList<RailServiceSnapshot> services,
-        RailStationSnapshot counterpart)
-    {
-        var corridorStops = GetCorridorStops(station, counterpart);
-        return services
-            .Where(service => MatchesAnyStation(service, corridorStops))
-            .ToArray();
-    }
-
-    private static (IReadOnlyList<string> Codes, IReadOnlyList<string> Names)[] GetCorridorStops(
-        RailStationSnapshot station,
-        RailStationSnapshot counterpart)
-    {
-        return CompactStationLabel(station.StationName) switch
-        {
-            "Cambridge" =>
-            [
-                CreateStationMatcher("KGX", "KINGS CROSS", "LONDON KINGS CROSS"),
-                CreateStationMatcher("LST", "LONDON LIVERPOOL STREET", "LIVERPOOL STREET"),
-                CreateStationMatcher("FPK", "FINSBURY PARK")
-            ],
-            "Kings Cross" => [CreateStationMatcher("CBG", "CAM", "CAMBRIDGE")],
-            _ => [CreateStationMatcher(counterpart.HeaderLabel, counterpart.StationName)]
-        };
-    }
-
-    private static (IReadOnlyList<string> Codes, IReadOnlyList<string> Names) CreateStationMatcher(
-        params string[] values)
-    {
-        var codes = new List<string>();
-        var names = new List<string>();
-
-        foreach (var value in values)
-        {
-            var normalized = NormalizeLocationKey(value);
-            if (normalized.Length <= 3 && normalized.All(char.IsLetter))
-                codes.Add(normalized);
-            else
-                names.Add(normalized);
-        }
-
-        return (codes, names);
-    }
-
-    private static bool MatchesAnyStation(
-        RailServiceSnapshot service,
-        IEnumerable<(IReadOnlyList<string> Codes, IReadOnlyList<string> Names)> stations)
-    {
-        foreach (var station in stations)
-        {
-            if (MatchesStation(service, station.Codes, station.Names))
-                return true;
-        }
-
-        return false;
-    }
-
-    private static bool MatchesStation(
-        RailServiceSnapshot service,
-        IReadOnlyList<string> stationCodes,
-        IReadOnlyList<string> stationNames)
-    {
-        var locationCode = service.LocationCode.Trim().ToUpperInvariant();
-        foreach (var stationCode in stationCodes)
-        {
-            if (string.Equals(locationCode, stationCode, StringComparison.OrdinalIgnoreCase))
-                return true;
-        }
-
-        var locationText = NormalizeLocationKey(service.LocationText);
-        if (MatchesNormalizedLocation(locationText, stationNames))
-            return true;
-
-        var callingPoints = NormalizeCallingPoints(service.CallingText);
-        foreach (var callingPoint in callingPoints)
-        {
-            if (MatchesNormalizedLocation(NormalizeLocationKey(callingPoint), stationNames))
-                return true;
-        }
-
-        return false;
-    }
-
-    private static bool MatchesNormalizedLocation(
-        string normalizedLocation,
-        IReadOnlyList<string> stationNames)
-    {
-        foreach (var stationName in stationNames)
-        {
-            if (normalizedLocation.Contains(stationName, StringComparison.OrdinalIgnoreCase))
-                return true;
-        }
-
-        return false;
     }
 
     private static IReadOnlyList<RailServiceSnapshot> BuildBoardRows(
@@ -833,39 +653,10 @@ public sealed class RailBoardScene : ISpecialScene, IDeferredActivationScene
     }
 
     private static string CompactStationLabel(string stationName)
-    {
-        return NormalizeLocationKey(stationName) switch
-        {
-            "CAM" => "Cambridge",
-            "CBG" => "Cambridge",
-            "KGX" => "Kings Cross",
-            "LONDON KINGS CROSS" => "Kings Cross",
-            "KINGS CROSS" => "Kings Cross",
-            _ => FormatLocationDisplayName(stationName)
-        };
-    }
+        => RailStationNames.CompactLabel(stationName);
 
     private static string FullStationLabel(string stationName)
-    {
-        if (string.IsNullOrWhiteSpace(stationName))
-            return "---";
-
-        return NormalizeLocationKey(stationName) switch
-        {
-            "CAM" => "Cambridge",
-            "CBG" => "Cambridge",
-            "KGX" => "London Kings Cross",
-            "KINGS CROSS" => "London Kings Cross",
-            "LONDON KINGS CROSS" => "London Kings Cross",
-            "LST" => "London Liverpool Street",
-            "LIVERPOOL STREET" => "London Liverpool Street",
-            "LONDON LIVERPOOL STREET" => "London Liverpool Street",
-            "FPK" => "Finsbury Park",
-            "PBO" => "Peterborough",
-            "SVG" => "Stevenage",
-            _ => CultureInfo.InvariantCulture.TextInfo.ToTitleCase(NormalizeLocationKey(stationName).ToLowerInvariant())
-        };
-    }
+        => RailStationNames.FullLabel(stationName);
 
     private static string CompactPlatform(string platformText)
     {
@@ -1049,162 +840,6 @@ public sealed class RailBoardScene : ISpecialScene, IDeferredActivationScene
                 img[px, py] = color;
     }
 
-    private static async Task<RailSceneSnapshot> FetchSnapshotAsync(
-        RailBoardOptions railOptions,
-        DateTimeOffset now,
-        CancellationToken cancellationToken)
-    {
-        var ukNow = ConvertToUkTime(now);
-        var boardTime = ukNow.ToString("yyyyMMdd'T'HHmmss", CultureInfo.InvariantCulture);
-
-        var requests = new[]
-        {
-            new RailStationRequest(railOptions.OriginCrs, railOptions.OriginLabel),
-            new RailStationRequest(railOptions.DestinationCrs, railOptions.DestinationLabel)
-        };
-
-        var tasks = requests
-            .Select(request => FetchStationSnapshotAsync(railOptions, request, boardTime, cancellationToken))
-            .ToArray();
-
-        var stations = await Task.WhenAll(tasks).ConfigureAwait(false);
-        var updatedAt = stations
-            .Select(static station => station.UpdatedAt)
-            .Where(static value => value != DateTimeOffset.MinValue)
-            .DefaultIfEmpty(ukNow)
-            .Max();
-
-        return new RailSceneSnapshot(stations[0], stations[1], updatedAt);
-    }
-
-    private static async Task<RailStationSnapshot> FetchStationSnapshotAsync(
-        RailBoardOptions railOptions,
-        RailStationRequest request,
-        string boardTime,
-        CancellationToken cancellationToken)
-    {
-        var url =
-            $"{railOptions.BaseUrl}/api/20220120/GetArrDepBoardWithDetails/{request.Crs.ToUpperInvariant()}/{boardTime}?numRows={StationFetchRows}&timeWindow=90&services=P";
-
-        using var httpRequest = new HttpRequestMessage(HttpMethod.Get, url);
-        httpRequest.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-        ApplyAuthentication(httpRequest, railOptions);
-
-        using var response = await HttpClient.SendAsync(httpRequest, cancellationToken).ConfigureAwait(false);
-        if (!response.IsSuccessStatusCode)
-        {
-            var body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-            throw new InvalidOperationException(
-                $"Rail API returned {(int)response.StatusCode} ({response.ReasonPhrase}) for '{url}'. Body: {body}");
-        }
-
-        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
-        var board = await JsonSerializer.DeserializeAsync<StationBoardDto>(
-            stream,
-            JsonOptions,
-            cancellationToken).ConfigureAwait(false);
-
-        if (board is null)
-        {
-            return new RailStationSnapshot(
-                request.StationLabel,
-                request.StationLabel,
-                [],
-                [],
-                [],
-                DateTimeOffset.MinValue,
-                true);
-        }
-
-        var updatedAt = board.GeneratedAt.HasValue
-            ? ConvertToUkTime(board.GeneratedAt.Value)
-            : DateTimeOffset.MinValue;
-
-        return new RailStationSnapshot(
-            request.StationLabel,
-            board.LocationName ?? request.StationLabel,
-            BuildServices(board.TrainServices, BoardType.Departures),
-            BuildServices(board.TrainServices, BoardType.Arrivals),
-            BuildAlerts(board.NrccMessages),
-            updatedAt,
-            board.ServicesAreUnavailable);
-    }
-
-    private static IReadOnlyList<RailServiceSnapshot> BuildServices(ServiceItemDto[]? services, BoardType boardType)
-    {
-        if (services is null || services.Length == 0)
-            return [];
-
-        return services
-            .Select(service => BuildServiceSnapshot(service, boardType))
-            .Where(static service => service is not null)
-            .Cast<RailServiceSnapshot>()
-            .OrderBy(static service => service.SortTime)
-            .ToArray();
-    }
-
-    private static RailServiceSnapshot? BuildServiceSnapshot(ServiceItemDto service, BoardType boardType)
-    {
-        var location = boardType == BoardType.Departures
-            ? PickEndPoint(service.Destination)
-            : PickEndPoint(service.Origin);
-        if (location is null)
-            return null;
-
-        var planned = ParseBoardTimestamp(boardType == BoardType.Departures ? service.Std : service.Sta);
-        var estimated = ParseBoardTimestamp(boardType == BoardType.Departures
-            ? service.Etd ?? service.Atd
-            : service.Eta ?? service.Ata);
-        if (!planned.HasValue && !estimated.HasValue)
-            return null;
-
-        var platformText = !service.PlatformIsHidden && !string.IsNullOrWhiteSpace(service.Platform)
-            ? $"P{service.Platform!.Trim()}"
-            : "--";
-        var locationText = FormatStationDisplayName(location.Crs, location.LocationName);
-        var locationCode = !string.IsNullOrWhiteSpace(location.Crs)
-            ? location.Crs!.Trim().ToUpperInvariant()
-            : BuildLocationCode(location.LocationName);
-        var callingPoints = BuildCallingPoints(boardType == BoardType.Departures
-            ? service.SubsequentLocations
-            : service.PreviousLocations);
-
-        var (statusText, statusColor) = BuildStatus(service, planned, estimated);
-        var detailTicker = BuildDetailTicker(locationText, locationCode, service.Operator, callingPoints, statusText);
-
-        return new RailServiceSnapshot(
-            planned?.ToString("HH:mm", CultureInfo.InvariantCulture) ?? "--:--",
-            locationText,
-            locationCode,
-            platformText,
-            statusText,
-            statusColor,
-            service.Operator ?? string.Empty,
-            callingPoints,
-            detailTicker,
-            estimated ?? planned ?? DateTimeOffset.MaxValue);
-    }
-
-    private static string BuildDetailTicker(
-        string locationText,
-        string locationCode,
-        string? operatorName,
-        string callingPoints,
-        string statusText)
-    {
-        var parts = new List<string>();
-        if (!string.IsNullOrWhiteSpace(locationText))
-            parts.Add(locationText);
-        if (!string.IsNullOrWhiteSpace(operatorName))
-            parts.Add(operatorName);
-        var servicePattern = BuildServicePatternText(locationText, locationCode, callingPoints);
-        if (!string.IsNullOrWhiteSpace(servicePattern))
-            parts.Add(servicePattern);
-        if (!string.IsNullOrWhiteSpace(statusText))
-            parts.Add(statusText);
-        return string.Join("  •  ", parts);
-    }
-
     private static string BuildServicePatternText(string locationText, string locationCode, string callingPoints)
     {
         var normalizedCallingPoints = NormalizeCallingPoints(callingPoints);
@@ -1269,127 +904,6 @@ public sealed class RailBoardScene : ISpecialScene, IDeferredActivationScene
         return normalizedCallingPoints.Count <= 2 || calledCoreStops < coreStops.Count;
     }
 
-    private static IReadOnlyList<RailAlertSnapshot> BuildAlerts(NrccMessageDto[]? messages)
-    {
-        if (messages is null || messages.Length == 0)
-            return [];
-
-        return messages
-            .Select(BuildAlertSnapshot)
-            .Where(static alert => alert is not null)
-            .Cast<RailAlertSnapshot>()
-            .DistinctBy(static alert => alert.Message)
-            .OrderByDescending(static alert => alert.SeverityWeight)
-            .ToArray();
-    }
-
-    private static RailAlertSnapshot? BuildAlertSnapshot(NrccMessageDto message)
-    {
-        var stripped = StripHtml(message.XhtmlMessage);
-        if (string.IsNullOrWhiteSpace(stripped))
-            return null;
-
-        return new RailAlertSnapshot(
-            stripped,
-            GetSeverityWeight(message.Severity));
-    }
-
-    private static int GetSeverityWeight(string? severity)
-    {
-        return severity?.Trim().ToUpperInvariant() switch
-        {
-            "SEVERE" => 3,
-            "MAJOR" => 2,
-            "MINOR" => 1,
-            _ => 0
-        };
-    }
-
-    private static string StripHtml(string? value)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-            return string.Empty;
-
-        var decoded = WebUtility.HtmlDecode(value);
-        var stripped = HtmlTagRegex.Replace(decoded, " ");
-        return Regex.Replace(stripped, "\\s+", " ").Trim();
-    }
-
-    private static EndPointLocationDto? PickEndPoint(EndPointLocationDto[]? endpoints)
-    {
-        if (endpoints is null || endpoints.Length == 0)
-            return null;
-
-        foreach (var endpoint in endpoints)
-        {
-            if (endpoint is not null && !string.IsNullOrWhiteSpace(endpoint.Crs))
-                return endpoint;
-        }
-
-        return endpoints.FirstOrDefault(static endpoint => endpoint is not null);
-    }
-
-    private static string BuildCallingPoints(ServiceLocationDto[]? locations)
-    {
-        if (locations is null || locations.Length == 0)
-            return string.Empty;
-
-        return string.Join(", ",
-            locations
-                .Select(static location => FormatStationDisplayName(location.Crs, location.LocationName))
-                .Where(static text => !string.IsNullOrWhiteSpace(text))
-                .Take(8));
-    }
-
-    private static (string Text, Rgba32 Color) BuildStatus(
-        ServiceItemDto service,
-        DateTimeOffset? planned,
-        DateTimeOffset? estimated)
-    {
-        if (service.IsCancelled)
-            return ("Cancelled", CancelledColor);
-
-        if (service.ServiceIsSuppressed)
-            return ("See front", WarningColor);
-
-        if (planned.HasValue && estimated.HasValue)
-        {
-            var delayMinutes = (int)Math.Round((estimated.Value - planned.Value).TotalMinutes);
-            if (delayMinutes > 0)
-                return ($"+{Math.Min(delayMinutes, 99):0}", DelayedColor);
-        }
-
-        return ("On time", OnTimeColor);
-    }
-
-    private static DateTimeOffset? ParseBoardTimestamp(string? value)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-            return null;
-
-        if (DateTimeOffset.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.AssumeLocal, out var parsed))
-            return parsed;
-
-        return null;
-    }
-
-    private static DateTimeOffset ConvertToUkTime(DateTimeOffset value)
-    {
-        try
-        {
-            var ukTimeZone = TimeZoneInfo.FindSystemTimeZoneById("Europe/London");
-            return TimeZoneInfo.ConvertTime(value, ukTimeZone);
-        }
-        catch (TimeZoneNotFoundException)
-        {
-            return value.ToLocalTime();
-        }
-        catch (InvalidTimeZoneException)
-        {
-            return value.ToLocalTime();
-        }
-    }
-
     private static string BoardTitle(BoardType boardType)
     {
         return boardType == BoardType.Departures ? "Departures" : "Arrivals";
@@ -1407,83 +921,11 @@ public sealed class RailBoardScene : ISpecialScene, IDeferredActivationScene
         };
     }
 
-    private static string FormatStationDisplayName(string? crs, string? locationName)
-    {
-        if (!string.IsNullOrWhiteSpace(crs))
-        {
-            var mappedName = crs.Trim().ToUpperInvariant() switch
-            {
-                "CBG" => "Cambridge",
-                "ELY" => "Ely",
-                "KGX" => "London Kings Cross",
-                "KLN" => "Kings Lynn",
-                "LST" => "London Liverpool Street",
-                "PBO" => "Peterborough",
-                "SVG" => "Stevenage",
-                "FPK" => "Finsbury Park",
-                _ => null
-            };
-
-            if (!string.IsNullOrWhiteSpace(mappedName))
-                return mappedName;
-        }
-
-        if (!string.IsNullOrWhiteSpace(locationName))
-            return FullStationLabel(locationName);
-
-        if (!string.IsNullOrWhiteSpace(crs))
-            return crs.Trim().ToUpperInvariant();
-
-        return "---";
-    }
-
     private static string NormalizeLocationKey(string locationName)
-    {
-        return locationName.Trim().ToUpperInvariant() switch
-        {
-            "LONDON KING'S CROSS" => "LONDON KINGS CROSS",
-            "KING'S CROSS" => "KINGS CROSS",
-            "LONDON KX" => "LONDON KINGS CROSS",
-            "LIV ST" => "LONDON LIVERPOOL STREET",
-            "LIVERPOOL STREET" => "LONDON LIVERPOOL STREET",
-            "LONDON LIVERPOOL ST" => "LONDON LIVERPOOL STREET",
-            "PETERBORO" => "PETERBOROUGH",
-            "FINSBURY PK" => "FINSBURY PARK",
-            _ => locationName.Trim().ToUpperInvariant()
-        };
-    }
+        => RailStationNames.NormalizeLocationKey(locationName);
 
     private static string FormatLocationDisplayName(string locationName)
-    {
-        var normalized = NormalizeLocationKey(locationName);
-        return normalized switch
-        {
-            "CAM" => "Cambridge",
-            "CBG" => "Cambridge",
-            "KGX" => "Kings Cross",
-            _ => CultureInfo.InvariantCulture.TextInfo.ToTitleCase(normalized.ToLowerInvariant())
-        };
-    }
-
-    private static string BuildLocationCode(string? locationName)
-    {
-        if (string.IsNullOrWhiteSpace(locationName))
-            return "---";
-
-        var cleaned = new string(locationName
-            .Where(static c => char.IsLetter(c) || c == ' ')
-            .ToArray());
-        var words = cleaned.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        if (words.Length >= 2)
-        {
-            var combined = string.Concat(words.Take(2).Select(static word => char.ToUpperInvariant(word[0])));
-            if (combined.Length >= 2)
-                return combined;
-        }
-
-        var letters = new string(cleaned.Where(char.IsLetter).Take(3).ToArray()).ToUpperInvariant();
-        return letters.Length == 0 ? "---" : letters;
-    }
+        => RailStationNames.HumanizedLabel(locationName);
 
     private static IReadOnlyList<string> WrapText(string text, int maxCharactersPerLine, int maxLines)
     {
@@ -1513,111 +955,6 @@ public sealed class RailBoardScene : ISpecialScene, IDeferredActivationScene
 
         return lines;
     }
-
-    private static void ApplyAuthentication(HttpRequestMessage request, RailBoardOptions railOptions)
-    {
-        if (!string.IsNullOrWhiteSpace(railOptions.AuthHeaderName) &&
-            !string.IsNullOrWhiteSpace(railOptions.AuthHeaderValue))
-        {
-            request.Headers.TryAddWithoutValidation(railOptions.AuthHeaderName, railOptions.AuthHeaderValue);
-            return;
-        }
-
-        if (!string.IsNullOrWhiteSpace(railOptions.Username) &&
-            !string.IsNullOrWhiteSpace(railOptions.Password))
-        {
-            var bytes = Encoding.UTF8.GetBytes($"{railOptions.Username}:{railOptions.Password}");
-            request.Headers.Authorization = new AuthenticationHeaderValue(
-                "Basic",
-                Convert.ToBase64String(bytes));
-            return;
-        }
-
-        throw new InvalidOperationException("Rail board credentials are not configured.");
-    }
-
-    private static RailSceneSnapshot? TryGetCachedSnapshot()
-    {
-        lock (CacheLock)
-        {
-            if (cachedSnapshot is null)
-                return null;
-
-            if (DateTimeOffset.UtcNow - cacheUpdatedAtUtc > CacheLifetime)
-                return null;
-
-            return cachedSnapshot;
-        }
-    }
-
-    private static void UpdateCache(RailSceneSnapshot railSnapshot)
-    {
-        lock (CacheLock)
-        {
-            cachedSnapshot = railSnapshot;
-            cacheUpdatedAtUtc = DateTimeOffset.UtcNow;
-        }
-    }
-
-    private void StartFetchIfNeeded()
-    {
-        if (options is null || fetchTask is not null || fetchAttemptStarted)
-            return;
-
-        fetchAttemptStarted = true;
-        fetchTask = fetchSnapshotAsync(options, nowProvider(), CancellationToken.None);
-    }
-
-    private void TryApplyFetchResult()
-    {
-        if (fetchTask is null || !fetchTask.IsCompleted)
-            return;
-
-        if (fetchTask.IsCompletedSuccessfully)
-        {
-            snapshot = fetchTask.Result;
-            UpdateCache(snapshot);
-            pages = BuildPages(snapshot);
-        }
-        else
-        {
-            var baseException = fetchTask.Exception?.GetBaseException();
-            Console.WriteLine($"Rail board fetch failed: {baseException?.Message ?? "Unknown error"}");
-        }
-
-        fetchTask = null;
-    }
-
-    public sealed record RailSceneSnapshot(
-        RailStationSnapshot Cambridge,
-        RailStationSnapshot KingsCross,
-        DateTimeOffset UpdatedAt);
-
-    public sealed record RailStationSnapshot(
-        string HeaderLabel,
-        string StationName,
-        IReadOnlyList<RailServiceSnapshot> Departures,
-        IReadOnlyList<RailServiceSnapshot> Arrivals,
-        IReadOnlyList<RailAlertSnapshot> Alerts,
-        DateTimeOffset UpdatedAt,
-        bool IsUnavailable)
-    {
-        public string StationCode => HeaderLabel;
-    }
-
-    public sealed record RailServiceSnapshot(
-        string ScheduledText,
-        string LocationText,
-        string LocationCode,
-        string PlatformText,
-        string StatusText,
-        Rgba32 StatusColor,
-        string OperatorText,
-        string CallingText,
-        string DetailTicker,
-        DateTimeOffset SortTime);
-
-    public sealed record RailAlertSnapshot(string Message, int SeverityWeight);
 
     private abstract record RailPage(TimeSpan Duration);
 
@@ -1663,138 +1000,14 @@ public sealed class RailBoardScene : ISpecialScene, IDeferredActivationScene
         TimeSpan Duration)
         : RailPage(Duration);
 
-    private sealed record RailStationRequest(string Crs, string StationLabel);
-
-    private sealed record RailBoardOptions(
-        string BaseUrl,
-        string OriginCrs,
-        string DestinationCrs,
-        string OriginLabel,
-        string DestinationLabel,
-        string? AuthHeaderName,
-        string? AuthHeaderValue,
-        string? Username,
-        string? Password)
+    private sealed class EmptyRailSnapshotSource : IRailSnapshotSource
     {
-        public static RailBoardOptions? TryFromEnvironment()
+        public static readonly EmptyRailSnapshotSource Instance = new();
+
+        public bool TryGetSnapshot(out RailSceneSnapshot snapshot)
         {
-            var enabled = ReadBool("ADVENT_RAIL_ENABLED", true);
-            if (!enabled)
-                return null;
-
-            var consumerKey = ReadString("ADVENT_RAIL_LDB_CONSUMER_KEY", string.Empty);
-            var authHeaderName = ReadString("ADVENT_RAIL_LDB_AUTH_HEADER_NAME", string.Empty);
-            var authHeaderValue = ReadString("ADVENT_RAIL_LDB_AUTH_HEADER_VALUE", string.Empty);
-            if (string.IsNullOrWhiteSpace(authHeaderName) &&
-                string.IsNullOrWhiteSpace(authHeaderValue) &&
-                !string.IsNullOrWhiteSpace(consumerKey))
-            {
-                authHeaderName = "x-apikey";
-                authHeaderValue = consumerKey;
-            }
-
-            var username = ReadString("ADVENT_RAIL_LDB_USERNAME", string.Empty);
-            var password = ReadString("ADVENT_RAIL_LDB_PASSWORD", string.Empty);
-
-            var hasHeaderAuth = !string.IsNullOrWhiteSpace(authHeaderName) &&
-                                !string.IsNullOrWhiteSpace(authHeaderValue);
-            var hasBasicAuth = !string.IsNullOrWhiteSpace(username) &&
-                               !string.IsNullOrWhiteSpace(password);
-            if (!hasHeaderAuth && !hasBasicAuth)
-                return null;
-
-            var originCrs = ReadStationCrs("ADVENT_RAIL_ORIGIN_CRS", "ADVENT_RAIL_CAMBRIDGE_CRS", "CBG");
-            var destinationCrs = ReadStationCrs("ADVENT_RAIL_DESTINATION_CRS", "ADVENT_RAIL_LONDON_CRS", "KGX",
-                "ADVENT_RAIL_KINGS_CROSS_CRS");
-
-            return new RailBoardOptions(
-                ReadString(
-                    "ADVENT_RAIL_LDB_BASE_URL",
-                    "https://api1.raildata.org.uk/1010-live-arrival-and-departure-boards---staff-version1_0/LDBSVWS")
-                    .TrimEnd('/'),
-                originCrs,
-                destinationCrs,
-                ReadStationLabel("ADVENT_RAIL_ORIGIN_LABEL", "ADVENT_RAIL_CAMBRIDGE_LABEL", originCrs),
-                ReadStationLabel("ADVENT_RAIL_DESTINATION_LABEL", "ADVENT_RAIL_LONDON_LABEL", destinationCrs,
-                    "ADVENT_RAIL_KINGS_CROSS_LABEL"),
-                authHeaderName,
-                authHeaderValue,
-                username,
-                password);
-        }
-
-        public static RailBoardOptions CreateForTesting()
-        {
-            return new RailBoardOptions(
-                "https://example.invalid",
-                "CBG",
-                "KGX",
-                "Cambridge",
-                "London Kings Cross",
-                "X-Test",
-                "dummy",
-                null,
-                null);
-        }
-
-        private static string NormalizeCrs(string value)
-        {
-            return string.IsNullOrWhiteSpace(value) ? "CBG" : value.Trim().ToUpperInvariant();
-        }
-
-        private static string ReadStationCrs(string primaryEnvironmentVariable, string legacyEnvironmentVariable,
-            string fallback, string? secondaryLegacyEnvironmentVariable = null)
-        {
-            var value = ReadOptionalString(primaryEnvironmentVariable)
-                        ?? ReadOptionalString(legacyEnvironmentVariable)
-                        ?? ReadOptionalString(secondaryLegacyEnvironmentVariable)
-                        ?? fallback;
-
-            return NormalizeCrs(value);
-        }
-
-        private static string ReadStationLabel(string primaryEnvironmentVariable, string legacyEnvironmentVariable,
-            string fallbackCrs, string? secondaryLegacyEnvironmentVariable = null)
-        {
-            var value = ReadOptionalString(primaryEnvironmentVariable)
-                        ?? ReadOptionalString(legacyEnvironmentVariable)
-                        ?? ReadOptionalString(secondaryLegacyEnvironmentVariable);
-
-            return string.IsNullOrWhiteSpace(value)
-                ? FormatStationDisplayName(fallbackCrs, null)
-                : FullStationLabel(value);
-        }
-
-        private static string ReadString(string environmentVariable, string fallback)
-        {
-            var value = Environment.GetEnvironmentVariable(environmentVariable);
-            return string.IsNullOrWhiteSpace(value) ? fallback : value.Trim();
-        }
-
-        private static string? ReadOptionalString(string? environmentVariable)
-        {
-            if (string.IsNullOrWhiteSpace(environmentVariable))
-                return null;
-
-            var value = Environment.GetEnvironmentVariable(environmentVariable);
-            return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
-        }
-
-        private static bool ReadBool(string environmentVariable, bool fallback)
-        {
-            var value = Environment.GetEnvironmentVariable(environmentVariable);
-            if (string.IsNullOrWhiteSpace(value))
-                return fallback;
-
-            if (bool.TryParse(value, out var parsed))
-                return parsed;
-
-            return value.Trim() switch
-            {
-                "1" => true,
-                "0" => false,
-                _ => fallback
-            };
+            snapshot = default!;
+            return false;
         }
     }
 
@@ -1804,42 +1017,3 @@ public sealed class RailBoardScene : ISpecialScene, IDeferredActivationScene
         Arrivals
     }
 }
-
-public sealed record StationBoardDto(
-    string? LocationName,
-    string? Crs,
-    DateTimeOffset? GeneratedAt,
-    bool ServicesAreUnavailable,
-    ServiceItemDto[]? TrainServices,
-    NrccMessageDto[]? NrccMessages);
-
-public sealed record ServiceItemDto(
-    EndPointLocationDto[]? Origin,
-    EndPointLocationDto[]? Destination,
-    ServiceLocationDto[]? PreviousLocations,
-    ServiceLocationDto[]? SubsequentLocations,
-    string? Sta,
-    string? Ata,
-    string? Eta,
-    string? Std,
-    string? Atd,
-    string? Etd,
-    string? Platform,
-    string? Operator,
-    bool PlatformIsHidden,
-    [property: JsonPropertyName("serviceIsSupressed")] bool ServiceIsSuppressed,
-    bool IsCancelled);
-
-public sealed record ServiceLocationDto(
-    string? LocationName,
-    string? Crs);
-
-public sealed record EndPointLocationDto(
-    string? LocationName,
-    string? Crs,
-    string? Via);
-
-public sealed record NrccMessageDto(
-    string? Category,
-    string? Severity,
-    [property: JsonPropertyName("xhtmlMessage")] string? XhtmlMessage);

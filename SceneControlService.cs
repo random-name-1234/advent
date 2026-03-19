@@ -1,41 +1,62 @@
 using System;
-using System.Collections.Generic;
+using System.Linq;
 
 namespace advent;
 
 public sealed class SceneControlService
 {
-    private const int MaxMessageLength = 120;
     private readonly object gate = new();
-    private readonly Scene scene;
-    private readonly SceneSelector sceneSelector;
+    private readonly ScenePlaybackEngine playbackEngine;
+    private readonly SceneScheduleCoordinator scheduleCoordinator;
+    private readonly ISceneScheduler scheduler;
 
-    private bool isTestMode;
-
-    public SceneControlService(Scene scene, SceneSelector sceneSelector, bool isTestMode)
+    internal SceneControlService(ScenePlaybackEngine playbackEngine, ISceneScheduler scheduler, bool isTestMode)
     {
-        this.scene = scene ?? throw new ArgumentNullException(nameof(scene));
-        this.sceneSelector = sceneSelector ?? throw new ArgumentNullException(nameof(sceneSelector));
-        this.isTestMode = isTestMode;
-        this.scene.ContinuousSceneRequests = isTestMode;
+        this.playbackEngine = playbackEngine ?? throw new ArgumentNullException(nameof(playbackEngine));
+        this.scheduler = scheduler ?? throw new ArgumentNullException(nameof(scheduler));
+        scheduleCoordinator = new SceneScheduleCoordinator(scheduler, isTestMode);
+        scheduleCoordinator.EnsureInitialScene(playbackEngine);
     }
 
-    public IReadOnlyList<string> AvailableSceneNames => sceneSelector.AvailableSceneNames;
-    public IReadOnlyList<string> AllSceneNames => sceneSelector.AllSceneNames;
-    public IReadOnlyList<string> KnownSceneNames => sceneSelector.KnownSceneNames;
+    public IReadOnlyList<string> AvailableSceneNames => scheduler.AvailableSceneNames;
+    public IReadOnlyList<string> AllSceneNames => scheduler.AllSceneNames;
+    public IReadOnlyList<string> KnownSceneNames => scheduler.KnownSceneNames;
+    public ISpecialScene? ActiveScene => playbackEngine.ActiveScene;
+
+    public SceneCatalogStatus GetSceneCatalog()
+    {
+        var availableNames = scheduler.AvailableSceneNames
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var cycleNames = scheduler.AllSceneNames
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var scenes = scheduler.KnownSceneNames
+            .Select(name => new SceneCatalogItemStatus(
+                name,
+                availableNames.Contains(name),
+                cycleNames.Contains(name)))
+            .ToArray();
+
+        return new SceneCatalogStatus(scenes);
+    }
+
+    public void Advance(TimeSpan timeSpan)
+    {
+        lock (gate)
+        {
+            playbackEngine.Advance(timeSpan);
+            scheduleCoordinator.Advance(timeSpan, playbackEngine);
+        }
+    }
 
     public void EnqueueNextScene()
     {
-        ISpecialScene specialScene;
         lock (gate)
         {
-            specialScene = isTestMode
-                ? sceneSelector.GetNextSceneInCycle()
-                : sceneSelector.GetScene();
+            scheduleCoordinator.EnqueueNextScene(playbackEngine);
         }
 
-        scene.SpecialScenes.Enqueue(specialScene);
-        Console.WriteLine($"Enqueued scene: {specialScene.Name}");
+        Console.WriteLine("Enqueued scene: next-random-or-cycle");
     }
 
     public bool EnqueueSceneByName(string sceneName, out string error)
@@ -43,14 +64,21 @@ public sealed class SceneControlService
         ISpecialScene requestedScene;
         lock (gate)
         {
-            if (!sceneSelector.TryGetSceneByName(sceneName, out requestedScene))
+            var selection = scheduler.SelectSceneByName(sceneName);
+            if (selection.Status != SceneSelectionStatus.Ready)
             {
-                error = $"Unknown scene: '{sceneName}'.";
+                error = selection.Status switch
+                {
+                    SceneSelectionStatus.Unavailable => $"Scene '{sceneName}' is not ready yet.",
+                    _ => $"Unknown scene: '{sceneName}'."
+                };
                 return false;
             }
+
+            requestedScene = selection.Scene!;
+            playbackEngine.Enqueue(requestedScene);
         }
 
-        scene.SpecialScenes.Enqueue(requestedScene);
         Console.WriteLine($"Enqueued scene: {requestedScene.Name}");
         error = string.Empty;
         return true;
@@ -71,9 +99,9 @@ public sealed class SceneControlService
             return false;
         }
 
-        if (normalizedMessage.Length > MaxMessageLength)
+        if (normalizedMessage.Length > 120)
         {
-            error = $"Message too long. Maximum is {MaxMessageLength} characters.";
+            error = "Message too long. Maximum is 120 characters.";
             return false;
         }
 
@@ -84,7 +112,11 @@ public sealed class SceneControlService
         }
 
         var messageScene = new FadingScene(new MessageScene(normalizedMessage, sceneDuration));
-        scene.SpecialScenes.Enqueue(messageScene);
+        lock (gate)
+        {
+            playbackEngine.Enqueue(messageScene);
+        }
+
         Console.WriteLine($"Enqueued message: {normalizedMessage}");
         error = string.Empty;
         return true;
@@ -92,41 +124,46 @@ public sealed class SceneControlService
 
     public bool SetMode(bool testMode)
     {
-        var changed = false;
+        bool changed;
         lock (gate)
         {
-            if (isTestMode != testMode)
-            {
-                isTestMode = testMode;
-                scene.ContinuousSceneRequests = testMode;
-                changed = true;
-            }
+            changed = scheduleCoordinator.SetMode(testMode);
+            if (changed)
+                scheduleCoordinator.EnsureInitialScene(playbackEngine);
         }
 
-        if (changed && testMode) EnqueueNextScene();
         return changed;
     }
 
     public void ClearQueue()
     {
-        while (scene.SpecialScenes.TryDequeue(out _))
+        lock (gate)
         {
+            playbackEngine.ClearQueue();
         }
     }
 
     public SceneControlStatus GetStatus()
     {
-        bool testMode;
         lock (gate)
         {
-            testMode = isTestMode;
+            return new SceneControlStatus(
+                scheduleCoordinator.IsTestMode ? "test" : "normal",
+                scheduleCoordinator.IsTestMode,
+                playbackEngine.QueueLength,
+                playbackEngine.ActiveScene?.Name,
+                playbackEngine.HasActiveScene);
         }
-
-        return new SceneControlStatus(
-            testMode ? "test" : "normal",
-            scene.ContinuousSceneRequests,
-            scene.SpecialScenes.Count);
     }
 }
 
-public sealed record SceneControlStatus(string Mode, bool ContinuousSceneRequests, int QueueLength);
+public sealed record SceneControlStatus(
+    string Mode,
+    bool ContinuousSceneRequests,
+    int QueueLength,
+    string? ActiveSceneName,
+    bool HasActiveScene);
+
+public sealed record SceneCatalogStatus(IReadOnlyList<SceneCatalogItemStatus> Items);
+
+public sealed record SceneCatalogItemStatus(string Name, bool Available, bool IncludedInCycle);

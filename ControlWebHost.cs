@@ -56,6 +56,7 @@ internal static class ControlWebHost
 
         app.MapGet("/api/scenes", () => Results.Ok(new
         {
+            items = controlService.GetSceneCatalog().Items,
             available = controlService.AvailableSceneNames,
             all = controlService.AllSceneNames,
             known = controlService.KnownSceneNames
