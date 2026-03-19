@@ -15,7 +15,7 @@ public class SpaceInvadersScene : ISpecialScene
     private const int FormationSpacingY = 5;
     private const int PlayerY = 28;
     private const float SimulationStepSeconds = 1f / 30f;
-    private const float PlayerSpeed = 19f;
+    private const float PlayerSpeed = 22f;
 
     private static readonly TimeSpan SceneDuration = TimeSpan.FromSeconds(18);
 
@@ -104,6 +104,7 @@ public class SpaceInvadersScene : ISpecialScene
     private readonly List<BoltActor> bolts = new(24);
     private readonly bool[,] shields = new bool[Width, Height];
 
+    private int preferredAttackColumn;
     private TimeSpan elapsedThisScene;
     private float animationClock;
     private float enemyFireCooldown;
@@ -131,6 +132,7 @@ public class SpaceInvadersScene : ISpecialScene
         simulationAccumulator = 0f;
         animationClock = 0f;
         waveNumber = 0;
+        preferredAttackColumn = -1;
         IsActive = true;
         HidesTime = true;
         ResetWave(true);
@@ -197,14 +199,13 @@ public class SpaceInvadersScene : ISpecialScene
 
         formationStepCooldown += ComputeFormationStepInterval();
 
-        var nextX = formationX + formationDirection * 2f;
+        var nextX = formationX + formationDirection;
         var left = nextX;
         var right = nextX + (FormationCols - 1) * FormationSpacingX + 4f;
         if (left < 6f || right > Width - 7f)
         {
             formationDirection *= -1f;
             formationY += 2f;
-            formationX += formationDirection * 1.5f;
         }
         else
         {
@@ -212,7 +213,7 @@ public class SpaceInvadersScene : ISpecialScene
         }
 
         var formationBottom = formationY + (FormationRows - 1) * FormationSpacingY + 3f;
-        if (formationBottom >= 20f && playerExplosionSeconds <= 0f)
+        if (formationBottom >= 22f && playerExplosionSeconds <= 0f)
             TriggerPlayerHit();
     }
 
@@ -222,7 +223,7 @@ public class SpaceInvadersScene : ISpecialScene
         if (enemyFireCooldown > 0f || CountAliveInvaders() == 0)
             return;
 
-        enemyFireCooldown = MathF.Max(0.22f, 0.52f - waveNumber * 0.04f) + (float)random.NextDouble() * 0.18f;
+        enemyFireCooldown = MathF.Max(0.42f, 0.92f - waveNumber * 0.07f) + (float)random.NextDouble() * 0.2f;
         SpawnEnemyBolt();
     }
 
@@ -239,14 +240,15 @@ public class SpaceInvadersScene : ISpecialScene
         playerDecisionCooldown = MathF.Max(0f, playerDecisionCooldown - dt);
         playerFireCooldown = MathF.Max(0f, playerFireCooldown - dt);
 
-        if (TryChooseDodgeTarget())
+        var preferredAttackX = ChooseAttackTargetX();
+        if (TryChooseDodgeTarget(preferredAttackX))
         {
-            playerDecisionCooldown = 0.06f;
+            playerDecisionCooldown = 0.1f;
         }
         else if (playerDecisionCooldown <= 0f)
         {
-            playerTargetX = ChooseAttackTargetX();
-            playerDecisionCooldown = 0.14f + (float)random.NextDouble() * 0.1f;
+            playerTargetX = preferredAttackX;
+            playerDecisionCooldown = 0.28f + (float)random.NextDouble() * 0.08f;
         }
 
         var delta = playerTargetX - playerX;
@@ -256,7 +258,7 @@ public class SpaceInvadersScene : ISpecialScene
         else
             playerX += MathF.Sign(delta) * maxStep;
 
-        if (playerFireCooldown <= 0f && !HasActivePlayerBolt() && CanTakeShot())
+        if (playerFireCooldown <= 0f && !HasActivePlayerBolt() && CanTakeShot(playerX))
         {
             bolts.Add(new BoltActor
             {
@@ -267,44 +269,47 @@ public class SpaceInvadersScene : ISpecialScene
                 Color = new Rgba32(138, 255, 184)
             });
 
-            playerFireCooldown = 0.28f + (float)random.NextDouble() * 0.16f;
+            playerFireCooldown = 0.22f + (float)random.NextDouble() * 0.08f;
         }
     }
 
-    private bool TryChooseDodgeTarget()
+    private bool TryChooseDodgeTarget(float preferredAttackX)
     {
-        var bestThreatDistance = float.MaxValue;
-        BoltActor? threat = null;
-
-        for (var i = 0; i < bolts.Count; i++)
-        {
-            var bolt = bolts[i];
-            if (bolt.IsPlayer || bolt.VelocityY <= 0f)
-                continue;
-
-            var dx = MathF.Abs(bolt.X - playerX);
-            var dy = PlayerY - bolt.Y;
-            if (dy < 0f || dy > 11f || dx > 3.2f)
-                continue;
-
-            if (dy < bestThreatDistance)
-            {
-                bestThreatDistance = dy;
-                threat = bolt;
-            }
-        }
-
-        if (threat is null)
+        var currentSafety = EvaluateLaneSafety(playerX);
+        if (currentSafety > -0.3f)
             return false;
 
-        var dodgeDirection = threat.Value.X <= playerX ? 1f : -1f;
-        playerTargetX = Math.Clamp(playerX + dodgeDirection * (7f + (float)random.NextDouble() * 3f), 4f, 59f);
+        var bestX = playerX;
+        var bestScore = float.NegativeInfinity;
+        for (var candidateX = 4f; candidateX <= 59f; candidateX += 1f)
+        {
+            var safety = EvaluateLaneSafety(candidateX);
+            var score = safety
+                        - MathF.Abs(candidateX - preferredAttackX) * 0.11f
+                        - MathF.Abs(candidateX - playerX) * 0.035f;
+
+            if (IsShotLaneClear(candidateX))
+                score += 0.45f;
+
+            if (score <= bestScore)
+                continue;
+
+            bestScore = score;
+            bestX = candidateX;
+        }
+
+        if (bestScore <= currentSafety + 0.1f)
+            return false;
+
+        playerTargetX = bestX;
         return true;
     }
 
     private float ChooseAttackTargetX()
     {
-        var candidates = new List<(float X, float Weight)>();
+        var bestX = Width / 2f;
+        var bestScore = float.NegativeInfinity;
+
         for (var col = 0; col < FormationCols; col++)
         {
             var invader = GetLowestAliveInvaderInColumn(col);
@@ -312,35 +317,27 @@ public class SpaceInvadersScene : ISpecialScene
                 continue;
 
             var (x, _) = GetInvaderPosition(invader.Value.Row, invader.Value.Col);
-            var distanceWeight = 1.3f - MathF.Min(1f, MathF.Abs(playerX - x) / 24f) * 0.5f;
-            var rowWeight = 1.2f + invader.Value.Row * 0.18f;
-            candidates.Add((x, distanceWeight * rowWeight));
+            var score = invader.Value.Row * 4.5f
+                        - MathF.Abs(playerX - x) * 0.34f
+                        + (preferredAttackColumn == col ? 2.5f : 0f)
+                        + (IsShotLaneClear(x) ? 3.5f : -1.8f);
+
+            if (score <= bestScore)
+                continue;
+
+            bestScore = score;
+            bestX = x;
+            preferredAttackColumn = col;
         }
 
-        if (candidates.Count == 0)
-            return Width / 2f;
-
-        if (random.NextDouble() < 0.12)
-            return candidates[random.Next(candidates.Count)].X;
-
-        var total = 0f;
-        for (var i = 0; i < candidates.Count; i++)
-            total += candidates[i].Weight;
-
-        var pick = (float)random.NextDouble() * total;
-        var cumulative = 0f;
-        for (var i = 0; i < candidates.Count; i++)
-        {
-            cumulative += candidates[i].Weight;
-            if (pick <= cumulative)
-                return candidates[i].X;
-        }
-
-        return candidates[^1].X;
+        return bestX;
     }
 
-    private bool CanTakeShot()
+    private bool CanTakeShot(float shotX)
     {
+        if (!IsShotLaneClear(shotX))
+            return false;
+
         for (var i = 0; i < invaders.Count; i++)
         {
             var invader = invaders[i];
@@ -348,7 +345,7 @@ public class SpaceInvadersScene : ISpecialScene
                 continue;
 
             var (x, y) = GetInvaderPosition(invader.Row, invader.Col);
-            if (MathF.Abs(x - playerX) > 1.4f || y >= PlayerY)
+            if (MathF.Abs(x - shotX) > 0.9f || y >= PlayerY)
                 continue;
 
             return true;
@@ -492,7 +489,7 @@ public class SpaceInvadersScene : ISpecialScene
         {
             X = sx,
             Y = sy + 3,
-            VelocityY = 15f + waveNumber,
+            VelocityY = 12f + waveNumber * 0.65f,
             IsPlayer = false,
             Color = new Rgba32(255, 118, 126)
         });
@@ -512,8 +509,8 @@ public class SpaceInvadersScene : ISpecialScene
     {
         var alive = CountAliveInvaders();
         var removed = FormationRows * FormationCols - alive;
-        var baseInterval = 0.46f - waveNumber * 0.03f - removed * 0.011f;
-        return MathF.Max(0.1f, baseInterval);
+        var baseInterval = 0.62f - waveNumber * 0.025f - removed * 0.013f;
+        return MathF.Max(0.18f, baseInterval);
     }
 
     private bool HasActivePlayerBolt()
@@ -560,17 +557,18 @@ public class SpaceInvadersScene : ISpecialScene
         bolts.Clear();
         invaders.Clear();
         resetBeatSeconds = 0f;
+        preferredAttackColumn = -1;
 
         formationX = 10f;
         formationY = 4f;
         formationDirection = 1f;
         formationStepCooldown = 0.24f;
-        enemyFireCooldown = firstWave ? 0.55f : 0.34f;
+        enemyFireCooldown = firstWave ? 0.78f : 0.56f;
 
         playerX = Width / 2f;
         playerTargetX = playerX;
         playerDecisionCooldown = 0f;
-        playerFireCooldown = 0.22f;
+        playerFireCooldown = 0.16f;
         playerExplosionSeconds = 0f;
 
         ClearShields();
@@ -727,6 +725,50 @@ public class SpaceInvadersScene : ISpecialScene
         }
 
         DrawSprite(img, x, PlayerY - 2, PlayerSprite, new Rgba32(178, 236, 255));
+    }
+
+    private float EvaluateLaneSafety(float candidateX)
+    {
+        var safety = 0f;
+
+        for (var i = 0; i < bolts.Count; i++)
+        {
+            var bolt = bolts[i];
+            if (bolt.IsPlayer || bolt.VelocityY <= 0f)
+                continue;
+
+            var dy = PlayerY - bolt.Y;
+            if (dy < -1f || dy > 15f)
+                continue;
+
+            var dx = MathF.Abs(bolt.X - candidateX);
+            if (dx > 3.4f)
+                continue;
+
+            var timeToImpact = dy / MathF.Max(1f, bolt.VelocityY);
+            if (timeToImpact < 0f || timeToImpact > 1.1f)
+                continue;
+
+            safety -= (3.5f - dx) * 2.5f;
+            safety -= (1.1f - timeToImpact) * 7.5f;
+        }
+
+        return safety;
+    }
+
+    private bool IsShotLaneClear(float laneX)
+    {
+        var x = (int)MathF.Round(laneX);
+        if ((uint)x >= Width)
+            return false;
+
+        for (var y = 0; y < PlayerY; y++)
+        {
+            if (shields[x, y])
+                return false;
+        }
+
+        return true;
     }
 
     private static void DrawSprite(Image<Rgba32> img, int x, int y, string[] sprite, Rgba32 color)
