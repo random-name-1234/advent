@@ -7,7 +7,8 @@ namespace advent;
 
 public class CatScene : ISpecialScene
 {
-    private static readonly Point stopPosition = new(0, -29);
+    private static readonly Point visiblePosition = new(0, -29);
+    private static readonly Point hiddenPosition = new(0, 32);
     private static readonly TimeSpan moveUpDownDuration = TimeSpan.FromSeconds(1);
     private static readonly TimeSpan lookLeftTime = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan lookRightTime = TimeSpan.FromSeconds(3);
@@ -42,6 +43,9 @@ public class CatScene : ISpecialScene
     {
         elapsedThisScene = TimeSpan.Zero;
         IsActive = true;
+        HidesTime = true;
+        facePosition = hiddenPosition;
+        eyesPosition = hiddenPosition;
     }
 
     public void Elapsed(TimeSpan timeSpan)
@@ -50,54 +54,53 @@ public class CatScene : ISpecialScene
         if (elapsedThisScene > moveDownTime + moveUpDownDuration)
         {
             IsActive = false;
-            facePosition = stopPosition;
-            eyesPosition = stopPosition;
+            HidesTime = false;
+            facePosition = hiddenPosition;
+            eyesPosition = hiddenPosition;
         }
         else if (moveDownTime < elapsedThisScene)
         {
             var offsetMultiplier = (float)((elapsedThisScene - moveDownTime).TotalMilliseconds /
                                            moveUpDownDuration.TotalMilliseconds);
-            facePosition = new Point(0, -29 + (int)(61 * offsetMultiplier));
-            eyesPosition = new Point(0, -29 + (int)(61 * offsetMultiplier));
-            HidesTime = false;
+            facePosition = new Point(0, visiblePosition.Y + (int)(61 * offsetMultiplier));
+            eyesPosition = new Point(0, visiblePosition.Y + (int)(61 * offsetMultiplier));
         }
         else if (lookAheadTime < elapsedThisScene)
         {
-            facePosition = stopPosition;
-            eyesPosition = new Point(0, -29);
+            facePosition = visiblePosition;
+            eyesPosition = visiblePosition;
         }
         else if (lookRightTime2 < elapsedThisScene)
         {
-            facePosition = stopPosition;
-            eyesPosition = new Point(2, -29);
+            facePosition = visiblePosition;
+            eyesPosition = new Point(2, visiblePosition.Y);
         }
         else if (lookLeftTime2 < elapsedThisScene)
         {
-            facePosition = stopPosition;
-            eyesPosition = new Point(-2, -29);
+            facePosition = visiblePosition;
+            eyesPosition = new Point(-2, visiblePosition.Y);
         }
         else if (lookRightTime < elapsedThisScene)
         {
-            facePosition = stopPosition;
-            eyesPosition = new Point(2, -29);
+            facePosition = visiblePosition;
+            eyesPosition = new Point(2, visiblePosition.Y);
         }
         else if (lookLeftTime < elapsedThisScene)
         {
-            facePosition = stopPosition;
-            eyesPosition = new Point(-2, -29);
-            HidesTime = true;
+            facePosition = visiblePosition;
+            eyesPosition = new Point(-2, visiblePosition.Y);
         }
         else if (elapsedThisScene < moveUpDownDuration)
         {
             var offsetMultiplier =
                 1f - (float)(elapsedThisScene.TotalMilliseconds / moveUpDownDuration.TotalMilliseconds);
-            facePosition = new Point(0, -29 + (int)(61 * offsetMultiplier));
-            eyesPosition = new Point(0, -29 + (int)(61 * offsetMultiplier));
+            facePosition = new Point(0, visiblePosition.Y + (int)(61 * offsetMultiplier));
+            eyesPosition = new Point(0, visiblePosition.Y + (int)(61 * offsetMultiplier));
         }
         else
         {
-            facePosition = stopPosition;
-            eyesPosition = stopPosition;
+            facePosition = visiblePosition;
+            eyesPosition = visiblePosition;
         }
     }
 

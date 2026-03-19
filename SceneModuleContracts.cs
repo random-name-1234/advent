@@ -18,12 +18,19 @@ internal sealed record SceneModuleContext(
     IRailSnapshotSource? RailSnapshotSource,
     bool RailConfigured);
 
+internal enum SceneTransitionStyle
+{
+    Cut,
+    Crossfade
+}
+
 internal sealed record SceneCatalogRegistration(
     string Name,
     Func<ISpecialScene>? CreateScene,
     bool IncludedInCycle = true,
     TimeSpan? MaxDuration = null,
-    Func<bool>? IsReady = null)
+    Func<bool>? IsReady = null,
+    SceneTransitionStyle TransitionStyle = SceneTransitionStyle.Crossfade)
 {
     public bool IsKnown => true;
     public bool CanCreate => CreateScene is not null;
@@ -36,7 +43,18 @@ internal sealed record SceneCatalogRegistration(
 
         return new SceneCatalogEntry(
             Name,
-            () => new FadingScene(new TimedScene(CreateScene(), MaxDuration)),
+            () => CreateSceneInstance(),
             ReadyPredicate);
+    }
+
+    private ISpecialScene CreateSceneInstance()
+    {
+        var timedScene = new TimedScene(CreateScene!(), MaxDuration);
+        return TransitionStyle switch
+        {
+            SceneTransitionStyle.Cut => timedScene,
+            SceneTransitionStyle.Crossfade => new FadingScene(timedScene),
+            _ => throw new ArgumentOutOfRangeException(nameof(TransitionStyle), TransitionStyle, "Unknown transition style.")
+        };
     }
 }

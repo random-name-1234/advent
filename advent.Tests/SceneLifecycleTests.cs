@@ -89,14 +89,19 @@ public class SceneLifecycleTests
             var scene = new CatScene();
             scene.Activate();
 
+            Assert.True(scene.IsActive);
+            Assert.True(scene.HidesTime);
+
             scene.Elapsed(TimeSpan.FromMilliseconds(500));
             using var canvas = new Image<Rgba32>(64, 32);
             scene.Draw(canvas);
 
             Assert.True(scene.IsActive);
+            Assert.True(scene.HidesTime);
 
             scene.Elapsed(TimeSpan.FromSeconds(9));
             Assert.False(scene.IsActive);
+            Assert.False(scene.HidesTime);
         });
     }
 

@@ -43,3 +43,4 @@ Keep ADRs concise and practical with these sections:
 - [`0007-separate-playback-engine-from-rendering.md`](0007-separate-playback-engine-from-rendering.md)
 - [`0008-use-hosted-services-for-runtime-composition.md`](0008-use-hosted-services-for-runtime-composition.md)
 - [`0009-register-scenes-through-modules.md`](0009-register-scenes-through-modules.md)
+- [`0010-let-scenes-choose-their-transition-style.md`](0010-let-scenes-choose-their-transition-style.md)

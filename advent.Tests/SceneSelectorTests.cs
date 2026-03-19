@@ -451,6 +451,28 @@ public class SceneSelectorTests
     }
 
     [Fact]
+    public void TryGetSceneByName_UsesCutTransition_ForCat()
+    {
+        var imageDirectory = CreateImageDirectory();
+        try
+        {
+            var sut = new SceneSelector(11, imageSceneDirectory: imageDirectory);
+
+            var found = sut.TryGetSceneByName("Cat", out var scene);
+
+            Assert.True(found);
+            Assert.NotNull(scene);
+            Assert.IsNotType<FadingScene>(scene);
+            Assert.IsType<TimedScene>(scene);
+            Assert.IsType<CatScene>(UnwrapTimedScene(scene));
+        }
+        finally
+        {
+            Directory.Delete(imageDirectory, true);
+        }
+    }
+
+    [Fact]
     public void TryGetSceneByName_ReturnsFalse_ForUnknownName()
     {
         var imageDirectory = CreateImageDirectory();
