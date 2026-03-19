@@ -52,23 +52,31 @@ public class SceneLifecycleTests
         var scene = new FadingScene(main);
         scene.Activate();
 
-        Assert.False(scene.IsActive);
-
-        scene.Elapsed(TimeSpan.FromSeconds(2));
-
         Assert.True(scene.IsActive);
         Assert.True(scene.HidesTime);
         Assert.Equal("Main", scene.Name);
 
+        scene.Elapsed(TimeSpan.FromMilliseconds(500));
+        Assert.Equal(0, main.ElapsedCount);
+
         using var canvas = new Image<Rgba32>(64, 32);
         scene.Draw(canvas);
         Assert.Equal(1, main.DrawCount);
+        Assert.True(canvas[0, 0].R > 0);
+
+        scene.Elapsed(TimeSpan.FromMilliseconds(500));
+        Assert.Equal(0, main.ElapsedCount);
 
         scene.Elapsed(TimeSpan.FromMilliseconds(10));
         Assert.True(scene.IsActive);
-        Assert.False(scene.HidesTime);
+        Assert.True(scene.HidesTime);
+        Assert.Equal(1, main.ElapsedCount);
 
-        scene.Elapsed(TimeSpan.FromSeconds(2));
+        scene.Elapsed(TimeSpan.FromMilliseconds(900));
+        Assert.True(scene.IsActive);
+        Assert.True(scene.HidesTime);
+
+        scene.Elapsed(TimeSpan.FromMilliseconds(200));
         Assert.False(scene.IsActive);
     }
 
@@ -223,6 +231,7 @@ public class SceneLifecycleTests
     private sealed class OneTickScene(string name, bool hidesTime) : ISpecialScene
     {
         public int DrawCount { get; private set; }
+        public int ElapsedCount { get; private set; }
 
         public bool IsActive { get; private set; }
         public bool HidesTime => hidesTime;
@@ -236,12 +245,14 @@ public class SceneLifecycleTests
 
         public void Elapsed(TimeSpan timeSpan)
         {
+            ElapsedCount++;
             IsActive = false;
         }
 
         public void Draw(Image<Rgba32> img)
         {
             DrawCount++;
+            img[0, 0] = new Rgba32(255, 255, 255);
         }
     }
 }

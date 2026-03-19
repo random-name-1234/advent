@@ -8,7 +8,6 @@ namespace advent;
 public class StaticImageScene : ISpecialScene
 {
     private static readonly TimeSpan DefaultSceneDuration = TimeSpan.FromSeconds(6);
-    private static readonly TimeSpan FadeDuration = TimeSpan.FromSeconds(0.5);
 
     private readonly Image<Rgba32> image;
     private readonly string name;
@@ -48,16 +47,6 @@ public class StaticImageScene : ISpecialScene
     public void Draw(Image<Rgba32> img)
     {
         if (!IsActive) return;
-
-        double fraction;
-        if (elapsedThisScene < FadeDuration)
-            fraction = elapsedThisScene.TotalMilliseconds / FadeDuration.TotalMilliseconds;
-        else if (elapsedThisScene < sceneDuration - FadeDuration)
-            fraction = 1.0;
-        else
-            fraction = (sceneDuration - elapsedThisScene).TotalMilliseconds / FadeDuration.TotalMilliseconds;
-
-        fraction = Math.Min(1.0, Math.Max(0.0, fraction));
-        img.Mutate(x => x.DrawImage(image, topLeft, (float)fraction));
+        img.Mutate(x => x.DrawImage(image, topLeft, 1f));
     }
 }

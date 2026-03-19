@@ -387,6 +387,9 @@ public class SceneSelectorTests
             Assert.True(scene.IsActive);
 
             scene.Elapsed(TimeSpan.FromSeconds(2));
+            Assert.True(scene.IsActive);
+
+            scene.Elapsed(TimeSpan.FromSeconds(1));
             Assert.False(scene.IsActive);
         }
         finally
@@ -411,9 +414,10 @@ public class SceneSelectorTests
             var found = sut.TryGetSceneByName("UK Rail Board", out var scene);
 
             Assert.True(found);
-            var field = scene.GetType().GetField("maxDuration", BindingFlags.Instance | BindingFlags.NonPublic);
+            var timedScene = UnwrapFadingScene(scene);
+            var field = timedScene.GetType().GetField("maxDuration", BindingFlags.Instance | BindingFlags.NonPublic);
             Assert.NotNull(field);
-            Assert.Equal(RailBoardScene.MaxSceneDuration, Assert.IsType<TimeSpan>(field!.GetValue(scene)));
+            Assert.Equal(RailBoardScene.MaxSceneDuration, Assert.IsType<TimeSpan>(field!.GetValue(timedScene)));
             Assert.IsType<RailBoardScene>(UnwrapTimedScene(scene));
         }
         finally
@@ -435,9 +439,10 @@ public class SceneSelectorTests
             var found = sut.TryGetSceneByName("Legibility Lab", out var scene);
 
             Assert.True(found);
-            var field = scene.GetType().GetField("maxDuration", BindingFlags.Instance | BindingFlags.NonPublic);
+            var timedScene = UnwrapFadingScene(scene);
+            var field = timedScene.GetType().GetField("maxDuration", BindingFlags.Instance | BindingFlags.NonPublic);
             Assert.NotNull(field);
-            Assert.Equal(LegibilityLabScene.MaxSceneDuration, Assert.IsType<TimeSpan>(field!.GetValue(scene)));
+            Assert.Equal(LegibilityLabScene.MaxSceneDuration, Assert.IsType<TimeSpan>(field!.GetValue(timedScene)));
             Assert.IsType<LegibilityLabScene>(UnwrapTimedScene(scene));
         }
         finally
@@ -568,19 +573,27 @@ public class SceneSelectorTests
 
     private static ISpecialScene UnwrapMainScene(ISpecialScene scene)
     {
-        scene = UnwrapTimedScene(scene);
-        var fadingScene = Assert.IsType<FadingScene>(scene);
-        var field = typeof(FadingScene).GetField("mainScene", BindingFlags.Instance | BindingFlags.NonPublic);
-        Assert.NotNull(field);
-        return Assert.IsAssignableFrom<ISpecialScene>(field!.GetValue(fadingScene));
+        return UnwrapTimedScene(scene);
     }
 
     private static ISpecialScene UnwrapTimedScene(ISpecialScene scene)
     {
+        scene = UnwrapFadingScene(scene);
+
         if (scene.GetType().Name != "TimedScene")
             return scene;
 
         var field = scene.GetType().GetField("innerScene", BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.NotNull(field);
+        return Assert.IsAssignableFrom<ISpecialScene>(field!.GetValue(scene));
+    }
+
+    private static ISpecialScene UnwrapFadingScene(ISpecialScene scene)
+    {
+        if (scene is not FadingScene)
+            return scene;
+
+        var field = typeof(FadingScene).GetField("mainScene", BindingFlags.Instance | BindingFlags.NonPublic);
         Assert.NotNull(field);
         return Assert.IsAssignableFrom<ISpecialScene>(field!.GetValue(scene));
     }

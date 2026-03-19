@@ -121,6 +121,14 @@ public class SceneControlServiceTests
 
     private static ISpecialScene UnwrapTimedScene(ISpecialScene scene)
     {
+        if (scene is FadingScene)
+        {
+            var fadingField = typeof(FadingScene).GetField("mainScene",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+            Assert.NotNull(fadingField);
+            scene = Assert.IsAssignableFrom<ISpecialScene>(fadingField!.GetValue(scene));
+        }
+
         if (scene.GetType().Name != "TimedScene")
             return scene;
 

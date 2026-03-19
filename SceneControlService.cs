@@ -83,7 +83,7 @@ public sealed class SceneControlService
             return false;
         }
 
-        var messageScene = new TimedScene(new MessageScene(normalizedMessage, sceneDuration));
+        var messageScene = new FadingScene(new MessageScene(normalizedMessage, sceneDuration));
         scene.SpecialScenes.Enqueue(messageScene);
         Console.WriteLine($"Enqueued message: {normalizedMessage}");
         error = string.Empty;
