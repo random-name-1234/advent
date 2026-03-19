@@ -159,6 +159,49 @@ public class RailBoardSceneTests
     }
 
     [Fact]
+    public void RailBoardScene_IncludesThroughServicesThatCallAtCambridgeOnLondonBoards()
+    {
+        var updatedAt = new DateTimeOffset(2026, 3, 16, 18, 10, 0, TimeSpan.Zero);
+        var snapshot = new RailBoardScene.RailSceneSnapshot(
+            new RailBoardScene.RailStationSnapshot(
+                "CAM",
+                "Cambridge",
+                [],
+                [],
+                [],
+                updatedAt,
+                false),
+            new RailBoardScene.RailStationSnapshot(
+                "KGX",
+                "London Kings Cross",
+                [
+                    CreateService("18:28", "Cambridge", "CBG", "P8", "+4", new Rgba32(255, 184, 64),
+                        "Great Northern", "CALLS FINSBURY PARK, STEVENAGE"),
+                    CreateService("18:31", "Kings Lynn", "KLN", "P9", "On time", new Rgba32(210, 188, 144),
+                        "Great Northern", "CALLS FINSBURY PARK, STEVENAGE, CAMBRIDGE, ELY"),
+                    CreateService("18:34", "Leeds", "LDS", "P2", "On time", new Rgba32(210, 188, 144),
+                        "LNER", "CALLS DONCASTER")
+                ],
+                [
+                    CreateService("18:25", "Cambridge", "CBG", "P7", "On time", new Rgba32(210, 188, 144),
+                        "Great Northern", "CALLS STEVENAGE, FINSBURY PARK"),
+                    CreateService("18:27", "Kings Lynn", "KLN", "P10", "+2", new Rgba32(255, 184, 64),
+                        "Great Northern", "CALLS CAMBRIDGE, STEVENAGE, FINSBURY PARK"),
+                    CreateService("18:39", "Edinburgh", "EDB", "P0", "On time", new Rgba32(210, 188, 144),
+                        "LNER", "CALLS YORK")
+                ],
+                [],
+                updatedAt,
+                false),
+            updatedAt);
+
+        var pages = InvokeBuildPages(snapshot);
+
+        AssertBoardRows(pages[2], "London Kings Cross", "Departures", "Cambridge", "Kings Lynn");
+        AssertBoardRows(pages[3], "London Kings Cross", "Arrivals", "Cambridge", "Kings Lynn");
+    }
+
+    [Fact]
     public void RailBoardScene_UsesGenericOriginAndDestinationEnvironmentVariables()
     {
         var originalEnabled = Environment.GetEnvironmentVariable("ADVENT_RAIL_ENABLED");
@@ -208,6 +251,7 @@ public class RailBoardSceneTests
 
     [Theory]
     [InlineData("CBG", null, "Cambridge")]
+    [InlineData("KLN", "Kings Lynn", "Kings Lynn")]
     [InlineData("KGX", null, "London Kings Cross")]
     [InlineData(null, "London King's Cross", "London Kings Cross")]
     [InlineData(null, "Kings Cross", "London Kings Cross")]

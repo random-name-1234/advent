@@ -8,6 +8,29 @@ namespace advent.Tests;
 
 public class WeatherSceneTests
 {
+    [Fact]
+    public void Activate_UsesPreparedSnapshotAndExpires()
+    {
+        ResetCache();
+        SetCachedSnapshot(CreateSnapshot());
+
+        var scene = new WeatherScene();
+        scene.Activate();
+
+        using var canvas = new Image<Rgba32>(64, 32);
+        scene.Elapsed(TimeSpan.FromMilliseconds(250));
+        scene.Draw(canvas);
+
+        Assert.True(scene.IsActive);
+        Assert.True(scene.HidesTime);
+        Assert.True(CountLitPixels(canvas, 0, 0, 64, 32) > 0);
+
+        scene.Elapsed(TimeSpan.FromSeconds(21));
+
+        Assert.False(scene.IsActive);
+        Assert.False(scene.HidesTime);
+    }
+
     [Theory]
     [InlineData(1, "PART CLOUD")]
     [InlineData(45, "MIST")]
@@ -92,6 +115,26 @@ public class WeatherSceneTests
         var field = target.GetType().GetField(fieldName, BindingFlags.Instance | BindingFlags.NonPublic);
         Assert.NotNull(field);
         field!.SetValue(target, value);
+    }
+
+    private static void ResetCache()
+    {
+        var snapshotField = typeof(WeatherScene).GetField("cachedSnapshot", BindingFlags.Static | BindingFlags.NonPublic);
+        var updatedAtField = typeof(WeatherScene).GetField("cacheUpdatedAtUtc", BindingFlags.Static | BindingFlags.NonPublic);
+        Assert.NotNull(snapshotField);
+        Assert.NotNull(updatedAtField);
+        snapshotField!.SetValue(null, null);
+        updatedAtField!.SetValue(null, DateTimeOffset.MinValue);
+    }
+
+    private static void SetCachedSnapshot(object snapshot)
+    {
+        var snapshotField = typeof(WeatherScene).GetField("cachedSnapshot", BindingFlags.Static | BindingFlags.NonPublic);
+        var updatedAtField = typeof(WeatherScene).GetField("cacheUpdatedAtUtc", BindingFlags.Static | BindingFlags.NonPublic);
+        Assert.NotNull(snapshotField);
+        Assert.NotNull(updatedAtField);
+        snapshotField!.SetValue(null, snapshot);
+        updatedAtField!.SetValue(null, DateTimeOffset.UtcNow);
     }
 
     private static int CountLitPixels(Image<Rgba32> image, int x, int y, int width, int height)

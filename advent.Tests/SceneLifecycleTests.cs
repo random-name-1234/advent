@@ -53,11 +53,12 @@ public class SceneLifecycleTests
         scene.Activate();
 
         Assert.True(scene.IsActive);
-        Assert.True(scene.HidesTime);
+        Assert.False(scene.HidesTime);
         Assert.Equal("Main", scene.Name);
 
         scene.Elapsed(TimeSpan.FromMilliseconds(500));
         Assert.Equal(0, main.ElapsedCount);
+        Assert.True(scene.HidesTime);
 
         using var canvas = new Image<Rgba32>(64, 32);
         scene.Draw(canvas);
@@ -163,22 +164,45 @@ public class SceneLifecycleTests
     }
 
     [Fact]
-    public void WeatherScene_ActivatesDrawsLoadingStateAndExpires()
+    public void FadingScene_WaitsForDeferredSceneBeforeStartingFadeIn()
     {
-        var scene = new WeatherScene();
+        var main = new DeferredOneTickScene("Deferred", hidesTime: true);
+        var scene = new FadingScene(new TimedScene(main, TimeSpan.FromSeconds(5)));
         scene.Activate();
 
+        Assert.True(scene.IsActive);
+        Assert.False(scene.HidesTime);
+        Assert.Equal(1, main.PrepareCount);
+        Assert.Equal(0, main.ActivateCount);
+
         using var canvas = new Image<Rgba32>(64, 32);
-        scene.Elapsed(TimeSpan.FromMilliseconds(250));
+
+        scene.Elapsed(TimeSpan.FromMilliseconds(500));
         scene.Draw(canvas);
 
-        Assert.True(scene.IsActive);
-        Assert.True(scene.HidesTime);
-
-        scene.Elapsed(TimeSpan.FromSeconds(21));
-
-        Assert.False(scene.IsActive);
+        Assert.Equal(0, main.DrawCount);
+        Assert.Equal(0, main.ElapsedCount);
         Assert.False(scene.HidesTime);
+
+        main.Ready = true;
+        scene.Elapsed(TimeSpan.FromMilliseconds(100));
+
+        Assert.Equal(1, main.ActivateCount);
+        Assert.False(scene.HidesTime);
+        Assert.Equal(0, main.ElapsedCount);
+
+        scene.Elapsed(TimeSpan.FromMilliseconds(500));
+        scene.Draw(canvas);
+
+        Assert.Equal(1, main.DrawCount);
+        Assert.True(scene.HidesTime);
+        Assert.True(canvas[0, 0].R > 0);
+
+        scene.Elapsed(TimeSpan.FromMilliseconds(500));
+        Assert.Equal(0, main.ElapsedCount);
+
+        scene.Elapsed(TimeSpan.FromMilliseconds(10));
+        Assert.Equal(1, main.ElapsedCount);
     }
 
     [Fact]
@@ -240,6 +264,49 @@ public class SceneLifecycleTests
 
         public void Activate()
         {
+            IsActive = true;
+        }
+
+        public void Elapsed(TimeSpan timeSpan)
+        {
+            ElapsedCount++;
+            IsActive = false;
+        }
+
+        public void Draw(Image<Rgba32> img)
+        {
+            DrawCount++;
+            img[0, 0] = new Rgba32(255, 255, 255);
+        }
+    }
+
+    private sealed class DeferredOneTickScene(string name, bool hidesTime) : ISpecialScene, IDeferredActivationScene
+    {
+        public int ActivateCount { get; private set; }
+        public int DrawCount { get; private set; }
+        public int ElapsedCount { get; private set; }
+        public int PrepareCount { get; private set; }
+
+        public bool Ready { get; set; }
+        public bool IsActive { get; private set; }
+        public bool HidesTime => IsActive && hidesTime;
+        public bool RainbowSnow => false;
+        public string Name { get; } = name;
+        public bool IsReadyToActivate => Ready;
+        public bool ShouldSkipActivation => false;
+
+        public void Prepare()
+        {
+            PrepareCount++;
+        }
+
+        public void AdvancePreparation(TimeSpan timeSpan)
+        {
+        }
+
+        public void Activate()
+        {
+            ActivateCount++;
             IsActive = true;
         }
 

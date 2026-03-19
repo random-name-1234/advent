@@ -13,7 +13,7 @@ using SixLabors.ImageSharp.Processing;
 
 namespace advent;
 
-public class WeatherScene : ISpecialScene
+public class WeatherScene : ISpecialScene, IDeferredActivationScene
 {
     private const int Width = 64;
     private const int Height = 32;
@@ -29,6 +29,7 @@ public class WeatherScene : ISpecialScene
     {
         Timeout = TimeSpan.FromSeconds(4)
     };
+    private static readonly TimeSpan PreparationTimeout = HttpClient.Timeout + TimeSpan.FromSeconds(2);
 
     private static readonly Lock CacheLock = new();
     private static DateTimeOffset cacheUpdatedAtUtc = DateTimeOffset.MinValue;
@@ -104,38 +105,77 @@ public class WeatherScene : ISpecialScene
         "010000"
     ];
 
+    private readonly Func<CancellationToken, Task<WeatherSnapshot>> fetchWeatherAsync;
+
     private Image<Rgba32>? currentPanelBuffer;
     private TimeSpan elapsedThisScene;
+    private TimeSpan elapsedWaitingForData;
+    private bool fetchAttemptStarted;
     private Task<WeatherSnapshot>? fetchTask;
     private Image<Rgba32>? nextPanelBuffer;
+    private bool shouldSkipActivation;
     private WeatherSnapshot? snapshot;
+
+    public WeatherScene()
+        : this(static cancellationToken => FetchWeatherAsync(cancellationToken))
+    {
+    }
+
+    private WeatherScene(Func<CancellationToken, Task<WeatherSnapshot>> fetchWeatherAsync)
+    {
+        this.fetchWeatherAsync = fetchWeatherAsync ?? throw new ArgumentNullException(nameof(fetchWeatherAsync));
+    }
 
     public bool IsActive { get; private set; }
     public bool HidesTime { get; private set; }
     public bool RainbowSnow => false;
     public string Name => "Weather";
+    public bool IsReadyToActivate => snapshot is not null;
+    public bool ShouldSkipActivation => shouldSkipActivation;
+
+    public void Prepare()
+    {
+        elapsedWaitingForData = TimeSpan.Zero;
+        shouldSkipActivation = false;
+
+        TryApplyFetchResult();
+        snapshot ??= TryGetCachedSnapshot();
+        if (snapshot is not null)
+            return;
+
+        StartFetchIfNeeded();
+    }
+
+    public void AdvancePreparation(TimeSpan timeSpan)
+    {
+        if (snapshot is not null || shouldSkipActivation)
+            return;
+
+        elapsedWaitingForData += timeSpan;
+        TryApplyFetchResult();
+        snapshot ??= TryGetCachedSnapshot();
+
+        if (snapshot is not null)
+            return;
+
+        StartFetchIfNeeded();
+        if (elapsedWaitingForData < PreparationTimeout)
+            return;
+
+        shouldSkipActivation = true;
+        Console.WriteLine("Weather scene skipped: live data was not ready in time.");
+    }
 
     public void Activate()
     {
-        EnsurePanelBuffers();
-        elapsedThisScene = TimeSpan.Zero;
-        fetchTask = null;
-        IsActive = true;
-        HidesTime = true;
+        if (snapshot is null)
+        {
+            Prepare();
+            TryApplyFetchResult();
+            snapshot ??= TryGetCachedSnapshot();
+        }
 
-        snapshot = TryGetCachedSnapshot();
-        var cacheIsStale = snapshot is null || IsCacheStale();
-        if (cacheIsStale)
-            fetchTask = FetchWeatherAsync();
-    }
-
-    public void Elapsed(TimeSpan timeSpan)
-    {
-        if (!IsActive)
-            return;
-
-        elapsedThisScene += timeSpan;
-        if (elapsedThisScene > SceneDuration)
+        if (snapshot is null)
         {
             IsActive = false;
             HidesTime = false;
@@ -143,52 +183,34 @@ public class WeatherScene : ISpecialScene
             return;
         }
 
-        if (fetchTask is null || !fetchTask.IsCompleted)
-            return;
-
-        if (fetchTask.IsCompletedSuccessfully)
-        {
-            snapshot = fetchTask.Result;
-            UpdateCache(snapshot);
-        }
-        else
-        {
-            var baseException = fetchTask.Exception?.GetBaseException();
-            Console.WriteLine($"Weather fetch failed: {baseException?.Message ?? "Unknown error"}");
-        }
-
-        fetchTask = null;
+        EnsurePanelBuffers();
+        elapsedThisScene = TimeSpan.Zero;
+        IsActive = true;
+        HidesTime = true;
+        shouldSkipActivation = false;
     }
 
-    public void Draw(Image<Rgba32> img)
+    public void Elapsed(TimeSpan timeSpan)
     {
         if (!IsActive)
             return;
 
-        if (snapshot is null)
+        TryApplyFetchResult();
+        elapsedThisScene += timeSpan;
+        if (elapsedThisScene > SceneDuration)
         {
-            DrawLoadingState(img);
-            return;
+            IsActive = false;
+            HidesTime = false;
+            DisposePanelBuffers();
         }
-
-        DrawForecastPanels(img, snapshot);
     }
 
-    private void DrawLoadingState(Image<Rgba32> img)
+    public void Draw(Image<Rgba32> img)
     {
-        FillRect(img, 0, 0, Width, Height, BackgroundColor);
-        DrawHeader(img, "WEATHER", "LIVE");
-        DrawWeatherIcon(img, 4, 7, 19, 2, true);
+        if (!IsActive || snapshot is null)
+            return;
 
-        DrawPixelCenteredText(img, "UPDATING", PrimaryTextColor, 43, 12);
-        DrawPixelCenteredText(img, "FORECAST", SecondaryTextColor, 43, 19);
-
-        var phase = (int)(elapsedThisScene.TotalMilliseconds / 200) % 3;
-        for (var i = 0; i < 3; i++)
-        {
-            var dotColor = i <= phase ? HeaderColor : SecondaryTextColor;
-            FillCircle(img, 33 + i * 5, 26, 1, dotColor);
-        }
+        DrawForecastPanels(img, snapshot);
     }
 
     private void DrawForecastPanels(Image<Rgba32> img, WeatherSnapshot weather)
@@ -407,18 +429,18 @@ public class WeatherScene : ISpecialScene
         }
     }
 
-    private static async Task<WeatherSnapshot> FetchWeatherAsync()
+    private static async Task<WeatherSnapshot> FetchWeatherAsync(CancellationToken cancellationToken)
     {
         var lat = Latitude.ToString("0.####", CultureInfo.InvariantCulture);
         var lon = Longitude.ToString("0.####", CultureInfo.InvariantCulture);
         var url =
             $"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current=temperature_2m,weather_code,is_day&daily=weather_code,temperature_2m_max,temperature_2m_min&timezone=auto&forecast_days=4";
 
-        using var response = await HttpClient.GetAsync(url).ConfigureAwait(false);
+        using var response = await HttpClient.GetAsync(url, cancellationToken).ConfigureAwait(false);
         response.EnsureSuccessStatusCode();
 
-        await using var stream = await response.Content.ReadAsStreamAsync().ConfigureAwait(false);
-        using var json = await JsonDocument.ParseAsync(stream).ConfigureAwait(false);
+        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+        using var json = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken).ConfigureAwait(false);
 
         var root = json.RootElement;
         if (root.TryGetProperty("error", out var hasError) &&
@@ -581,14 +603,6 @@ public class WeatherScene : ISpecialScene
         }
     }
 
-    private static bool IsCacheStale()
-    {
-        lock (CacheLock)
-        {
-            return cachedSnapshot == null || DateTimeOffset.UtcNow - cacheUpdatedAtUtc > CacheLifetime;
-        }
-    }
-
     private static void UpdateCache(WeatherSnapshot weatherSnapshot)
     {
         lock (CacheLock)
@@ -596,6 +610,34 @@ public class WeatherScene : ISpecialScene
             cachedSnapshot = weatherSnapshot;
             cacheUpdatedAtUtc = DateTimeOffset.UtcNow;
         }
+    }
+
+    private void StartFetchIfNeeded()
+    {
+        if (fetchTask is not null || fetchAttemptStarted)
+            return;
+
+        fetchAttemptStarted = true;
+        fetchTask = fetchWeatherAsync(CancellationToken.None);
+    }
+
+    private void TryApplyFetchResult()
+    {
+        if (fetchTask is null || !fetchTask.IsCompleted)
+            return;
+
+        if (fetchTask.IsCompletedSuccessfully)
+        {
+            snapshot = fetchTask.Result;
+            UpdateCache(snapshot);
+        }
+        else
+        {
+            var baseException = fetchTask.Exception?.GetBaseException();
+            Console.WriteLine($"Weather fetch failed: {baseException?.Message ?? "Unknown error"}");
+        }
+
+        fetchTask = null;
     }
 
     private void EnsurePanelBuffers()

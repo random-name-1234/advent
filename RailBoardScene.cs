@@ -19,7 +19,7 @@ using SixLabors.ImageSharp.Processing;
 
 namespace advent;
 
-public sealed class RailBoardScene : ISpecialScene
+public sealed class RailBoardScene : ISpecialScene, IDeferredActivationScene
 {
     public static readonly TimeSpan MaxSceneDuration = TimeSpan.FromSeconds(60);
 
@@ -34,13 +34,13 @@ public sealed class RailBoardScene : ISpecialScene
     private static readonly TimeSpan DetailPageDuration = TimeSpan.FromSeconds(8);
     private static readonly TimeSpan JourneyPageDuration = TimeSpan.FromSeconds(8);
     private static readonly TimeSpan AlertPageDuration = TimeSpan.FromSeconds(8);
-    private static readonly TimeSpan LoadingPageDuration = TimeSpan.FromSeconds(6);
     private static readonly TimeSpan PageSwipeDuration = TimeSpan.FromMilliseconds(700);
 
     private static readonly HttpClient HttpClient = new()
     {
         Timeout = TimeSpan.FromSeconds(4)
     };
+    private static readonly TimeSpan PreparationTimeout = HttpClient.Timeout + TimeSpan.FromSeconds(2);
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -79,13 +79,15 @@ public sealed class RailBoardScene : ISpecialScene
     private readonly Func<DateTimeOffset> nowProvider;
 
     private RailSceneSnapshot? snapshot;
+    private TimeSpan elapsedWaitingForData;
+    private bool fetchAttemptStarted;
     private Task<RailSceneSnapshot>? fetchTask;
     private IReadOnlyList<RailPage> pages = [];
     private int currentPageIndex;
     private Image<Rgba32>? currentPageBuffer;
     private TimeSpan elapsedOnPage;
-    private TimeSpan elapsedThisScene;
     private Image<Rgba32>? nextPageBuffer;
+    private bool shouldSkipActivation;
 
     public RailBoardScene()
         : this(
@@ -119,64 +121,86 @@ public sealed class RailBoardScene : ISpecialScene
     public bool HidesTime { get; private set; }
     public bool RainbowSnow => false;
     public string Name => "UK Rail Board";
+    public bool IsReadyToActivate => pages.Count > 0;
+    public bool ShouldSkipActivation => shouldSkipActivation;
 
     public static bool IsConfiguredFromEnvironment()
     {
         return RailBoardOptions.TryFromEnvironment() is not null;
     }
 
-    public void Activate()
+    public void Prepare()
     {
-        elapsedThisScene = TimeSpan.Zero;
-        elapsedOnPage = TimeSpan.Zero;
-        currentPageIndex = 0;
-        fetchTask = null;
-        IsActive = true;
-        HidesTime = true;
+        elapsedWaitingForData = TimeSpan.Zero;
+        shouldSkipActivation = false;
 
+        TryApplyFetchResult();
         snapshot = TryGetCachedSnapshot();
         pages = snapshot is not null ? BuildPages(snapshot) : [];
 
-        if (options is not null && (snapshot is null || IsCacheStale()))
-            fetchTask = fetchSnapshotAsync(options, nowProvider(), CancellationToken.None);
+        if (pages.Count > 0)
+            return;
+
+        if (options is null)
+        {
+            shouldSkipActivation = true;
+            return;
+        }
+
+        StartFetchIfNeeded();
+    }
+
+    public void AdvancePreparation(TimeSpan timeSpan)
+    {
+        if (pages.Count > 0 || shouldSkipActivation)
+            return;
+
+        elapsedWaitingForData += timeSpan;
+        TryApplyFetchResult();
+
+        if (pages.Count > 0)
+            return;
+
+        if (options is null)
+        {
+            shouldSkipActivation = true;
+            return;
+        }
+
+        StartFetchIfNeeded();
+        if (elapsedWaitingForData < PreparationTimeout)
+            return;
+
+        shouldSkipActivation = true;
+        Console.WriteLine("Rail board scene skipped: live data was not ready in time.");
+    }
+
+    public void Activate()
+    {
+        if (pages.Count == 0)
+        {
+            Prepare();
+            TryApplyFetchResult();
+        }
+
+        if (pages.Count == 0)
+        {
+            IsActive = false;
+            HidesTime = false;
+            return;
+        }
+
+        elapsedOnPage = TimeSpan.Zero;
+        currentPageIndex = 0;
+        IsActive = true;
+        HidesTime = true;
+        shouldSkipActivation = false;
     }
 
     public void Elapsed(TimeSpan timeSpan)
     {
         if (!IsActive)
             return;
-
-        elapsedThisScene += timeSpan;
-
-        if (fetchTask is not null && fetchTask.IsCompleted)
-        {
-            if (fetchTask.IsCompletedSuccessfully)
-            {
-                snapshot = fetchTask.Result;
-                UpdateCache(snapshot);
-                pages = BuildPages(snapshot);
-                currentPageIndex = 0;
-                elapsedOnPage = TimeSpan.Zero;
-            }
-            else
-            {
-                var baseException = fetchTask.Exception?.GetBaseException();
-                Console.WriteLine($"Rail board fetch failed: {baseException?.Message ?? "Unknown error"}");
-            }
-
-            fetchTask = null;
-        }
-
-        if (pages.Count == 0)
-        {
-            if (fetchTask is null || elapsedThisScene >= LoadingPageDuration)
-            {
-                IsActive = false;
-                HidesTime = false;
-            }
-
-            return;
-        }
 
         elapsedOnPage += timeSpan;
         while (currentPageIndex < pages.Count && elapsedOnPage >= pages[currentPageIndex].Duration)
@@ -195,22 +219,10 @@ public sealed class RailBoardScene : ISpecialScene
 
     public void Draw(Image<Rgba32> img)
     {
-        if (!IsActive)
+        if (!IsActive || pages.Count == 0)
             return;
 
         Clear(img);
-
-        if (options is null && snapshot is null)
-        {
-            DrawFallbackPage(img, "NATIONAL RAIL", "NO LIVE DATA", "CONFIGURE API ACCESS");
-            return;
-        }
-
-        if (pages.Count == 0)
-        {
-            DrawFallbackPage(img, "NATIONAL RAIL", "LOADING", "UPDATING BOARD DATA");
-            return;
-        }
 
         var page = pages[Math.Clamp(currentPageIndex, 0, pages.Count - 1)];
         if (ShouldSwipeToNextPage(page))
@@ -417,9 +429,26 @@ public sealed class RailBoardScene : ISpecialScene
         }
 
         var locationText = NormalizeLocationKey(service.LocationText);
+        if (MatchesNormalizedLocation(locationText, stationNames))
+            return true;
+
+        var callingPoints = NormalizeCallingPoints(service.CallingText);
+        foreach (var callingPoint in callingPoints)
+        {
+            if (MatchesNormalizedLocation(NormalizeLocationKey(callingPoint), stationNames))
+                return true;
+        }
+
+        return false;
+    }
+
+    private static bool MatchesNormalizedLocation(
+        string normalizedLocation,
+        IReadOnlyList<string> stationNames)
+    {
         foreach (var stationName in stationNames)
         {
-            if (locationText.Contains(stationName, StringComparison.OrdinalIgnoreCase))
+            if (normalizedLocation.Contains(stationName, StringComparison.OrdinalIgnoreCase))
                 return true;
         }
 
@@ -1382,22 +1411,30 @@ public sealed class RailBoardScene : ISpecialScene
     {
         if (!string.IsNullOrWhiteSpace(crs))
         {
-            return crs.Trim().ToUpperInvariant() switch
+            var mappedName = crs.Trim().ToUpperInvariant() switch
             {
                 "CBG" => "Cambridge",
+                "ELY" => "Ely",
                 "KGX" => "London Kings Cross",
+                "KLN" => "Kings Lynn",
                 "LST" => "London Liverpool Street",
                 "PBO" => "Peterborough",
                 "SVG" => "Stevenage",
                 "FPK" => "Finsbury Park",
-                _ => crs.Trim().ToUpperInvariant()
+                _ => null
             };
+
+            if (!string.IsNullOrWhiteSpace(mappedName))
+                return mappedName;
         }
 
-        if (string.IsNullOrWhiteSpace(locationName))
-            return "---";
+        if (!string.IsNullOrWhiteSpace(locationName))
+            return FullStationLabel(locationName);
 
-        return FullStationLabel(locationName);
+        if (!string.IsNullOrWhiteSpace(crs))
+            return crs.Trim().ToUpperInvariant();
+
+        return "---";
     }
 
     private static string NormalizeLocationKey(string locationName)
@@ -1513,14 +1550,6 @@ public sealed class RailBoardScene : ISpecialScene
         }
     }
 
-    private static bool IsCacheStale()
-    {
-        lock (CacheLock)
-        {
-            return cachedSnapshot is null || DateTimeOffset.UtcNow - cacheUpdatedAtUtc > CacheLifetime;
-        }
-    }
-
     private static void UpdateCache(RailSceneSnapshot railSnapshot)
     {
         lock (CacheLock)
@@ -1528,6 +1557,35 @@ public sealed class RailBoardScene : ISpecialScene
             cachedSnapshot = railSnapshot;
             cacheUpdatedAtUtc = DateTimeOffset.UtcNow;
         }
+    }
+
+    private void StartFetchIfNeeded()
+    {
+        if (options is null || fetchTask is not null || fetchAttemptStarted)
+            return;
+
+        fetchAttemptStarted = true;
+        fetchTask = fetchSnapshotAsync(options, nowProvider(), CancellationToken.None);
+    }
+
+    private void TryApplyFetchResult()
+    {
+        if (fetchTask is null || !fetchTask.IsCompleted)
+            return;
+
+        if (fetchTask.IsCompletedSuccessfully)
+        {
+            snapshot = fetchTask.Result;
+            UpdateCache(snapshot);
+            pages = BuildPages(snapshot);
+        }
+        else
+        {
+            var baseException = fetchTask.Exception?.GetBaseException();
+            Console.WriteLine($"Rail board fetch failed: {baseException?.Message ?? "Unknown error"}");
+        }
+
+        fetchTask = null;
     }
 
     public sealed record RailSceneSnapshot(

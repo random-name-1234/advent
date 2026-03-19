@@ -10,6 +10,7 @@ public class FadingScene : ISpecialScene
     private static readonly TimeSpan FadeDuration = TimeSpan.FromSeconds(1);
 
     private readonly ISpecialScene mainScene;
+    private readonly IDeferredActivationScene? deferredMainScene;
     private bool clockHiddenDuringMain;
     private Image<Rgba32>? frameBuffer;
     private Phase phase;
@@ -18,11 +19,19 @@ public class FadingScene : ISpecialScene
     public FadingScene(ISpecialScene mainScene)
     {
         this.mainScene = mainScene ?? throw new ArgumentNullException(nameof(mainScene));
+        deferredMainScene = mainScene as IDeferredActivationScene;
     }
 
     public bool IsActive { get; private set; }
 
-    public bool HidesTime => IsActive && (phase == Phase.Main ? mainScene.HidesTime : CrossfadesClock);
+    public bool HidesTime => IsActive && phase switch
+    {
+        Phase.Pending => false,
+        Phase.Main => mainScene.HidesTime,
+        Phase.FadeIn => CrossfadesClock && Opacity > 0f,
+        Phase.FadeOut => CrossfadesClock,
+        _ => false
+    };
 
     public bool RainbowSnow => IsActive && mainScene.RainbowSnow;
     public string Name => mainScene.Name;
@@ -31,16 +40,33 @@ public class FadingScene : ISpecialScene
 
     public void Activate()
     {
-        mainScene.Activate();
-        clockHiddenDuringMain = mainScene.HidesTime;
-        phase = Phase.FadeIn;
-        elapsedInPhase = TimeSpan.Zero;
         IsActive = true;
+        clockHiddenDuringMain = false;
+        elapsedInPhase = TimeSpan.Zero;
+
+        if (deferredMainScene is not null)
+        {
+            deferredMainScene.Prepare();
+            if (deferredMainScene.ShouldSkipActivation)
+            {
+                IsActive = false;
+                phase = Phase.Pending;
+                return;
+            }
+
+            if (!deferredMainScene.IsReadyToActivate)
+            {
+                phase = Phase.Pending;
+                return;
+            }
+        }
+
+        BeginMainScene();
     }
 
     public void Draw(Image<Rgba32> img)
     {
-        if (!IsActive)
+        if (!IsActive || phase == Phase.Pending)
             return;
 
         EnsureFrameBuffer(img.Width, img.Height);
@@ -65,6 +91,27 @@ public class FadingScene : ISpecialScene
         {
             switch (phase)
             {
+                case Phase.Pending:
+                    if (deferredMainScene is null)
+                    {
+                        BeginMainScene();
+                        continue;
+                    }
+
+                    deferredMainScene.AdvancePreparation(remaining);
+                    remaining = TimeSpan.Zero;
+
+                    if (deferredMainScene.ShouldSkipActivation)
+                    {
+                        IsActive = false;
+                        break;
+                    }
+
+                    if (deferredMainScene.IsReadyToActivate)
+                        BeginMainScene();
+
+                    break;
+
                 case Phase.FadeIn:
                     remaining = AdvanceFade(remaining, Phase.Main);
                     break;
@@ -94,6 +141,7 @@ public class FadingScene : ISpecialScene
         var progress = Math.Clamp(elapsedInPhase.TotalMilliseconds / FadeDuration.TotalMilliseconds, 0d, 1d);
         return phase switch
         {
+            Phase.Pending => 0f,
             Phase.FadeIn => (float)progress,
             Phase.Main => 1f,
             Phase.FadeOut => (float)(1d - progress),
@@ -132,6 +180,21 @@ public class FadingScene : ISpecialScene
         frameBuffer = new Image<Rgba32>(width, height);
     }
 
+    private void BeginMainScene()
+    {
+        mainScene.Activate();
+        if (!mainScene.IsActive)
+        {
+            IsActive = false;
+            phase = Phase.Pending;
+            return;
+        }
+
+        clockHiddenDuringMain = mainScene.HidesTime;
+        phase = Phase.FadeIn;
+        elapsedInPhase = TimeSpan.Zero;
+    }
+
     private void RenderMainSceneToFrameBuffer()
     {
         if (frameBuffer is null)
@@ -146,6 +209,7 @@ public class FadingScene : ISpecialScene
 
     private enum Phase
     {
+        Pending,
         FadeIn,
         Main,
         FadeOut
