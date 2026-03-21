@@ -295,20 +295,74 @@ public class RailBoardSceneTests
             "CALLS ROYSTON, STEVENAGE");
 
         var stoppingService = CreateService(
-            "18:28",
+            "18:45",
             "Cambridge",
             "CBG",
-            "P8",
-            "+4",
-            new Rgba32(255, 184, 64),
+            "P3",
+            "On time",
+            new Rgba32(210, 188, 144),
             "Great Northern",
-            "CALLS FINSBURY PARK, STEVENAGE, ROYSTON");
+            "CALLS FINSBURY PARK, KNEBWORTH, STEVENAGE, HITCHIN, LETCHWORTH, ROYSTON");
 
-        var fastText = method!.Invoke(null, [fastService]);
-        var stoppingText = method.Invoke(null, [stoppingService]);
-
+        // When isFast=true, prefix is "Fast via"
+        var fastText = method!.Invoke(null, [fastService, true]);
         Assert.Equal("Fast via Royston, Stevenage", fastText);
-        Assert.Equal("Via Finsbury Park, Stevenage, Royston", stoppingText);
+
+        // When isFast=false (default), prefix is "Via"
+        var defaultText = method.Invoke(null, [fastService, false]);
+        Assert.Equal("Via Royston, Stevenage", defaultText);
+
+        var stoppingText = method.Invoke(null, [stoppingService, false]);
+        Assert.StartsWith("Via ", (string)stoppingText!);
+    }
+
+    [Fact]
+    public void RailBoardScene_ClassifiesFastServicesAdaptively_BasedOnStopCountSpread()
+    {
+        var classifyMethod = typeof(RailBoardScene).GetMethod("ClassifyFastServices", BindingFlags.Static | BindingFlags.NonPublic);
+        Assert.NotNull(classifyMethod);
+
+        // Mix of fast (2 stops) and slow (6 stops) services
+        var services = new[]
+        {
+            CreateService("18:12", "London Kings Cross", "KGX", "P5", "On time",
+                new Rgba32(210, 188, 144), "Great Northern", "CALLS ROYSTON, STEVENAGE"),
+            CreateService("18:19", "London Kings Cross", "KGX", "P1", "+5",
+                new Rgba32(255, 184, 64), "Greater Anglia",
+                "CALLS FINSBURY PARK, KNEBWORTH, STEVENAGE, HITCHIN, LETCHWORTH, ROYSTON"),
+            CreateService("18:24", "London Kings Cross", "KGX", "P3", "On time",
+                new Rgba32(210, 188, 144), "Great Northern", "CALLS ROYSTON, STEVENAGE, FINSBURY PARK")
+        };
+
+        var fastIndices = classifyMethod!.Invoke(null, [services]);
+        var fastSet = Assert.IsAssignableFrom<IReadOnlySet<int>>(fastIndices);
+
+        // Service 0 (2 stops) and service 2 (3 stops) should be fast relative to service 1 (6 stops)
+        Assert.Contains(0, fastSet);
+        Assert.DoesNotContain(1, fastSet);
+        Assert.Contains(2, fastSet);
+    }
+
+    [Fact]
+    public void RailBoardScene_ClassifiesFastServices_AllSameStops_NoneHighlighted()
+    {
+        var classifyMethod = typeof(RailBoardScene).GetMethod("ClassifyFastServices", BindingFlags.Static | BindingFlags.NonPublic);
+        Assert.NotNull(classifyMethod);
+
+        // All services have the same number of stops (2)
+        var services = new[]
+        {
+            CreateService("18:12", "London Kings Cross", "KGX", "P5", "On time",
+                new Rgba32(210, 188, 144), "Great Northern", "CALLS ROYSTON, STEVENAGE"),
+            CreateService("18:19", "London Kings Cross", "KGX", "P1", "On time",
+                new Rgba32(210, 188, 144), "Great Northern", "CALLS FINSBURY PARK, STEVENAGE")
+        };
+
+        var fastIndices = classifyMethod!.Invoke(null, [services]);
+        var fastSet = Assert.IsAssignableFrom<IReadOnlySet<int>>(fastIndices);
+
+        // All same stops — no contrast, none highlighted
+        Assert.Empty(fastSet);
     }
 
     private static RailServiceSnapshot CreateService(

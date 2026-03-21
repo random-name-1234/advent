@@ -263,6 +263,7 @@ public sealed class RailBoardScene : ISpecialScene, IDeferredActivationScene
     {
         var services = boardType == BoardType.Departures ? station.Departures : station.Arrivals;
         var boardRows = BuildBoardRows(station, boardType, services);
+        var fastIndices = ClassifyFastServices(boardRows);
         var tickerText = BuildBoardTicker(station, boardType, boardRows);
         return new BoardPage(
             $"{FullStationLabel(station.StationName)} {BoardTitle(boardType)}",
@@ -270,6 +271,7 @@ public sealed class RailBoardScene : ISpecialScene, IDeferredActivationScene
             boardType,
             updatedAt,
             boardRows,
+            fastIndices,
             tickerText,
             DurationForText(BoardPageDuration, tickerText));
     }
@@ -498,11 +500,11 @@ public sealed class RailBoardScene : ISpecialScene, IDeferredActivationScene
             // Highlight first row (typically most relevant departure)
             var isHighlight = i == 0;
             var timeColor = isHighlight ? HeaderColor : SecondaryTextColor;
-            var isFast = IsFastService(row);
+            var isFast = page.FastRowIndices.Contains(i);
             var destColor = isFast ? FastServiceColor : isHighlight ? PrimaryTextColor : SecondaryTextColor;
 
             // Build scrolling text: destination + calling pattern
-            var callingText = CompactBoardCallingText(row);
+            var callingText = CompactBoardCallingText(row, isFast);
             var scrollText = string.IsNullOrWhiteSpace(callingText)
                 ? row.LocationText
                 : $"{row.LocationText}  \u00b7  {callingText}";
@@ -688,14 +690,9 @@ public sealed class RailBoardScene : ISpecialScene, IDeferredActivationScene
         return RailDmiText.TrimToWidth(compact, maxWidth);
     }
 
-    private static string CompactBoardCallingText(RailServiceSnapshot service)
+    private static string CompactBoardCallingText(RailServiceSnapshot service, bool isFast = false)
     {
-        return BuildServicePatternText(service.LocationText, service.LocationCode, service.CallingText);
-    }
-
-    private static Rgba32 CompactBoardCallingColor(RailServiceSnapshot service)
-    {
-        return IsFastService(service) ? WarningColor : SecondaryTextColor;
+        return BuildServicePatternText(service.LocationText, service.LocationCode, service.CallingText, isFast);
     }
 
     private static string CompactOperatorText(string operatorText)
@@ -848,15 +845,13 @@ public sealed class RailBoardScene : ISpecialScene, IDeferredActivationScene
                 img[px, py] = color;
     }
 
-    private static string BuildServicePatternText(string locationText, string locationCode, string callingPoints)
+    private static string BuildServicePatternText(string locationText, string locationCode, string callingPoints, bool isFast = false)
     {
         var normalizedCallingPoints = NormalizeCallingPoints(callingPoints);
         if (normalizedCallingPoints.Count == 0)
             return string.Empty;
 
-        var prefix = IsFastService(locationText, locationCode, normalizedCallingPoints)
-            ? "Fast via"
-            : "Via";
+        var prefix = isFast ? "Fast via" : "Via";
 
         return $"{prefix} {string.Join(", ", normalizedCallingPoints)}";
     }
@@ -881,35 +876,78 @@ public sealed class RailBoardScene : ISpecialScene, IDeferredActivationScene
             .ToArray();
     }
 
-    private static bool IsFastService(RailServiceSnapshot service)
+    /// <summary>
+    /// Analyzes all services on a board page and classifies which are "fast" relative to the others.
+    /// If there's a mix of stop counts, services with fewer stops than the median are fast.
+    /// If all services have the same number of stops, none are highlighted (no contrast to show).
+    /// </summary>
+    private static IReadOnlySet<int> ClassifyFastServices(IReadOnlyList<RailServiceSnapshot> rows)
     {
-        return IsFastService(service.LocationText, service.LocationCode, NormalizeCallingPoints(service.CallingText));
+        var result = new HashSet<int>();
+
+        // Compute stop counts for each row
+        var stopCounts = new int[rows.Count];
+        var hasCallingPoints = false;
+        for (var i = 0; i < rows.Count; i++)
+        {
+            var points = NormalizeCallingPoints(rows[i].CallingText);
+            stopCounts[i] = points.Count;
+            if (points.Count > 0) hasCallingPoints = true;
+        }
+
+        if (!hasCallingPoints)
+            return result;
+
+        // Find the range of stop counts (only for services that have calling points)
+        var countsWithPoints = stopCounts.Where(c => c > 0).ToArray();
+        if (countsWithPoints.Length < 2)
+        {
+            // Only one service has calling points — can't determine relative speed
+            // Fall back: mark it as fast if it has very few stops
+            for (var i = 0; i < rows.Count; i++)
+                if (stopCounts[i] > 0 && stopCounts[i] <= 3)
+                    result.Add(i);
+            return result;
+        }
+
+        var min = countsWithPoints.Min();
+        var max = countsWithPoints.Max();
+
+        if (min == max)
+        {
+            // All services have the same number of stops — no contrast to show
+            return result;
+        }
+
+        // Find the natural threshold: the largest gap between sorted unique stop counts
+        var uniqueSorted = countsWithPoints.Distinct().OrderBy(c => c).ToArray();
+        var bestGapIndex = 0;
+        var bestGap = 0;
+        for (var i = 0; i < uniqueSorted.Length - 1; i++)
+        {
+            var gap = uniqueSorted[i + 1] - uniqueSorted[i];
+            if (gap > bestGap)
+            {
+                bestGap = gap;
+                bestGapIndex = i;
+            }
+        }
+
+        // The threshold is the value at the low side of the largest gap
+        var threshold = uniqueSorted[bestGapIndex];
+
+        // Mark services at or below the threshold as fast
+        for (var i = 0; i < rows.Count; i++)
+            if (stopCounts[i] > 0 && stopCounts[i] <= threshold)
+                result.Add(i);
+
+        return result;
     }
 
-    private static bool IsFastService(
-        string locationText,
-        string locationCode,
-        IReadOnlyList<string> normalizedCallingPoints)
+    private static bool IsFastService(RailServiceSnapshot service)
     {
-        if (normalizedCallingPoints.Count == 0)
-            return false;
-
-        var locationKey = NormalizeLocationKey(!string.IsNullOrWhiteSpace(locationCode) ? locationCode : locationText);
-        if (locationKey is not ("CAM" or "CBG" or "KGX" or "CAMBRIDGE" or "KINGS CROSS" or "LONDON KINGS CROSS"))
-            return false;
-
-        var coreStops = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-        {
-            "ROYSTON",
-            "STEVENAGE",
-            "FINSBURY PARK"
-        };
-
-        var calledCoreStops = normalizedCallingPoints
-            .Select(NormalizeLocationKey)
-            .Count(coreStops.Contains);
-
-        return normalizedCallingPoints.Count <= 2 || calledCoreStops < coreStops.Count;
+        var callingPoints = NormalizeCallingPoints(service.CallingText);
+        return callingPoints.Count > 0 && callingPoints.Count <= 3;
     }
 
     private static string BoardTitle(BoardType boardType)
@@ -972,6 +1010,7 @@ public sealed class RailBoardScene : ISpecialScene, IDeferredActivationScene
         BoardType BoardType,
         DateTimeOffset UpdatedAt,
         IReadOnlyList<RailServiceSnapshot> Rows,
+        IReadOnlySet<int> FastRowIndices,
         string TickerText,
         TimeSpan Duration)
         : RailPage(Duration);

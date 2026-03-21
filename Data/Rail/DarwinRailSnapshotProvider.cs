@@ -235,26 +235,11 @@ internal static partial class DarwinRailSnapshotProvider
         string locationCode,
         IReadOnlyList<string> normalizedCallingPoints)
     {
-        if (normalizedCallingPoints.Count is 0)
-            return false;
-
-        var locationKey = RailStationNames.NormalizeLocationKey(
-            !string.IsNullOrWhiteSpace(locationCode) ? locationCode : locationText);
-        if (locationKey is not ("CAM" or "CBG" or "KGX" or "CAMBRIDGE" or "KINGS CROSS" or "LONDON KINGS CROSS"))
-            return false;
-
-        var coreStops = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-        {
-            "ROYSTON",
-            "STEVENAGE",
-            "FINSBURY PARK"
-        };
-
-        var calledCoreStops = normalizedCallingPoints
-            .Select(RailStationNames.NormalizeLocationKey)
-            .Count(coreStops.Contains);
-
-        return normalizedCallingPoints.Count <= 2 || calledCoreStops < coreStops.Count;
+        // Simple heuristic for pre-computed detail ticker text.
+        // The real adaptive fast/slow classification happens at display time
+        // in RailBoardScene.ClassifyFastServices, which analyzes the spread
+        // of stop counts across all services on a board page.
+        return normalizedCallingPoints.Count > 0 && normalizedCallingPoints.Count <= 3;
     }
 
     private static IReadOnlyList<RailAlertSnapshot> BuildAlerts(NrccMessageDto[]? messages)
