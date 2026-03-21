@@ -4,13 +4,12 @@ using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.Drawing.Processing;
 using SixLabors.ImageSharp.PixelFormats;
 using SixLabors.ImageSharp.Processing;
+using static advent.MatrixConstants;
 
 namespace advent;
 
 public class MessageScene : ISpecialScene
 {
-    private const int Width = 64;
-    private const int Height = 32;
     private const float ScrollSpeedPixelsPerSecond = 24f;
     private static readonly TimeSpan MinDuration = TimeSpan.FromSeconds(4);
     private static readonly TimeSpan MaxDuration = SceneTiming.MaxSceneDuration;

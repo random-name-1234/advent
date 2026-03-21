@@ -2,13 +2,12 @@ using System;
 using System.Collections.Generic;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
+using static advent.MatrixConstants;
 
 namespace advent;
 
 public class DonkeyKongScene : ISpecialScene
 {
-    private const int Width = 64;
-    private const int Height = 32;
     private const int PlayLeft = 4;
     private const int PlayRight = 60;
     private const int TopLevel = 3;

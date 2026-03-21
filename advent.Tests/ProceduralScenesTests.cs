@@ -20,6 +20,9 @@ public class ProceduralScenesTests
         yield return new object[] { new FireworksScene(), true, 30d };
         yield return new object[] { new WarpCoreScene(), false, 30d };
         yield return new object[] { new WarpCoreScene(WarpCorePalettePreset.RedAlert), false, 30d };
+        yield return new object[] { new BoidsScene(), true, 30d };
+        yield return new object[] { new TetrisScene(), true, 30d };
+        yield return new object[] { new SunriseSunsetScene(), true, 30d };
     }
 
     [Theory]

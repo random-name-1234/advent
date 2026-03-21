@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Advent Matrix Preview</title>
+  <style>
+    :root {
+      --bg: #0b1020;
+      --panel: #121a33;
+      --panel-2: #1b264a;
+      --text: #e8eeff;
+      --muted: #94a4d6;
+      --accent: #3fd0ff;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Avenir Next", "Segoe UI", sans-serif;
+      color: var(--text);
+      background: var(--bg);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+    h1 { font-size: 1rem; letter-spacing: 0.3px; color: var(--muted); margin: 0 0 12px; }
+    .frame-wrap {
+      background: #000;
+      border: 2px solid #2c3c74;
+      border-radius: 6px;
+      padding: 8px;
+      box-shadow: 0 0 40px rgba(63, 208, 255, 0.08);
+      line-height: 0;
+    }
+    #frame {
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+      width: 640px;
+      height: 320px;
+    }
+    .controls {
+      margin-top: 14px;
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      font-size: 0.88rem;
+      color: var(--muted);
+    }
+    .controls label { cursor: pointer; }
+    .controls select, .controls input {
+      background: #0d1530;
+      border: 1px solid #334a8e;
+      color: var(--text);
+      padding: 4px 8px;
+      border-radius: 6px;
+      font-size: 0.85rem;
+    }
+    .status {
+      margin-top: 8px;
+      font-size: 0.82rem;
+      color: var(--muted);
+    }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <h1>LED Matrix Preview</h1>
+  <div class="frame-wrap">
+    <img id="frame" alt="LED Matrix" src="/api/frame">
+  </div>
+  <div class="controls">
+    <label>Scale:
+      <select id="scale">
+        <option value="5">5x (320x160)</option>
+        <option value="8">8x (512x256)</option>
+        <option value="10" selected>10x (640x320)</option>
+        <option value="15">15x (960x480)</option>
+        <option value="20">20x (1280x640)</option>
+      </select>
+    </label>
+    <label>FPS:
+      <select id="fps">
+        <option value="5">5</option>
+        <option value="10" selected>10</option>
+        <option value="15">15</option>
+        <option value="20">20</option>
+        <option value="30">30</option>
+      </select>
+    </label>
+    <label><input type="checkbox" id="pause"> Pause</label>
+  </div>
+  <div class="status" id="status">Connecting...</div>
+  <div style="margin-top: 12px; font-size: 0.82rem;"><a href="/">Control Panel</a></div>
+
+  <script>
+    const frameImg = document.getElementById("frame");
+    const scaleSelect = document.getElementById("scale");
+    const fpsSelect = document.getElementById("fps");
+    const pauseCheck = document.getElementById("pause");
+    const statusEl = document.getElementById("status");
+
+    const token = localStorage.getItem("advent_token") || "";
+    let intervalId = null;
+    let frameCount = 0;
+    let lastFpsTime = performance.now();
+
+    function applyScale() {
+      const s = parseInt(scaleSelect.value, 10);
+      frameImg.style.width = (64 * s) + "px";
+      frameImg.style.height = (32 * s) + "px";
+    }
+
+    function fetchFrame() {
+      if (pauseCheck.checked) return;
+
+      const url = "/api/frame?t=" + Date.now();
+      const img = new Image();
+      img.onload = function () {
+        frameImg.src = img.src;
+        frameCount++;
+        const now = performance.now();
+        if (now - lastFpsTime >= 1000) {
+          statusEl.textContent = "Live - " + frameCount + " fps";
+          frameCount = 0;
+          lastFpsTime = now;
+        }
+      };
+      img.onerror = function () {
+        statusEl.textContent = "Connection lost - retrying...";
+      };
+
+      if (token) {
+        fetch(url, { headers: { "X-Advent-Token": token } })
+          .then(r => r.blob())
+          .then(blob => { img.src = URL.createObjectURL(blob); })
+          .catch(() => { statusEl.textContent = "Connection lost - retrying..."; });
+      } else {
+        img.src = url;
+      }
+    }
+
+    function startPolling() {
+      if (intervalId) clearInterval(intervalId);
+      const fps = parseInt(fpsSelect.value, 10);
+      intervalId = setInterval(fetchFrame, 1000 / fps);
+    }
+
+    scaleSelect.addEventListener("change", applyScale);
+    fpsSelect.addEventListener("change", startPolling);
+
+    applyScale();
+    startPolling();
+  </script>
+</body>
+</html>

@@ -2,15 +2,13 @@ using System;
 using System.Collections.Generic;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
+using static advent.MatrixConstants;
 
 namespace advent;
 
 public sealed class LegibilityLabScene : ISpecialScene
 {
     public static readonly TimeSpan MaxSceneDuration = TimeSpan.FromSeconds(60);
-
-    private const int Width = 64;
-    private const int Height = 32;
 
     private static readonly TimeSpan SamplePageDuration = TimeSpan.FromSeconds(8);
 

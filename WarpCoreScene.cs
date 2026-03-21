@@ -1,6 +1,7 @@
 using System;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
+using static advent.MatrixConstants;
 
 namespace advent;
 
@@ -12,8 +13,6 @@ public enum WarpCorePalettePreset
 
 public class WarpCoreScene : ISpecialScene
 {
-    private const int Width = 64;
-    private const int Height = 32;
     private const int CoreCenterX = Width / 2;
     private const int CoreHalfWidth = 12;
     private const int CoreStartX = CoreCenterX - CoreHalfWidth;

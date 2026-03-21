@@ -13,12 +13,12 @@ namespace advent;
 
 public sealed class RailBoardScene : ISpecialScene, IDeferredActivationScene
 {
-    public static readonly TimeSpan MaxSceneDuration = TimeSpan.FromSeconds(60);
+    public static readonly TimeSpan MaxSceneDuration = TimeSpan.FromSeconds(30);
 
     private const int WideMinWidth = 100;
     private const int WideMinHeight = 48;
     private const int WideBoardRows = 3;
-    private const int CompactBoardRows = 2;
+    private const int CompactBoardRows = 3;
 
     private static readonly TimeSpan BoardPageDuration = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan DetailPageDuration = TimeSpan.FromSeconds(8);
@@ -46,6 +46,7 @@ public sealed class RailBoardScene : ISpecialScene, IDeferredActivationScene
     private static readonly Rgba32 DelayedColor = new(255, 152, 40);
     private static readonly Rgba32 CancelledColor = new(255, 96, 84);
     private static readonly Rgba32 WarningColor = new(255, 214, 128);
+    private static readonly Rgba32 FastServiceColor = new(128, 255, 160);
     private static readonly Rgba32 AlertColor = new(255, 84, 72);
 
     private readonly IRailSnapshotSource snapshotSource;
@@ -227,9 +228,7 @@ public sealed class RailBoardScene : ISpecialScene, IDeferredActivationScene
         return
         [
             BuildBoardPage(railSnapshot.Cambridge, BoardType.Departures, railSnapshot.KingsCross, railSnapshot.UpdatedAt),
-            BuildBoardPage(railSnapshot.Cambridge, BoardType.Arrivals, railSnapshot.KingsCross, railSnapshot.UpdatedAt),
-            BuildBoardPage(railSnapshot.KingsCross, BoardType.Departures, railSnapshot.Cambridge, railSnapshot.UpdatedAt),
-            BuildBoardPage(railSnapshot.KingsCross, BoardType.Arrivals, railSnapshot.Cambridge, railSnapshot.UpdatedAt)
+            BuildBoardPage(railSnapshot.KingsCross, BoardType.Departures, railSnapshot.Cambridge, railSnapshot.UpdatedAt)
         ];
     }
 
@@ -482,50 +481,59 @@ public sealed class RailBoardScene : ISpecialScene, IDeferredActivationScene
     {
         DrawCompactBoardHeader(img, FullStationLabel(page.StationName), page.BoardType, elapsedOnPage);
         var timeColumnWidth = RailDmiText.MeasureWidth("00:00") + 2;
-        var lowerLeftWidth = timeColumnWidth - 1;
-        var rowTopPositions = new[] { 7, 21 };
-        var statusTopPositions = new[] { 13, 27 };
+        var dotWidth = 3; // status dot + gap
         var rows = page.Rows.Take(CompactBoardRows).ToArray();
+
+        // Layout: header 0-5, divider 6, row0 8-12, row1 15-19, row2 22-26, footer 28-31
+        var rowTopPositions = new[] { 8, 15, 22 };
+
         for (var i = 0; i < rows.Length; i++)
         {
             var row = rows[i];
             var y = rowTopPositions[i];
-            var statusY = statusTopPositions[i];
             var platformText = CompactPlatform(row.PlatformText);
             var platformReserve = string.IsNullOrWhiteSpace(platformText) ? 0 : RailDmiText.MeasureWidth(platformText) + 1;
-            var locationWidth = Math.Max(0, img.Width - timeColumnWidth - platformReserve - 1);
+            var locationWidth = Math.Max(0, img.Width - timeColumnWidth - dotWidth - platformReserve - 1);
 
-            DrawPixelText(img, row.ScheduledText, HeaderColor, 0, y);
+            // Highlight first row (typically most relevant departure)
+            var isHighlight = i == 0;
+            var timeColor = isHighlight ? HeaderColor : SecondaryTextColor;
+            var isFast = IsFastService(row);
+            var destColor = isFast ? FastServiceColor : isHighlight ? PrimaryTextColor : SecondaryTextColor;
+
+            // Build scrolling text: destination + calling pattern
+            var callingText = CompactBoardCallingText(row);
+            var scrollText = string.IsNullOrWhiteSpace(callingText)
+                ? row.LocationText
+                : $"{row.LocationText}  \u00b7  {callingText}";
+
+            // Status dot: colored circle left of the time
+            DrawStatusDot(img, row.StatusColor, timeColumnWidth + 1, y);
+
+            DrawPixelText(img, row.ScheduledText, timeColor, 0, y);
             DrawPixelScrollingField(
                 img,
-                row.LocationText,
-                PrimaryTextColor,
-                timeColumnWidth,
+                scrollText,
+                destColor,
+                timeColumnWidth + dotWidth,
                 y,
                 locationWidth,
                 elapsedOnPage,
                 i);
-            DrawPixelRightAlignedText(img, platformText, PrimaryTextColor, img.Width - 1, y);
-
-            var compactStatus = CompactBoardIndicator(row.StatusText, lowerLeftWidth);
-            if (!string.IsNullOrWhiteSpace(compactStatus))
-                DrawPixelText(img, compactStatus, row.StatusColor, 0, statusY);
-
-            var callingText = CompactBoardCallingText(row);
-            if (!string.IsNullOrWhiteSpace(callingText))
-                DrawPixelScrollingField(
-                    img,
-                    callingText,
-                    CompactBoardCallingColor(row),
-                    timeColumnWidth,
-                    statusY,
-                    img.Width - timeColumnWidth,
-                    elapsedOnPage,
-                    i + 2);
+            DrawPixelRightAlignedText(img, platformText, destColor, img.Width - 1, y);
 
             if (i < rows.Length - 1)
-                FillRect(img, 0, 19, img.Width, 1, DividerColor);
+                FillRect(img, 0, y + 6, img.Width, 1, DividerColor);
         }
+    }
+
+    private static void DrawStatusDot(Image<Rgba32> img, Rgba32 color, int x, int y)
+    {
+        // 1x3 vertical pip centered on the text row (5px tall text, dot at rows 1-3)
+        var dotY = y + 1;
+        if ((uint)x < img.Width && (uint)dotY < img.Height) img[x, dotY] = color;
+        if ((uint)x < img.Width && (uint)(dotY + 1) < img.Height) img[x, dotY + 1] = color;
+        if ((uint)x < img.Width && (uint)(dotY + 2) < img.Height) img[x, dotY + 2] = color;
     }
 
     private static void DrawCompactDetailPage(Image<Rgba32> img, ServiceDetailPage page, TimeSpan elapsedOnPage)

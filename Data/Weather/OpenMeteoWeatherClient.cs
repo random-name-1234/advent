@@ -23,7 +23,7 @@ internal static class OpenMeteoWeatherClient
         var lat = options.Latitude.ToString("0.####", CultureInfo.InvariantCulture);
         var lon = options.Longitude.ToString("0.####", CultureInfo.InvariantCulture);
         var url =
-            $"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current=temperature_2m,weather_code,is_day&daily=weather_code,temperature_2m_max,temperature_2m_min&timezone=auto&forecast_days=4";
+            $"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current=temperature_2m,apparent_temperature,wind_speed_10m,weather_code,is_day&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,wind_speed_10m_max&wind_speed_unit=mph&timezone=auto&forecast_days=4";
 
         using var response = await HttpClient.GetAsync(url, cancellationToken).ConfigureAwait(false);
         response.EnsureSuccessStatusCode();
@@ -43,6 +43,8 @@ internal static class OpenMeteoWeatherClient
 
         var current = root.GetProperty("current");
         var currentTemperature = ReadRequiredFloat(current, "temperature_2m");
+        var feelsLike = ReadOptionalFloat(current, "apparent_temperature", currentTemperature);
+        var windSpeed = ReadOptionalFloat(current, "wind_speed_10m", 0f);
         var currentWeatherCode = ReadRequiredInt(current, "weather_code");
         var isDay = ReadRequiredInt(current, "is_day") is 1;
 
@@ -51,6 +53,8 @@ internal static class OpenMeteoWeatherClient
         var codes = ReadIntArray(daily, "weather_code");
         var maxTemps = ReadFloatArray(daily, "temperature_2m_max");
         var minTemps = ReadFloatArray(daily, "temperature_2m_min");
+        var precipProbs = ReadIntArray(daily, "precipitation_probability_max");
+        var maxWindSpeeds = ReadFloatArray(daily, "wind_speed_10m_max");
 
         var itemCount = Math.Min(dates.Length, Math.Min(codes.Length, Math.Min(maxTemps.Length, minTemps.Length)));
         var forecasts = new List<DailyForecast>(forecastCount);
@@ -61,13 +65,15 @@ internal static class OpenMeteoWeatherClient
                 BuildPanelLabel(dates[index], index),
                 codes[index],
                 maxTemps[index],
-                minTemps[index]));
+                minTemps[index],
+                index < precipProbs.Length ? precipProbs[index] : 0,
+                index < maxWindSpeeds.Length ? maxWindSpeeds[index] : 0f));
         }
 
         if (forecasts.Count is 0)
-            forecasts.Add(new DailyForecast("TODAY", currentWeatherCode, currentTemperature, currentTemperature));
+            forecasts.Add(new DailyForecast("TODAY", currentWeatherCode, currentTemperature, currentTemperature, 0, 0f));
 
-        return new WeatherSnapshot(currentTemperature, currentWeatherCode, isDay, [.. forecasts]);
+        return new WeatherSnapshot(currentTemperature, feelsLike, windSpeed, currentWeatherCode, isDay, [.. forecasts]);
     }
 
     private static string BuildPanelLabel(string isoDate, int offset) => offset switch
@@ -89,6 +95,15 @@ internal static class OpenMeteoWeatherClient
         if (!parent.TryGetProperty(propertyName, out var element) ||
             !element.TryGetDouble(out var value))
             throw new InvalidOperationException($"Weather API response missing '{propertyName}'.");
+
+        return (float)value;
+    }
+
+    private static float ReadOptionalFloat(JsonElement parent, string propertyName, float fallback)
+    {
+        if (!parent.TryGetProperty(propertyName, out var element) ||
+            !element.TryGetDouble(out var value))
+            return fallback;
 
         return (float)value;
     }

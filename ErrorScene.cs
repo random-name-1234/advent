@@ -2,14 +2,12 @@ using System;
 using System.Collections.Generic;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
+using static advent.MatrixConstants;
 
 namespace advent;
 
 public class ErrorScene : ISpecialScene
 {
-    private const int Width = 64;
-    private const int Height = 32;
-
     private static readonly TimeSpan SceneDuration = TimeSpan.FromSeconds(7.8);
 
     private static readonly IReadOnlyDictionary<char, string[]> SmallGlyphs = new Dictionary<char, string[]>

@@ -17,6 +17,9 @@ internal sealed class BuiltinSceneModule : ISceneModule
             new SceneCatalogRegistration("Synthwave Grid", static () => new SynthwaveGridScene()),
             new SceneCatalogRegistration("Orbital", static () => new OrbitalScene()),
             new SceneCatalogRegistration("Fireworks", static () => new FireworksScene()),
+            new SceneCatalogRegistration("Boids", static () => new BoidsScene()),
+            new SceneCatalogRegistration("Tetris", static () => new TetrisScene()),
+            new SceneCatalogRegistration("Sunrise Sunset", static () => new SunriseSunsetScene()),
             new SceneCatalogRegistration("Error", static () => new ErrorScene())
         ];
     }

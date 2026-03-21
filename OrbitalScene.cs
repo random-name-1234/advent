@@ -1,13 +1,12 @@
 using System;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
+using static advent.MatrixConstants;
 
 namespace advent;
 
 public class OrbitalScene : ISpecialScene
 {
-    private const int Width = 64;
-    private const int Height = 32;
     private const float DaysPerSecond = 10f;
     private static readonly TimeSpan SceneDuration = TimeSpan.FromSeconds(18);
     private static readonly DateTime J2000Utc = new(2000, 1, 1, 12, 0, 0, DateTimeKind.Utc);

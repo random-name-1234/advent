@@ -61,7 +61,7 @@ public class WeatherSceneTests
     }
 
     [Fact]
-    public void Draw_DoesNotRenderBottomCenterIndicatorArtifacts()
+    public void Draw_RendersBottomStripWithWeatherData()
     {
         var scene = new WeatherScene(new FixedWeatherSnapshotSource(CreateSnapshot()));
         SetBackingField(scene, "<IsActive>k__BackingField", true);
@@ -70,18 +70,21 @@ public class WeatherSceneTests
         using var canvas = new Image<Rgba32>(64, 32);
         scene.Draw(canvas);
 
-        Assert.True(CountLitPixels(canvas, 22, 31, 20, 1) <= 3);
+        // Bottom strip (y 26-31) should have content: rain %, wind, hi/lo
+        Assert.True(CountLitPixels(canvas, 0, 26, 64, 6) > 0);
     }
 
     private static WeatherSnapshot CreateSnapshot()
         => new(
             10f,
+            8f,
+            12f,
             1,
             true,
             [
-                new DailyForecast("TODAY", 1, 15f, 9f),
-                new DailyForecast("TOM", 61, 12f, 7f),
-                new DailyForecast("WED", 3, 11f, 5f)
+                new DailyForecast("TODAY", 1, 15f, 9f, 20, 15f),
+                new DailyForecast("TOM", 61, 12f, 7f, 80, 22f),
+                new DailyForecast("WED", 3, 11f, 5f, 10, 8f)
             ]);
 
     private static void SetBackingField(object target, string fieldName, object value)

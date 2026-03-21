@@ -1,13 +1,12 @@
 using System;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
+using static advent.MatrixConstants;
 
 namespace advent;
 
 public class MetaballsScene : ISpecialScene
 {
-    private const int Width = 64;
-    private const int Height = 32;
     private const float Aspect = Width / (float)Height;
 
     private static readonly TimeSpan SceneDuration = TimeSpan.FromSeconds(19);

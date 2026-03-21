@@ -87,7 +87,7 @@ public class AnimatedGifScene : ISpecialScene
             return;
 
         // Get the current frame
-        var frame = gifImage.Frames.CloneFrame(currentFrameIndex);
+        using var frame = gifImage.Frames.CloneFrame(currentFrameIndex);
 
         // Resize the frame to fit the display while maintaining aspect ratio
         if (frame.Width != img.Width || frame.Height != img.Height)

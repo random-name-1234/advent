@@ -12,7 +12,7 @@ namespace advent.Tests;
 public class RailBoardSceneTests
 {
     [Fact]
-    public void RailBoardScene_RendersCompactPages_AndRunsLongerThanTwentySeconds()
+    public void RailBoardScene_RendersCompactPages_AndExpiresWithinThirtySeconds()
     {
         var snapshot = new RailSceneSnapshot(
             new RailStationSnapshot(
@@ -57,10 +57,7 @@ public class RailBoardSceneTests
 
         Assert.True(CountLitPixels(canvas) > 0);
 
-        scene.Elapsed(TimeSpan.FromSeconds(25));
-        Assert.True(scene.IsActive);
-
-        scene.Elapsed(TimeSpan.FromSeconds(40));
+        scene.Elapsed(TimeSpan.FromSeconds(35));
         Assert.False(scene.IsActive);
         Assert.False(scene.HidesTime);
     }
@@ -99,7 +96,7 @@ public class RailBoardSceneTests
     }
 
     [Fact]
-    public void RailBoardScene_BuildsFourCorridorBoards_ForCambridgeAndConfiguredLondonCorridor()
+    public void RailBoardScene_BuildsDepartureBoards_ForCambridgeAndConfiguredLondonCorridor()
     {
         var updatedAt = new DateTimeOffset(2026, 3, 16, 18, 10, 0, TimeSpan.Zero);
         var snapshot = new RailSceneSnapshot(
@@ -141,11 +138,9 @@ public class RailBoardSceneTests
 
         var pages = InvokeBuildPages(snapshot);
 
-        Assert.Equal(4, pages.Length);
+        Assert.Equal(2, pages.Length);
         AssertBoardRows(pages[0], "Cambridge", "Departures", "London Kings Cross", "London Liverpool Street", "Finsbury Park");
-        AssertBoardRows(pages[1], "Cambridge", "Arrivals", "London Kings Cross", "Finsbury Park");
-        AssertBoardRows(pages[2], "London Kings Cross", "Departures", "Cambridge");
-        AssertBoardRows(pages[3], "London Kings Cross", "Arrivals", "Cambridge");
+        AssertBoardRows(pages[1], "London Kings Cross", "Departures", "Cambridge");
     }
 
     [Fact]
@@ -183,8 +178,8 @@ public class RailBoardSceneTests
 
         var pages = InvokeBuildPages(snapshot);
 
-        AssertBoardRows(pages[2], "London Kings Cross", "Departures", "Cambridge", "Kings Lynn");
-        AssertBoardRows(pages[3], "London Kings Cross", "Arrivals", "Cambridge", "Kings Lynn");
+        Assert.Equal(2, pages.Length);
+        AssertBoardRows(pages[1], "London Kings Cross", "Departures", "Cambridge", "Kings Lynn");
     }
 
     [Fact]

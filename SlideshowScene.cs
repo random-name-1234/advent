@@ -42,7 +42,7 @@ public class SlideshowScene : ISpecialScene
         if (slides.Any())
         {
             slideIndex++;
-            if (slideIndex >= slides.Count - 1) slideIndex = 0;
+            if (slideIndex >= slides.Count) slideIndex = 0;
 
             elapsedThisScene = TimeSpan.Zero;
             IsActive = true;

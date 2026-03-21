@@ -2,13 +2,12 @@ using System;
 using System.Collections.Generic;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
+using static advent.MatrixConstants;
 
 namespace advent;
 
 public class SpaceInvadersScene : ISpecialScene
 {
-    private const int Width = 64;
-    private const int Height = 32;
     private const int FormationRows = 3;
     private const int FormationCols = 7;
     private const int FormationSpacingX = 7;

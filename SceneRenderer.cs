@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
-using SixLabors.Fonts;
+using System.IO;
+using System.Threading;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.Drawing.Processing;
 using SixLabors.ImageSharp.PixelFormats;
@@ -10,21 +11,15 @@ namespace advent;
 
 public sealed class SceneRenderer : IDisposable
 {
-    private const string WidestClockSample = "88:88:88";
-    private const float PreferredClockFontSize = 16f;
-    private const float MinimumClockFontSize = 8f;
-    private const float ClockMaxWidth = 62f;
-
+    private readonly ClockRenderer clockRenderer = new();
     private readonly Action<Image<Rgba32>> drawClockOverlay;
-    private readonly Font font;
     private readonly IReadOnlyList<ISceneOverlay> overlays;
     private readonly ISceneTransitionRenderer transitionRenderer;
 
     public SceneRenderer(Action<Image<Rgba32>>? clockOverlayRenderer = null)
     {
         Img = new Image<Rgba32>(64, 32);
-        drawClockOverlay = clockOverlayRenderer ?? DrawClockOverlay;
-        font = AppFonts.CreateFitting(WidestClockSample, PreferredClockFontSize, MinimumClockFontSize, ClockMaxWidth);
+        drawClockOverlay = clockOverlayRenderer ?? clockRenderer.Draw;
         transitionRenderer = new FadingSceneTransitionRenderer(Img.Width, Img.Height);
         overlays =
         [
@@ -33,21 +28,37 @@ public sealed class SceneRenderer : IDisposable
         ];
     }
 
+    private readonly Lock frameLock = new();
+
     public Image<Rgba32> Img { get; }
 
     public void AdvanceAndRender(TimeSpan timeSpan, ISpecialScene? activeScene)
     {
-        Img.Mutate(ctx =>
-            ctx.FillPolygon(Color.Black, new PointF(0, 0), new PointF(64, 0), new PointF(64, 32), new PointF(0, 32)));
-
-        foreach (var overlay in overlays)
-            overlay.Advance(timeSpan);
-
-        var frame = transitionRenderer.Render(Img, activeScene, drawClockOverlay);
-        foreach (var overlay in overlays)
+        lock (frameLock)
         {
-            if (overlay.ShouldRender(frame))
-                overlay.Render(Img, frame);
+            Img.Mutate(ctx =>
+                ctx.FillPolygon(Color.Black, new PointF(0, 0), new PointF(64, 0), new PointF(64, 32),
+                    new PointF(0, 32)));
+
+            foreach (var overlay in overlays)
+                overlay.Advance(timeSpan);
+
+            var frame = transitionRenderer.Render(Img, activeScene, drawClockOverlay);
+            foreach (var overlay in overlays)
+            {
+                if (overlay.ShouldRender(frame))
+                    overlay.Render(Img, frame);
+            }
+        }
+    }
+
+    public byte[] CaptureFramePng()
+    {
+        lock (frameLock)
+        {
+            using var ms = new MemoryStream();
+            Img.SaveAsPng(ms);
+            return ms.ToArray();
         }
     }
 
@@ -58,9 +69,4 @@ public sealed class SceneRenderer : IDisposable
         Img.Dispose();
     }
 
-    private void DrawClockOverlay(Image<Rgba32> img)
-    {
-        var timeToDisplay = DateTime.Now.TimeOfDay.ToString("hh\\:mm\\:ss");
-        img.Mutate(ctx => ctx.DrawText(timeToDisplay, font, Color.Aqua, new Point(0, 0)));
-    }
 }

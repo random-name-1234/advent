@@ -694,12 +694,12 @@ public class SceneSelectorTests
 
     private static int ExpectedNonDecemberSceneCount()
     {
-        return 12;
+        return 15;
     }
 
     private static WeatherSnapshot CreateWeatherSnapshot()
     {
-        return new WeatherSnapshot(12.5f, 1, true, [new DailyForecast("TODAY", 1, 14f, 7f)]);
+        return new WeatherSnapshot(12.5f, 11f, 10f, 1, true, [new DailyForecast("TODAY", 1, 14f, 7f, 20, 12f)]);
     }
 
     private static RailSceneSnapshot CreateRailSnapshot()

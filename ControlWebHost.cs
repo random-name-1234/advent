@@ -9,7 +9,7 @@ namespace advent;
 
 internal static class ControlWebHost
 {
-    public static WebApplication Build(SceneControlService controlService, WebControlOptions options)
+    public static WebApplication Build(SceneControlService controlService, SceneRenderer sceneRenderer, WebControlOptions options)
     {
         var contentRoot = AppContext.BaseDirectory;
         var webRoot = Path.Combine(contentRoot, "wwwroot");
@@ -26,11 +26,17 @@ internal static class ControlWebHost
 
         var app = builder.Build();
 
+        var previewPath = Path.Combine(webRoot, "preview.html");
+        var hasPreview = File.Exists(previewPath);
+
         if (hasWebUi)
         {
             app.MapGet("/", () => Results.File(indexPath, "text/html; charset=utf-8"));
             app.MapGet("/index.html", () => Results.File(indexPath, "text/html; charset=utf-8"));
         }
+
+        if (hasPreview)
+            app.MapGet("/preview", () => Results.File(previewPath, "text/html; charset=utf-8"));
 
         if (!string.IsNullOrWhiteSpace(options.Token))
         {
@@ -132,6 +138,12 @@ internal static class ControlWebHost
         {
             controlService.ClearQueue();
             return Results.Ok(new { cleared = true });
+        });
+
+        app.MapGet("/api/frame", () =>
+        {
+            var png = sceneRenderer.CaptureFramePng();
+            return Results.Bytes(png, "image/png");
         });
 
         app.MapGet("/health", () => Results.Ok(new { ok = true }));

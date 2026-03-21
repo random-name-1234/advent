@@ -1,14 +1,12 @@
 using System;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
+using static advent.MatrixConstants;
 
 namespace advent;
 
 public class PlasmaSdfScene : ISpecialScene
 {
-    private const int Width = 64;
-    private const int Height = 32;
-
     private static readonly TimeSpan SceneDuration = TimeSpan.FromSeconds(18);
 
     private TimeSpan elapsedThisScene;
