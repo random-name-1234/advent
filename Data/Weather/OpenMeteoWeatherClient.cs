@@ -7,7 +7,7 @@ internal static class OpenMeteoWeatherClient
 {
     private static readonly HttpClient HttpClient = new()
     {
-        Timeout = TimeSpan.FromSeconds(4)
+        Timeout = TimeSpan.FromSeconds(10)
     };
 
     public static TimeSpan PreparationTimeout => HttpClient.Timeout + TimeSpan.FromSeconds(2);

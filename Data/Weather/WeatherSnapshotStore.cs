@@ -33,7 +33,14 @@ internal sealed class WeatherSnapshotStore : IWeatherSnapshotSource, IBackground
 
     public async Task RunAsync(CancellationToken cancellationToken)
     {
-        await RefreshOnceAsync(cancellationToken).ConfigureAwait(false);
+        // Retry quickly on startup if the first fetch fails (Pi can be slow to resolve DNS at boot)
+        for (var attempt = 0; attempt < 3; attempt++)
+        {
+            await RefreshOnceAsync(cancellationToken).ConfigureAwait(false);
+            if (snapshot is not null)
+                break;
+            await Task.Delay(TimeSpan.FromSeconds(5), cancellationToken).ConfigureAwait(false);
+        }
 
         using var timer = new PeriodicTimer(RefreshInterval);
         while (await timer.WaitForNextTickAsync(cancellationToken).ConfigureAwait(false))
