@@ -43,10 +43,11 @@ public class WeatherScene : ISpecialScene, IDeferredActivationScene
     private static readonly Rgba32 FeelsLikeColor = new(180, 160, 200);
     private static readonly string[] CloudSprite =
     [
-        "000111100000",
-        "001222221000",
-        "012222222100",
-        "122222222221",
+        "..1111......",
+        ".122221.....",
+        "12222221....",
+        ".122222211..",
+        ".1222222221.",
         "122222222222",
         "033333333330",
         "003333333300"
@@ -61,18 +62,18 @@ public class WeatherScene : ISpecialScene, IDeferredActivationScene
 
     private static readonly string[] DrizzleSprite =
     [
-        "010001000000",
-        "100010000000",
-        "000100010000",
-        "001000100000"
+        "010000010000",
+        "000000000000",
+        "000010000010",
+        "000000000000"
     ];
 
     private static readonly string[] RainSprite =
     [
-        "010001000100",
-        "100010001000",
-        "000100010001",
-        "001000100010"
+        "010000100000",
+        "110001100000",
+        "000010000100",
+        "000110001100"
     ];
 
     private static readonly string[] SnowSprite =
@@ -86,9 +87,10 @@ public class WeatherScene : ISpecialScene, IDeferredActivationScene
     private static readonly string[] ThunderSprite =
     [
         "001100",
-        "011000",
+        "011100",
+        "111110",
         "001100",
-        "001000",
+        "011000",
         "010000"
     ];
 
@@ -277,15 +279,6 @@ public class WeatherScene : ISpecialScene, IDeferredActivationScene
         // Wind speed right
         var windText = $"{Math.Round(windSpeed):0}mph";
         DrawPixelRightAlignedText(img, windText, WindColor, Width - 1, stripY + 1);
-
-        // Hi/Lo in the middle for today panel
-        if (isToday)
-        {
-            var hiLoText = $"{FormatTemp(forecast.MaxTempC)}/{FormatTemp(forecast.MinTempC)}";
-            var hiLoWidth = RailDmiText.MeasureWidth(hiLoText);
-            var hiLoX = (Width - hiLoWidth) / 2;
-            DrawPixelText(img, hiLoText, SecondaryTextColor, hiLoX, stripY + 1);
-        }
     }
 
     private static void DrawRainDrop(Image<Rgba32> img, int x, int y)
@@ -434,22 +427,44 @@ public class WeatherScene : ISpecialScene, IDeferredActivationScene
         var centerY = y + size / 2;
         var coreRadius = Math.Max(2, size / 4);
 
-        var rayColor = new Rgba32(255, 208, 84);
+        var rayColor = new Rgba32(255, 200, 60);
         var coreColor = new Rgba32(255, 236, 120);
 
-        DrawLine(img, centerX - coreRadius - 2, centerY, centerX - coreRadius - 1, centerY, rayColor);
-        DrawLine(img, centerX + coreRadius + 1, centerY, centerX + coreRadius + 2, centerY, rayColor);
-        DrawLine(img, centerX, centerY - coreRadius - 2, centerX, centerY - coreRadius - 1, rayColor);
-        DrawLine(img, centerX, centerY + coreRadius + 1, centerX, centerY + coreRadius + 2, rayColor);
+        // BBC-style triangular cardinal rays (3px long, wider at base)
+        // Up
+        SetPixel(img, centerX, centerY - coreRadius - 3, rayColor);
+        SetPixel(img, centerX, centerY - coreRadius - 2, rayColor);
+        SetPixel(img, centerX - 1, centerY - coreRadius - 1, rayColor);
+        SetPixel(img, centerX, centerY - coreRadius - 1, rayColor);
+        SetPixel(img, centerX + 1, centerY - coreRadius - 1, rayColor);
+        // Down
+        SetPixel(img, centerX, centerY + coreRadius + 3, rayColor);
+        SetPixel(img, centerX, centerY + coreRadius + 2, rayColor);
+        SetPixel(img, centerX - 1, centerY + coreRadius + 1, rayColor);
+        SetPixel(img, centerX, centerY + coreRadius + 1, rayColor);
+        SetPixel(img, centerX + 1, centerY + coreRadius + 1, rayColor);
+        // Left
+        SetPixel(img, centerX - coreRadius - 3, centerY, rayColor);
+        SetPixel(img, centerX - coreRadius - 2, centerY, rayColor);
+        SetPixel(img, centerX - coreRadius - 1, centerY - 1, rayColor);
+        SetPixel(img, centerX - coreRadius - 1, centerY, rayColor);
+        SetPixel(img, centerX - coreRadius - 1, centerY + 1, rayColor);
+        // Right
+        SetPixel(img, centerX + coreRadius + 3, centerY, rayColor);
+        SetPixel(img, centerX + coreRadius + 2, centerY, rayColor);
+        SetPixel(img, centerX + coreRadius + 1, centerY - 1, rayColor);
+        SetPixel(img, centerX + coreRadius + 1, centerY, rayColor);
+        SetPixel(img, centerX + coreRadius + 1, centerY + 1, rayColor);
 
-        DrawLine(img, centerX - coreRadius - 1, centerY - coreRadius - 1, centerX - coreRadius, centerY - coreRadius,
-            rayColor);
-        DrawLine(img, centerX + coreRadius, centerY - coreRadius, centerX + coreRadius + 1, centerY - coreRadius - 1,
-            rayColor);
-        DrawLine(img, centerX - coreRadius - 1, centerY + coreRadius + 1, centerX - coreRadius, centerY + coreRadius,
-            rayColor);
-        DrawLine(img, centerX + coreRadius, centerY + coreRadius, centerX + coreRadius + 1, centerY + coreRadius + 1,
-            rayColor);
+        // Diagonal rays (2px)
+        DrawLine(img, centerX - coreRadius - 1, centerY - coreRadius - 1,
+            centerX - coreRadius - 2, centerY - coreRadius - 2, rayColor);
+        DrawLine(img, centerX + coreRadius + 1, centerY - coreRadius - 1,
+            centerX + coreRadius + 2, centerY - coreRadius - 2, rayColor);
+        DrawLine(img, centerX - coreRadius - 1, centerY + coreRadius + 1,
+            centerX - coreRadius - 2, centerY + coreRadius + 2, rayColor);
+        DrawLine(img, centerX + coreRadius + 1, centerY + coreRadius + 1,
+            centerX + coreRadius + 2, centerY + coreRadius + 2, rayColor);
 
         FillCircle(img, centerX, centerY, coreRadius, coreColor);
     }
@@ -460,8 +475,9 @@ public class WeatherScene : ISpecialScene, IDeferredActivationScene
         var centerY = y + size / 2;
         var radius = Math.Max(2, size / 4);
 
-        FillCircle(img, centerX, centerY, radius, new Rgba32(244, 246, 255));
-        FillCircle(img, centerX + 1, centerY - 1, radius, BackgroundColor);
+        var moonColor = new Rgba32(200, 200, 210);
+        FillCircle(img, centerX, centerY, radius, moonColor);
+        FillCircle(img, centerX + 2, centerY - 1, radius, BackgroundColor);
     }
 
     private static void DrawPartlyCloudyIcon(Image<Rgba32> img, int x, int y, int size, bool isDay)
@@ -478,9 +494,10 @@ public class WeatherScene : ISpecialScene, IDeferredActivationScene
     private static void DrawCloudIcon(Image<Rgba32> img, int x, int y, int size, Rgba32 baseColor)
     {
         var cloudWidth = size;
-        var cloudHeight = Math.Max(5, (int)MathF.Round(size * 0.58f));
-        var highlight = Mix(baseColor, new Rgba32(255, 255, 255), 0.16f);
-        var shadow = Mix(baseColor, BackgroundColor, 0.32f);
+        var cloudHeight = Math.Max(6, (int)MathF.Round(size * 0.64f));
+        var outline = new Rgba32(240, 240, 248);
+        var fill = baseColor;
+        var shadow = Mix(baseColor, BackgroundColor, 0.4f);
         DrawScaledSprite(
             img,
             x,
@@ -490,8 +507,8 @@ public class WeatherScene : ISpecialScene, IDeferredActivationScene
             CloudSprite,
             token => token switch
             {
-                '1' => highlight,
-                '2' => baseColor,
+                '1' => outline,
+                '2' => fill,
                 '3' => shadow,
                 _ => null
             });
