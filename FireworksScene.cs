@@ -175,6 +175,9 @@ public class FireworksScene : ISpecialScene
 
     private static void BlendPixel(Image<Rgba32> img, int x, int y, Rgba32 source)
     {
+        if ((uint)x >= Width || (uint)y >= Height)
+            return;
+
         var current = img[x, y];
         var r = Math.Min(255, current.R + source.R);
         var g = Math.Min(255, current.G + source.G);

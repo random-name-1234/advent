@@ -66,29 +66,22 @@ public class OrbitalScene : ISpecialScene
 
     private static void DrawBackground(Image<Rgba32> img, float time)
     {
+        // Pure black background for maximum contrast with planets and sun
         for (var y = 0; y < Height; y++)
-        {
-            var depth = y / (float)(Height - 1);
-            var row = new Rgba32(
-                ToByte(6f + depth * 8f),
-                ToByte(8f + depth * 10f),
-                ToByte(20f + depth * 22f));
+        for (var x = 0; x < Width; x++)
+            img[x, y] = new Rgba32(0, 0, 0);
 
-            for (var x = 0; x < Width; x++)
-                img[x, y] = row;
-        }
-
-        // More stars, brighter, with occasional color tints
-        for (var i = 0; i < 35; i++)
+        // Sparse twinkling stars with occasional color tints
+        for (var i = 0; i < 25; i++)
         {
             var x = (Hash(i, 11) % Width + Width) % Width;
             var y = (Hash(i, 29) % Height + Height) % Height;
-            var pulse = 0.5f + 0.5f * (0.5f + 0.5f * MathF.Sin(time * 2.2f + i * 0.8f));
+            var pulse = 0.4f + 0.6f * (0.5f + 0.5f * MathF.Sin(time * 2.2f + i * 0.8f));
             var tint = (i % 5) switch
             {
                 0 => new Rgba32(255, 200, 160), // warm
                 1 => new Rgba32(160, 200, 255), // cool blue
-                _ => new Rgba32(220, 230, 255)  // white
+                _ => new Rgba32(200, 210, 230)  // white
             };
             img[x, y] = Scale(tint, pulse);
         }
