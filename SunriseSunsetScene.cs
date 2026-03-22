@@ -16,31 +16,22 @@ public class SunriseSunsetScene : ISpecialScene
     // Precomputed star positions (deterministic via hash)
     private static readonly (int X, int Y, float Phase)[] Stars = BuildStars();
 
-    // Sky palette keyframes: (normalizedTime, topColor, horizonColor)
-    private static readonly SkyKey[] SkyKeys =
-    [
-        new(0.00f, Rgb(10, 10, 46),   Rgb(20, 20, 50)),    // night
-        new(0.15f, Rgb(10, 10, 46),   Rgb(20, 20, 50)),    // night hold
-        new(0.20f, Rgb(18, 14, 60),   Rgb(80, 40, 90)),    // dawn – purple
-        new(0.25f, Rgb(30, 30, 90),   Rgb(200, 100, 50)),  // dawn – orange horizon
-        new(0.30f, Rgb(60, 100, 180), Rgb(255, 160, 80)),  // sunrise – orange/pink
-        new(0.35f, Rgb(80, 140, 220), Rgb(255, 200, 120)), // sunrise – golden
-        new(0.40f, Rgb(100, 170, 240),Rgb(180, 210, 240)), // transition to day
-        new(0.50f, Rgb(110, 180, 250),Rgb(190, 220, 250)), // day
-        new(0.60f, Rgb(110, 180, 250),Rgb(190, 220, 250)), // day hold
-        new(0.65f, Rgb(90, 150, 230), Rgb(200, 190, 180)), // transition from day
-        new(0.70f, Rgb(60, 80, 160),  Rgb(255, 140, 60)),  // sunset – orange
-        new(0.75f, Rgb(40, 40, 110),  Rgb(220, 80, 50)),   // sunset – red
-        new(0.80f, Rgb(25, 20, 70),   Rgb(120, 50, 80)),   // dusk – purple
-        new(0.85f, Rgb(14, 14, 50),   Rgb(40, 30, 60)),    // dusk – fading
-        new(0.90f, Rgb(10, 10, 46),   Rgb(20, 20, 50)),    // night
-        new(1.00f, Rgb(10, 10, 46),   Rgb(20, 20, 50)),    // night hold
-    ];
-
     // Ground hill profile: height offset per column (precomputed)
     private static readonly int[] HillProfile = BuildHillProfile();
 
+    private readonly double latitude;
+    private readonly double longitude;
+
+    private SkyKey[] skyKeys = null!;
+    private float sunriseT;
+    private float sunsetT;
     private TimeSpan elapsedThisScene;
+
+    public SunriseSunsetScene(double latitude = 52.2053, double longitude = 0.1218)
+    {
+        this.latitude = latitude;
+        this.longitude = longitude;
+    }
 
     public bool IsActive { get; private set; }
     public bool HidesTime { get; private set; }
@@ -52,6 +43,11 @@ public class SunriseSunsetScene : ISpecialScene
         elapsedThisScene = TimeSpan.Zero;
         HidesTime = true;
         IsActive = true;
+
+        var (riseHour, setHour) = CalculateSunTimes(DateTime.UtcNow, latitude);
+        sunriseT = (float)(riseHour / 24.0);
+        sunsetT = (float)(setHour / 24.0);
+        skyKeys = BuildSkyKeys(sunriseT, sunsetT);
     }
 
     public void Elapsed(TimeSpan timeSpan)
@@ -79,7 +75,7 @@ public class SunriseSunsetScene : ISpecialScene
         DrawGround(img, t);
     }
 
-    private static void DrawSkyGradient(Image<Rgba32> img, float t)
+    private void DrawSkyGradient(Image<Rgba32> img, float t)
     {
         var (topColor, horizonColor) = InterpolateSky(t);
         var skyBottom = Height - GroundHeight;
@@ -97,18 +93,23 @@ public class SunriseSunsetScene : ISpecialScene
         }
     }
 
-    private static void DrawStars(Image<Rgba32> img, float t, float time)
+    private void DrawStars(Image<Rgba32> img, float t, float time)
     {
-        // Stars visible when t < 0.20 or t > 0.82 (night phases)
+        // Stars visible during night phases, fading around sunrise/sunset
+        var dawnStart = sunriseT - 0.06f;
+        var dawnEnd = sunriseT + 0.04f;
+        var duskStart = sunsetT - 0.04f;
+        var duskEnd = sunsetT + 0.06f;
+
         float starAlpha;
-        if (t < 0.15f)
+        if (t < dawnStart)
             starAlpha = 1f;
-        else if (t < 0.28f)
-            starAlpha = 1f - (t - 0.15f) / 0.13f;
-        else if (t < 0.82f)
+        else if (t < dawnEnd)
+            starAlpha = 1f - (t - dawnStart) / (dawnEnd - dawnStart);
+        else if (t < duskStart)
             starAlpha = 0f;
-        else if (t < 0.90f)
-            starAlpha = (t - 0.82f) / 0.08f;
+        else if (t < duskEnd)
+            starAlpha = (t - duskStart) / (duskEnd - duskStart);
         else
             starAlpha = 1f;
 
@@ -126,11 +127,11 @@ public class SunriseSunsetScene : ISpecialScene
         }
     }
 
-    private static void DrawSun(Image<Rgba32> img, float t)
+    private void DrawSun(Image<Rgba32> img, float t)
     {
-        // Sun arc: rises from bottom-left at t=0.22, peaks at t=0.50, sets bottom-right at t=0.78
-        const float sunAppear = 0.22f;
-        const float sunDisappear = 0.78f;
+        // Sun arc: rises at computed sunrise, sets at computed sunset
+        var sunAppear = sunriseT - 0.02f;
+        var sunDisappear = sunsetT + 0.02f;
 
         if (t < sunAppear || t > sunDisappear) return;
 
@@ -175,17 +176,22 @@ public class SunriseSunsetScene : ISpecialScene
         DrawDiscDirect(img, cx, cy, 1, coreColor);
     }
 
-    private static void DrawGround(Image<Rgba32> img, float t)
+    private void DrawGround(Image<Rgba32> img, float t)
     {
-        // Ground color shifts with time of day
+        // Ground color shifts with time of day, keyed to computed sunrise/sunset
+        var nightEnd = sunriseT - 0.04f;
+        var dayStart = sunriseT + 0.06f;
+        var dayEnd = sunsetT - 0.06f;
+        var nightStart = sunsetT + 0.04f;
+
         Rgba32 groundDark, groundLight;
-        if (t < 0.20f || t > 0.85f)
+        if (t < nightEnd || t > nightStart)
         {
             // Night ground
             groundDark = Rgb(8, 12, 8);
             groundLight = Rgb(14, 20, 14);
         }
-        else if (t is > 0.35f and < 0.65f)
+        else if (t > dayStart && t < dayEnd)
         {
             // Day ground
             groundDark = Rgb(20, 50, 15);
@@ -194,9 +200,9 @@ public class SunriseSunsetScene : ISpecialScene
         else
         {
             // Transitional ground – blend between night and day
-            var blend = t < 0.35f
-                ? (t - 0.20f) / 0.15f
-                : 1f - (t - 0.65f) / 0.20f;
+            var blend = t < dayStart
+                ? (t - nightEnd) / (dayStart - nightEnd)
+                : 1f - (t - dayEnd) / (nightStart - dayEnd);
             blend = Math.Clamp(blend, 0f, 1f);
 
             groundDark = LerpColor(Rgb(8, 12, 8), Rgb(20, 50, 15), blend);
@@ -215,17 +221,17 @@ public class SunriseSunsetScene : ISpecialScene
         }
     }
 
-    private static (Rgba32 Top, Rgba32 Horizon) InterpolateSky(float t)
+    private (Rgba32 Top, Rgba32 Horizon) InterpolateSky(float t)
     {
         // Find surrounding keyframes
         var i = 0;
-        for (; i < SkyKeys.Length - 1; i++)
+        for (; i < skyKeys.Length - 1; i++)
         {
-            if (SkyKeys[i + 1].T >= t) break;
+            if (skyKeys[i + 1].T >= t) break;
         }
 
-        var a = SkyKeys[i];
-        var b = SkyKeys[Math.Min(i + 1, SkyKeys.Length - 1)];
+        var a = skyKeys[i];
+        var b = skyKeys[Math.Min(i + 1, skyKeys.Length - 1)];
         var range = b.T - a.T;
         var local = range > 0.001f ? (t - a.T) / range : 0f;
         local = Math.Clamp(local, 0f, 1f);
@@ -315,6 +321,74 @@ public class SunriseSunsetScene : ISpecialScene
         }
 
         return profile;
+    }
+
+    /// <summary>
+    /// Calculates sunrise and sunset times in local solar hours (0..24) for the given date and latitude.
+    /// Uses a simplified NOAA algorithm based on solar declination and hour angle.
+    /// </summary>
+    private static (double SunriseHour, double SunsetHour) CalculateSunTimes(DateTime utcNow, double latitudeDeg)
+    {
+        var dayOfYear = utcNow.DayOfYear;
+
+        // Solar declination (radians) — simplified formula
+        var declRad = -23.44 * Math.Cos(2.0 * Math.PI / 365.0 * (dayOfYear + 10)) * Math.PI / 180.0;
+        var latRad = latitudeDeg * Math.PI / 180.0;
+
+        // Hour angle at sunrise/sunset (cos of zenith angle 90.833° for atmospheric refraction)
+        var cosHa = (Math.Cos(90.833 * Math.PI / 180.0) / (Math.Cos(latRad) * Math.Cos(declRad)))
+                    - Math.Tan(latRad) * Math.Tan(declRad);
+
+        // Clamp for polar day/night
+        if (cosHa < -1.0)
+        {
+            // Midnight sun — sun never sets
+            return (1.0, 23.0);
+        }
+
+        if (cosHa > 1.0)
+        {
+            // Polar night — sun never rises; show a very short day
+            return (11.0, 13.0);
+        }
+
+        var haHours = Math.Acos(cosHa) * 12.0 / Math.PI;
+        var sunrise = 12.0 - haHours;
+        var sunset = 12.0 + haHours;
+
+        return (sunrise, sunset);
+    }
+
+    private static SkyKey[] BuildSkyKeys(float sr, float ss)
+    {
+        // sr = sunrise fraction of day (0..1), ss = sunset fraction (0..1)
+        var noon = (sr + ss) / 2f;
+        var dayStart = sr + 0.06f;
+        var dayEnd = ss - 0.06f;
+        if (dayEnd < dayStart) dayEnd = dayStart = noon;
+
+        var dawn = Math.Max(0.01f, sr - 0.04f);
+        var dusk = Math.Min(0.99f, ss + 0.04f);
+
+        return
+        [
+            new(0.00f,                          Rgb(10, 10, 46),    Rgb(20, 20, 50)),    // night
+            new(dawn,                           Rgb(10, 10, 46),    Rgb(20, 20, 50)),    // night hold
+            new(sr - 0.02f,                     Rgb(18, 14, 60),    Rgb(80, 40, 90)),    // dawn – purple
+            new(sr,                             Rgb(30, 30, 90),    Rgb(200, 100, 50)),  // dawn – orange horizon
+            new(sr + 0.03f,                     Rgb(60, 100, 180),  Rgb(255, 160, 80)),  // sunrise – orange/pink
+            new(sr + 0.05f,                     Rgb(80, 140, 220),  Rgb(255, 200, 120)), // sunrise – golden
+            new(dayStart,                       Rgb(100, 170, 240), Rgb(180, 210, 240)), // transition to day
+            new(noon,                           Rgb(110, 180, 250), Rgb(190, 220, 250)), // solar noon
+            new(dayEnd,                         Rgb(110, 180, 250), Rgb(190, 220, 250)), // day hold
+            new(ss - 0.05f,                     Rgb(90, 150, 230),  Rgb(200, 190, 180)), // transition from day
+            new(ss - 0.03f,                     Rgb(60, 80, 160),   Rgb(255, 140, 60)),  // sunset – orange
+            new(ss,                             Rgb(40, 40, 110),   Rgb(220, 80, 50)),   // sunset – red
+            new(ss + 0.02f,                     Rgb(25, 20, 70),    Rgb(120, 50, 80)),   // dusk – purple
+            new(dusk,                           Rgb(14, 14, 50),    Rgb(40, 30, 60)),    // dusk – fading
+            new(Math.Min(dusk + 0.02f, 0.99f),  Rgb(10, 10, 46),   Rgb(20, 20, 50)),    // night
+            new(1.00f,                          Rgb(10, 10, 46),    Rgb(20, 20, 50)),    // night hold
+        ];
     }
 
     private static int Hash(int seed, int salt)

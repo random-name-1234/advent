@@ -16,7 +16,9 @@ internal sealed record SceneModuleContext(
     IEnumerable<string>? ExtraImageSceneDirectories,
     IWeatherSnapshotSource? WeatherSnapshotSource,
     IRailSnapshotSource? RailSnapshotSource,
-    bool RailConfigured);
+    bool RailConfigured,
+    double Latitude = 52.2053,
+    double Longitude = 0.1218);
 
 internal enum SceneTransitionStyle
 {

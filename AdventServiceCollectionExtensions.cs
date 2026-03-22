@@ -45,7 +45,9 @@ internal static class AdventServiceCollectionExtensions
             ExtraImageSceneDirectories: null,
             sp.GetRequiredService<IWeatherSnapshotSource>(),
             sp.GetRequiredService<IRailSnapshotSource>(),
-            RailConfigured: railOptions is not null));
+            RailConfigured: railOptions is not null,
+            Latitude: weatherOptions.Latitude,
+            Longitude: weatherOptions.Longitude));
 
         services.AddSingleton<ISceneModule, WeatherSceneModule>();
         services.AddSingleton<ISceneModule, BuiltinSceneModule>();
