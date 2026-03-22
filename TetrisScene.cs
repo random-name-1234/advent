@@ -113,6 +113,31 @@ public class TetrisScene : ISpecialScene
         IsActive = true;
         HidesTime = true;
         Array.Clear(grid, 0, grid.Length);
+        PrePopulateGrid();
+    }
+
+    private void PrePopulateGrid()
+    {
+        // Fill the bottom portion with a realistic-looking Tetris landscape
+        // so the scene looks interesting from the very first frame.
+        var fillHeight = 8 + random.Next(5); // 8-12 rows from bottom
+        for (var y = Rows - fillHeight; y < Rows; y++)
+        {
+            // Each row gets a random number of filled cells (not full — leave gaps)
+            var fillCount = 6 + random.Next(3); // 6-8 out of 10
+            var columns = new List<int>();
+            for (var x = 0; x < Cols; x++) columns.Add(x);
+
+            // Fisher-Yates to pick random columns
+            for (var i = columns.Count - 1; i > 0; i--)
+            {
+                var j = random.Next(i + 1);
+                (columns[i], columns[j]) = (columns[j], columns[i]);
+            }
+
+            for (var i = 0; i < fillCount; i++)
+                grid[columns[i], y] = random.Next(1, 8); // random piece color
+        }
     }
 
     public void Elapsed(TimeSpan timeSpan)

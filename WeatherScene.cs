@@ -213,13 +213,13 @@ public class WeatherScene : ISpecialScene, IDeferredActivationScene
         var weatherCode = isToday ? weather.CurrentWeatherCode : forecast.WeatherCode;
         var time = (float)elapsedThisScene.TotalSeconds;
 
-        // Row 1 (y 0-5): Day label + condition
+        // Row 1 (y 0-5): Day label + condition (condition in bright color)
         var conditionText = ConditionLabel(weatherCode);
-        DrawHeader(img, forecast.DayLabel, conditionText);
+        DrawHeader(img, forecast.DayLabel, conditionText, weatherCode);
 
-        // Row 2 (y 7-19): Icon left, hero temp right, feels-like below temp
+        // Row 2 (y 7-24): Large icon left, hero temp + sub-line right
         var bob = (int)MathF.Round(MathF.Sin(time * 2.1f + panelIndex * 0.9f) * 1.0f);
-        DrawWeatherIcon(img, 1, 8 + bob, 11, weatherCode, isToday ? weather.IsDay : true);
+        DrawWeatherIcon(img, 0, 7 + bob, 16, weatherCode, isToday ? weather.IsDay : true);
 
         var heroValue = isToday ? weather.CurrentTemperatureC : forecast.MaxTempC;
         DrawHeroTemperature(img, FormatTemp(heroValue), isToday ? PrimaryTextColor : HighTextColor);
@@ -236,19 +236,36 @@ public class WeatherScene : ISpecialScene, IDeferredActivationScene
             DrawPixelRightAlignedText(img, loText, LowTextColor, Width - 1, 19);
         }
 
-        // Row 3 (y 26-31): Bottom strip — precip + wind + hi/lo
+        // Row 3 (y 26-31): Bottom strip — precip + wind
         DrawBottomStrip(img, weather, forecast, isToday);
     }
 
-    private static void DrawHeader(Image<Rgba32> img, string dayLabel, string conditionText)
+    private static void DrawHeader(Image<Rgba32> img, string dayLabel, string conditionText, int weatherCode)
     {
         FillRect(img, 0, 5, Width, 1, DividerColor);
         DrawPixelText(img, dayLabel, HeaderColor, 0, 0);
 
+        var conditionColor = ConditionColor(weatherCode);
         var dayWidth = RailDmiText.MeasureWidth(dayLabel) + 2;
         var conditionWidth = Width - dayWidth;
         var conditionTrimmed = RailDmiText.TrimToWidth(conditionText, conditionWidth);
-        DrawPixelRightAlignedText(img, conditionTrimmed, SecondaryTextColor, Width - 1, 0);
+        DrawPixelRightAlignedText(img, conditionTrimmed, conditionColor, Width - 1, 0);
+    }
+
+    private static Rgba32 ConditionColor(int weatherCode)
+    {
+        return MapWeatherType(weatherCode) switch
+        {
+            WeatherType.Clear => new Rgba32(255, 230, 100),
+            WeatherType.PartlyCloudy => new Rgba32(220, 210, 160),
+            WeatherType.Cloudy => new Rgba32(190, 195, 210),
+            WeatherType.Fog => new Rgba32(170, 170, 185),
+            WeatherType.Drizzle => new Rgba32(140, 190, 240),
+            WeatherType.Rain => new Rgba32(100, 170, 255),
+            WeatherType.Snow => new Rgba32(220, 230, 255),
+            WeatherType.Thunder => new Rgba32(255, 200, 80),
+            _ => new Rgba32(200, 200, 210)
+        };
     }
 
     private static void DrawHeroTemperature(Image<Rgba32> img, string text, Rgba32 color)

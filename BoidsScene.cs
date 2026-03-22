@@ -7,7 +7,7 @@ namespace advent;
 
 public class BoidsScene : ISpecialScene
 {
-    private const int BoidCount = 45;
+    private const int BoidCount = 30;
     private const float MaxSpeed = 24f;
     private const float MinSpeed = 7f;
     private const float SeparationRadius = 3.5f;
@@ -62,20 +62,18 @@ public class BoidsScene : ISpecialScene
         {
             ref var b = ref boids[i];
 
-            // Draw 2nd trail pixel (oldest, dimmest)
-            var t2x = WrapCoord(b.Prev2X, Width);
-            var t2y = WrapCoord(b.Prev2Y, Height);
-            BlendPixel(img, t2x, t2y, Scale(b.Color, 0.15f));
-
-            // Draw 1st trail pixel (previous position, dimmed)
+            // Draw trail (previous position, dimmed)
             var tx = WrapCoord(b.PrevX, Width);
             var ty = WrapCoord(b.PrevY, Height);
-            BlendPixel(img, tx, ty, Scale(b.Color, 0.35f));
+            BlendPixel(img, tx, ty, Scale(b.Color, 0.3f));
 
-            // Draw boid pixel (current position, bright)
+            // Draw boid as 2x2 block (current position, bright)
             var bx = WrapCoord(b.X, Width);
             var by = WrapCoord(b.Y, Height);
             BlendPixel(img, bx, by, b.Color);
+            BlendPixel(img, bx + 1, by, Scale(b.Color, 0.7f));
+            BlendPixel(img, bx, by + 1, Scale(b.Color, 0.7f));
+            BlendPixel(img, bx + 1, by + 1, Scale(b.Color, 0.4f));
         }
     }
 

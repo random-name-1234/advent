@@ -210,17 +210,18 @@ internal sealed class ClockRenderer
         var dateText = FormatDate(now);
         RailDmiText.DrawCentered(img, dateText, Width / 2, dateY, DateColor);
 
-        // Seconds progress bar — subtle 1px line showing seconds progress
+        // Seconds progress bar — 2px tall with accent color
         var barY = dateY + RailDmiText.Height + 3;
         var barWidth = TotalTimeWidth;
         var barStart = TimeStartX;
         var filled = (int)MathF.Round(barWidth * (now.Second + now.Millisecond / 1000f) / 60f);
+        for (var row = 0; row < 2; row++)
         for (var px = barStart; px < barStart + barWidth; px++)
         {
             var color = px - barStart < filled
-                ? new Rgba32(60, 70, 100)
+                ? new Rgba32(80, 110, 180)
                 : new Rgba32(20, 22, 30);
-            SetPixel(img, px, barY, color);
+            SetPixel(img, px, barY + row, color);
         }
     }
 

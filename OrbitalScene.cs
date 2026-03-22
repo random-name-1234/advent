@@ -70,20 +70,27 @@ public class OrbitalScene : ISpecialScene
         {
             var depth = y / (float)(Height - 1);
             var row = new Rgba32(
-                ToByte(4f + depth * 6f),
-                ToByte(7f + depth * 7f),
-                ToByte(16f + depth * 18f));
+                ToByte(6f + depth * 8f),
+                ToByte(8f + depth * 10f),
+                ToByte(20f + depth * 22f));
 
             for (var x = 0; x < Width; x++)
                 img[x, y] = row;
         }
 
-        for (var i = 0; i < 18; i++)
+        // More stars, brighter, with occasional color tints
+        for (var i = 0; i < 35; i++)
         {
             var x = (Hash(i, 11) % Width + Width) % Width;
             var y = (Hash(i, 29) % Height + Height) % Height;
-            var pulse = 0.45f + 0.55f * (0.5f + 0.5f * MathF.Sin(time * 2.2f + i * 0.8f));
-            img[x, y] = Scale(new Rgba32(210, 224, 255), pulse);
+            var pulse = 0.5f + 0.5f * (0.5f + 0.5f * MathF.Sin(time * 2.2f + i * 0.8f));
+            var tint = (i % 5) switch
+            {
+                0 => new Rgba32(255, 200, 160), // warm
+                1 => new Rgba32(160, 200, 255), // cool blue
+                _ => new Rgba32(220, 230, 255)  // white
+            };
+            img[x, y] = Scale(tint, pulse);
         }
     }
 
@@ -92,7 +99,7 @@ public class OrbitalScene : ISpecialScene
         for (var i = 0; i < Planets.Length; i++)
         {
             var planet = Planets[i];
-            var brightness = 0.14f + 0.03f * MathF.Sin(time * 0.9f + i * 0.7f);
+            var brightness = 0.22f + 0.06f * MathF.Sin(time * 0.9f + i * 0.7f);
             var ringColor = Scale(new Rgba32(146, 168, 214), brightness);
 
             for (var deg = 0; deg < 360; deg += 18)
@@ -141,7 +148,7 @@ public class OrbitalScene : ISpecialScene
 
             BlendPixel(img, (int)MathF.Round(tx), (int)MathF.Round(ty), Scale(planet.Color, 0.3f));
 
-            var pulse = 0.82f + 0.18f * MathF.Sin(time * 3.4f + i * 0.8f);
+            var pulse = 0.9f + 0.1f * MathF.Sin(time * 3.4f + i * 0.8f);
             DrawPlanetDot(img, (int)MathF.Round(x), (int)MathF.Round(y), planet.SizePixels, Scale(planet.Color, pulse));
 
             if (planet.Name == "Saturn")

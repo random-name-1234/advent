@@ -43,7 +43,7 @@ public class FireworksScene : ISpecialScene
             while (timeToNextBurst <= TimeSpan.Zero)
             {
                 SpawnBurst();
-                timeToNextBurst += TimeSpan.FromMilliseconds(450 + random.Next(450));
+                timeToNextBurst += TimeSpan.FromMilliseconds(350 + random.Next(400));
             }
         }
 
@@ -93,8 +93,17 @@ public class FireworksScene : ISpecialScene
             var spark = ScaleColor(particle.Color, lifeRatio);
             BlendPixel(img, x, y, spark);
 
+            // Larger sparks get a 2x2 core
+            if (particle.Size >= 2)
+            {
+                BlendPixel(img, x + 1, y, spark);
+                BlendPixel(img, x, y + 1, ScaleColor(spark, 0.7f));
+                BlendPixel(img, x + 1, y + 1, ScaleColor(spark, 0.5f));
+            }
+
+            // Trail pixel behind the spark
             var trailY = y + 1;
-            if ((uint)trailY < Height)
+            if (particle.Size < 2 && (uint)trailY < Height)
             {
                 var trail = ScaleColor(particle.Color, lifeRatio * 0.35f);
                 BlendPixel(img, x, trailY, trail);
@@ -105,15 +114,28 @@ public class FireworksScene : ISpecialScene
     private void SpawnBurst()
     {
         var cx = 8 + random.Next(48);
-        var cy = 5 + random.Next(10);
+        var cy = 4 + random.Next(12);
         var color = RandomBurstColor();
-        var sparkCount = 24 + random.Next(20);
+        var sparkCount = 35 + random.Next(25);
+
+        // Bright flash at burst centre
+        particles.Add(new Particle
+        {
+            X = cx,
+            Y = cy,
+            VelocityX = 0,
+            VelocityY = 0,
+            LifeSeconds = 0.15,
+            Age = 0,
+            Color = new Rgba32(255, 255, 255),
+            Size = 2
+        });
 
         for (var i = 0; i < sparkCount; i++)
         {
             var angle = random.NextDouble() * Math.PI * 2.0;
-            var speed = 10.0 + random.NextDouble() * 18.0;
-            var life = 0.9 + random.NextDouble() * 0.8;
+            var speed = 8.0 + random.NextDouble() * 22.0;
+            var life = 1.0 + random.NextDouble() * 1.0;
 
             particles.Add(new Particle
             {
@@ -123,7 +145,8 @@ public class FireworksScene : ISpecialScene
                 VelocityY = (float)(Math.Sin(angle) * speed),
                 LifeSeconds = life,
                 Age = 0,
-                Color = color
+                Color = color,
+                Size = speed > 16 ? 2 : 1
             });
         }
     }
@@ -168,5 +191,6 @@ public class FireworksScene : ISpecialScene
         public double LifeSeconds;
         public double Age;
         public Rgba32 Color;
+        public int Size;
     }
 }

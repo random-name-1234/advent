@@ -30,9 +30,9 @@ public class StarfieldParallaxScene : ISpecialScene
         IsActive = true;
         stars.Clear();
 
-        AddLayer(14, 1);
-        AddLayer(10, 2);
-        AddLayer(8, 3);
+        AddLayer(18, 1);
+        AddLayer(14, 2);
+        AddLayer(10, 3);
     }
 
     public void Elapsed(TimeSpan timeSpan)
@@ -75,11 +75,31 @@ public class StarfieldParallaxScene : ISpecialScene
 
             var twinkle = 0.7f + 0.3f * MathF.Sin(t * 7f + star.Phase);
             var brightness = ClampToByte(star.BaseBrightness * twinkle);
-            img[x, y] = new Rgba32(brightness, brightness, ClampToByte(brightness * 0.9f));
 
+            // Occasional warm/cool star tints based on phase
+            var phaseIdx = (int)(star.Phase * 3f) % 5;
+            var color = phaseIdx switch
+            {
+                0 => new Rgba32(brightness, ClampToByte(brightness * 0.85f), ClampToByte(brightness * 0.7f)),
+                1 => new Rgba32(ClampToByte(brightness * 0.8f), ClampToByte(brightness * 0.85f), brightness),
+                _ => new Rgba32(brightness, brightness, ClampToByte(brightness * 0.95f))
+            };
+            img[x, y] = color;
+
+            // Fast stars (layer 3) get a 2px trail
             if (star.Layer == 3 && x > 0)
             {
                 var trail = ClampToByte(brightness * 0.4f);
+                img[x - 1, y] = new Rgba32(trail, trail, trail);
+                if (x > 1)
+                {
+                    var trail2 = ClampToByte(brightness * 0.15f);
+                    img[x - 2, y] = new Rgba32(trail2, trail2, trail2);
+                }
+            }
+            else if (star.Layer == 2 && x > 0)
+            {
+                var trail = ClampToByte(brightness * 0.25f);
                 img[x - 1, y] = new Rgba32(trail, trail, trail);
             }
         }
@@ -101,9 +121,9 @@ public class StarfieldParallaxScene : ISpecialScene
 
         var brightness = layer switch
         {
-            1 => 90f,
-            2 => 155f,
-            _ => 235f
+            1 => 120f,
+            2 => 185f,
+            _ => 250f
         };
 
         return new Star(
