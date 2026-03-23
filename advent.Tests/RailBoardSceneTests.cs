@@ -12,7 +12,7 @@ namespace advent.Tests;
 public class RailBoardSceneTests
 {
     [Fact]
-    public void RailBoardScene_RendersCompactPages_AndExpiresWithinThirtySeconds()
+    public void RailBoardScene_RendersCompactPages_AndExpiresAfterTheExtendedBoardDuration()
     {
         var snapshot = new RailSceneSnapshot(
             new RailStationSnapshot(
@@ -57,7 +57,11 @@ public class RailBoardSceneTests
 
         Assert.True(CountLitPixels(canvas) > 0);
 
-        scene.Elapsed(TimeSpan.FromSeconds(35));
+        scene.Elapsed(TimeSpan.FromSeconds(60));
+        Assert.True(scene.IsActive);
+        Assert.True(scene.HidesTime);
+
+        scene.Elapsed(TimeSpan.FromSeconds(60));
         Assert.False(scene.IsActive);
         Assert.False(scene.HidesTime);
     }

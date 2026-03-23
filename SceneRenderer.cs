@@ -54,12 +54,16 @@ public sealed class SceneRenderer : IDisposable
 
     public byte[] CaptureFramePng()
     {
+        using var snapshot = CaptureFrame();
+        using var ms = new MemoryStream();
+        snapshot.SaveAsPng(ms);
+        return ms.ToArray();
+    }
+
+    internal Image<Rgba32> CaptureFrame()
+    {
         lock (frameLock)
-        {
-            using var ms = new MemoryStream();
-            Img.SaveAsPng(ms);
-            return ms.ToArray();
-        }
+            return Img.Clone();
     }
 
     public void Dispose()

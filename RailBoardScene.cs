@@ -13,14 +13,14 @@ namespace advent;
 
 public sealed class RailBoardScene : ISpecialScene, IDeferredActivationScene
 {
-    public static readonly TimeSpan MaxSceneDuration = TimeSpan.FromSeconds(30);
+    public static readonly TimeSpan MaxSceneDuration = TimeSpan.FromSeconds(90);
 
     private const int WideMinWidth = 100;
     private const int WideMinHeight = 48;
     private const int WideBoardRows = 3;
     private const int CompactBoardRows = 3;
 
-    private static readonly TimeSpan BoardPageDuration = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan BoardPageDuration = TimeSpan.FromSeconds(45);
     private static readonly TimeSpan DetailPageDuration = TimeSpan.FromSeconds(8);
     private static readonly TimeSpan JourneyPageDuration = TimeSpan.FromSeconds(8);
     private static readonly TimeSpan AlertPageDuration = TimeSpan.FromSeconds(8);

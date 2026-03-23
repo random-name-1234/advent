@@ -44,7 +44,8 @@ public class SunriseSunsetScene : ISpecialScene
         HidesTime = true;
         IsActive = true;
 
-        var (riseHour, setHour) = CalculateSunTimes(DateTime.UtcNow, latitude);
+        var localNow = TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, TimeZoneInfo.Local);
+        var (riseHour, setHour) = CalculateSunTimes(localNow, latitude, longitude);
         sunriseT = (float)(riseHour / 24.0);
         sunsetT = (float)(setHour / 24.0);
         skyKeys = BuildSkyKeys(sunriseT, sunsetT);
@@ -324,39 +325,63 @@ public class SunriseSunsetScene : ISpecialScene
     }
 
     /// <summary>
-    /// Calculates sunrise and sunset times in local solar hours (0..24) for the given date and latitude.
-    /// Uses a simplified NOAA algorithm based on solar declination and hour angle.
+    /// Calculates sunrise and sunset in local civil hours (0..24) for the configured date/location.
+    /// Uses the NOAA solar-position approximation, including longitude and local UTC offset.
     /// </summary>
-    private static (double SunriseHour, double SunsetHour) CalculateSunTimes(DateTime utcNow, double latitudeDeg)
+    internal static (double SunriseHour, double SunsetHour) CalculateSunTimes(
+        DateTimeOffset localNow,
+        double latitudeDeg,
+        double longitudeDeg)
     {
-        var dayOfYear = utcNow.DayOfYear;
-
-        // Solar declination (radians) — simplified formula
-        var declRad = -23.44 * Math.Cos(2.0 * Math.PI / 365.0 * (dayOfYear + 10)) * Math.PI / 180.0;
+        var dayOfYear = localNow.DayOfYear;
+        var gamma = 2.0 * Math.PI / 365.0 * (dayOfYear - 1 + ((localNow.Hour - 12.0) / 24.0));
+        var eqTimeMinutes = 229.18 * (
+            0.000075
+            + 0.001868 * Math.Cos(gamma)
+            - 0.032077 * Math.Sin(gamma)
+            - 0.014615 * Math.Cos(2.0 * gamma)
+            - 0.040849 * Math.Sin(2.0 * gamma));
+        var declRad =
+            0.006918
+            - 0.399912 * Math.Cos(gamma)
+            + 0.070257 * Math.Sin(gamma)
+            - 0.006758 * Math.Cos(2.0 * gamma)
+            + 0.000907 * Math.Sin(2.0 * gamma)
+            - 0.002697 * Math.Cos(3.0 * gamma)
+            + 0.00148 * Math.Sin(3.0 * gamma);
         var latRad = latitudeDeg * Math.PI / 180.0;
 
         // Hour angle at sunrise/sunset (cos of zenith angle 90.833° for atmospheric refraction)
         var cosHa = (Math.Cos(90.833 * Math.PI / 180.0) / (Math.Cos(latRad) * Math.Cos(declRad)))
                     - Math.Tan(latRad) * Math.Tan(declRad);
+        var localOffsetMinutes = localNow.Offset.TotalMinutes;
+        var solarNoonMinutes = 720.0 - (4.0 * longitudeDeg) - eqTimeMinutes + localOffsetMinutes;
+        var solarNoonHour = NormalizeHour(solarNoonMinutes / 60.0);
 
         // Clamp for polar day/night
         if (cosHa < -1.0)
         {
             // Midnight sun — sun never sets
-            return (1.0, 23.0);
+            return (NormalizeHour(solarNoonHour - 11.0), NormalizeHour(solarNoonHour + 11.0));
         }
 
         if (cosHa > 1.0)
         {
             // Polar night — sun never rises; show a very short day
-            return (11.0, 13.0);
+            return (NormalizeHour(solarNoonHour - 1.0), NormalizeHour(solarNoonHour + 1.0));
         }
 
-        var haHours = Math.Acos(cosHa) * 12.0 / Math.PI;
-        var sunrise = 12.0 - haHours;
-        var sunset = 12.0 + haHours;
+        var hourAngleDegrees = Math.Acos(cosHa) * 180.0 / Math.PI;
+        var sunriseMinutes = solarNoonMinutes - (4.0 * hourAngleDegrees);
+        var sunsetMinutes = solarNoonMinutes + (4.0 * hourAngleDegrees);
 
-        return (sunrise, sunset);
+        return (NormalizeHour(sunriseMinutes / 60.0), NormalizeHour(sunsetMinutes / 60.0));
+    }
+
+    private static double NormalizeHour(double hour)
+    {
+        var normalized = hour % 24.0;
+        return normalized < 0 ? normalized + 24.0 : normalized;
     }
 
     private static SkyKey[] BuildSkyKeys(float sr, float ss)
