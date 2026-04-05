@@ -22,6 +22,10 @@ internal sealed class RenderLoopHostedService(
         Console.WriteLine(hostOptions.IsTestMode
             ? "Scene mode: TEST (cycle all scenes)."
             : "Scene mode: NORMAL (random seasonal scenes).");
+        Console.WriteLine($"Virtual canvas: {MatrixConstants.Width}x{MatrixConstants.Height}");
+        Console.WriteLine($"Hardware output: {hostOptions.MatrixWidth}x{hostOptions.MatrixHeight}");
+        if (hostOptions.MatrixWidth != MatrixConstants.Width || hostOptions.MatrixHeight != MatrixConstants.Height)
+            Console.WriteLine($"Scaling: {hostOptions.MatrixWidth / MatrixConstants.Width}x nearest-neighbour upscale active");
         Console.WriteLine($"Matrix backend initialized: {output.Name}");
 
         var previous = DateTime.UtcNow;

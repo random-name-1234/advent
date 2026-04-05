@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Numerics;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
+using static advent.MatrixConstants;
 
 namespace advent;
 
@@ -44,7 +45,7 @@ public class SnowMachine
             nextFlakeAt += TimeSpan.FromSeconds(2.0 / FlakesPerSecond * random.NextDouble());
             if (nextFlakeAt < totalElapsed) nextFlakeAt = totalElapsed;
 
-            var position = new Vector2((float)(random.NextDouble() * 64.0), 32);
+            var position = new Vector2((float)(random.NextDouble() * Width), Height);
             var speed = (float)(8.0 + random.NextDouble() * 2.0);
             if (!RainbowSnow)
             {

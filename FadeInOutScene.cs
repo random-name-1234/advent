@@ -57,7 +57,7 @@ public class FadeInOutScene : ISpecialScene
         {
             var colour = new Rgba32(0, 0, 0, (float)fraction);
             img.Mutate(x =>
-                x.FillPolygon(colour, new PointF(0, 0), new PointF(64, 0), new PointF(64, 32), new PointF(0, 32)));
+                x.FillPolygon(colour, new PointF(0, 0), new PointF(img.Width, 0), new PointF(img.Width, img.Height), new PointF(0, img.Height)));
         }
     }
 }

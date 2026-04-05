@@ -65,10 +65,17 @@ internal static class AdventServiceCollectionExtensions
             sp.GetRequiredService<ISceneScheduler>(),
             hostOptions.IsTestMode));
         services.AddSingleton<SceneRenderer>();
-        services.AddSingleton<IMatrixOutput>(sp => MatrixOutputFactory.Create(
-            sp.GetRequiredService<MatrixOutputOptions>(),
-            hostOptions.MatrixWidth,
-            hostOptions.MatrixHeight));
+        services.AddSingleton<IMatrixOutput>(sp =>
+        {
+            var hwOutput = MatrixOutputFactory.Create(
+                sp.GetRequiredService<MatrixOutputOptions>(),
+                hostOptions.MatrixWidth,
+                hostOptions.MatrixHeight);
+            return new ScalingMatrixOutput(
+                hwOutput,
+                MatrixConstants.Width, MatrixConstants.Height,
+                hostOptions.MatrixWidth, hostOptions.MatrixHeight);
+        });
 
         services.AddHostedService<RenderLoopHostedService>();
         services.AddHostedService<WebControlHostedService>();

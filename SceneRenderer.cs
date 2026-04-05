@@ -6,6 +6,7 @@ using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.Drawing.Processing;
 using SixLabors.ImageSharp.PixelFormats;
 using SixLabors.ImageSharp.Processing;
+using static advent.MatrixConstants;
 
 namespace advent;
 
@@ -18,7 +19,7 @@ public sealed class SceneRenderer : IDisposable
 
     public SceneRenderer(Action<Image<Rgba32>>? clockOverlayRenderer = null)
     {
-        Img = new Image<Rgba32>(64, 32);
+        Img = new Image<Rgba32>(Width, Height);
         drawClockOverlay = clockOverlayRenderer ?? clockRenderer.Draw;
         transitionRenderer = new FadingSceneTransitionRenderer(Img.Width, Img.Height);
         overlays =
@@ -37,8 +38,8 @@ public sealed class SceneRenderer : IDisposable
         lock (frameLock)
         {
             Img.Mutate(ctx =>
-                ctx.FillPolygon(Color.Black, new PointF(0, 0), new PointF(64, 0), new PointF(64, 32),
-                    new PointF(0, 32)));
+                ctx.FillPolygon(Color.Black, new PointF(0, 0), new PointF(Img.Width, 0), new PointF(Img.Width, Img.Height),
+                    new PointF(0, Img.Height)));
 
             foreach (var overlay in overlays)
                 overlay.Advance(timeSpan);
