@@ -45,3 +45,5 @@ Keep ADRs concise and practical with these sections:
 - [`0009-register-scenes-through-modules.md`](0009-register-scenes-through-modules.md)
 - [`0010-let-scenes-choose-their-transition-style.md`](0010-let-scenes-choose-their-transition-style.md)
 - [`0011-separate-clock-fade-from-scene-transition.md`](0011-separate-clock-fade-from-scene-transition.md)
+- [`0012-shared-matrix-constants.md`](0012-shared-matrix-constants.md)
+- [`0013-separate-logical-scene-canvas-from-physical-matrix.md`](0013-separate-logical-scene-canvas-from-physical-matrix.md)

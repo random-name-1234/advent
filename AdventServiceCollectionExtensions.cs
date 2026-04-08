@@ -18,6 +18,7 @@ internal static class AdventServiceCollectionExtensions
         var railOptions = RailBoardOptions.TryFromEnvironment();
 
         services.AddSingleton(hostOptions);
+        services.AddSingleton(hostOptions.MatrixProfile);
         services.AddSingleton(matrixOutputOptions);
         services.AddSingleton(webControlOptions);
         services.AddSingleton(weatherOptions);
@@ -65,6 +66,7 @@ internal static class AdventServiceCollectionExtensions
             sp.GetRequiredService<ISceneScheduler>(),
             hostOptions.IsTestMode));
         services.AddSingleton<SceneRenderer>();
+        services.AddSingleton(sp => new MatrixFramePresenter(sp.GetRequiredService<MatrixProfile>()));
         services.AddSingleton<IMatrixOutput>(sp => MatrixOutputFactory.Create(
             sp.GetRequiredService<MatrixOutputOptions>(),
             hostOptions.MatrixWidth,

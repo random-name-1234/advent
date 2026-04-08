@@ -18,7 +18,7 @@ public sealed class SceneRenderer : IDisposable
 
     public SceneRenderer(Action<Image<Rgba32>>? clockOverlayRenderer = null)
     {
-        Img = new Image<Rgba32>(64, 32);
+        Img = new Image<Rgba32>(MatrixConstants.Width, MatrixConstants.Height);
         drawClockOverlay = clockOverlayRenderer ?? clockRenderer.Draw;
         transitionRenderer = new FadingSceneTransitionRenderer(Img.Width, Img.Height);
         overlays =
@@ -36,9 +36,7 @@ public sealed class SceneRenderer : IDisposable
     {
         lock (frameLock)
         {
-            Img.Mutate(ctx =>
-                ctx.FillPolygon(Color.Black, new PointF(0, 0), new PointF(64, 0), new PointF(64, 32),
-                    new PointF(0, 32)));
+            Img.Mutate(ctx => ctx.Clear(Color.Black));
 
             foreach (var overlay in overlays)
                 overlay.Advance(timeSpan);
@@ -72,5 +70,4 @@ public sealed class SceneRenderer : IDisposable
             disposableTransitionRenderer.Dispose();
         Img.Dispose();
     }
-
 }

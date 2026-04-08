@@ -11,7 +11,7 @@
 
 It started life as a festive matrix display and gradually picked up a few extra hobbies: clocks, weather, pixel-art chaos, message overlays, rail boards, web control, and just enough automation to behave like a tiny appliance.
 
-If you like the idea of a 64x32 RGB panel acting somewhere between "seasonal art installation" and "tiny control room", this repo is for you.
+If you like the idea of a 64x32 or 128x64 RGB panel acting somewhere between "seasonal art installation" and "tiny control room", this repo is for you.
 
 If you want the "how would we design this properly now that it has grown up?" version, see [`docs/architecture-proposal.md`](docs/architecture-proposal.md).
 
@@ -51,7 +51,7 @@ There is also a `--test-mode` that runs the full catalogue in sequence instead o
 | `pi5` | [`Pi5MatrixSharp`](https://github.com/random-name-1234/Pi5MatrixSharp) | bundled native runtime, Pi 5 friendly |
 | `simulator` | terminal framebuffer preview | great for hacking on scenes locally |
 
-The app currently assumes a `64x32` render target even though the Pi 5 backend can support broader geometry options underneath.
+Scenes currently render on a fixed `64x32` logical canvas. Set `ADVENT_MATRIX_SIZE=128x64` or pass `--matrix-size=128x64` to present that canvas on a `128x64` panel with exact `2x2` nearest-neighbour scaling.
 
 ## Quick Start
 
@@ -59,6 +59,12 @@ The app currently assumes a `64x32` render target even though the Pi 5 backend c
 
 ```bash
 dotnet run -c Release --no-launch-profile -- --simulator
+```
+
+### Simulator on 128x64 hardware profile
+
+```bash
+dotnet run -c Release --no-launch-profile -- --simulator --matrix-size=128x64
 ```
 
 ### Simulator test mode
@@ -72,6 +78,7 @@ dotnet run -c Release --no-launch-profile -- --simulator --test-mode
 ```bash
 ADVENT_MATRIX_BACKEND=pi5 \
 ADVENT_PI5_PINOUT=AdafruitMatrixBonnet \
+ADVENT_MATRIX_SIZE=128x64 \
 dotnet run -c Release --no-launch-profile -- --backend=pi5
 ```
 
@@ -151,6 +158,7 @@ Pi 5 support comes from [`Pi5MatrixSharp`](https://www.nuget.org/packages/Pi5Mat
 Useful Pi 5 settings:
 
 - `ADVENT_MATRIX_BACKEND=pi5`
+- `ADVENT_MATRIX_SIZE=64x32` or `128x64`
 - `ADVENT_PI5_PINOUT=AdafruitMatrixBonnet` or `Active3`
 - `ADVENT_PI5_ADDR_LINES=4`
 - `ADVENT_PI5_SERPENTINE=true`
@@ -213,6 +221,11 @@ Deploy flow:
 3. promote them into `~/advent-*`
 4. write or refresh `/etc/systemd/system/advent.service`
 5. restart the service
+
+To switch the deployed appliance to the larger panel, either:
+
+- set `ADVENT_MATRIX_SIZE=128x64` in the service environment file
+- or pass `--matrix-size=128x64` in `LED_ARGS` when running the deploy workflow or script
 
 By default the installed service runs as the self-hosted runner user, not `root`.
 

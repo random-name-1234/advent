@@ -9,7 +9,11 @@ namespace advent;
 
 internal static class ControlWebHost
 {
-    public static WebApplication Build(SceneControlService controlService, SceneRenderer sceneRenderer, WebControlOptions options)
+    public static WebApplication Build(
+        SceneControlService controlService,
+        SceneRenderer sceneRenderer,
+        MatrixFramePresenter framePresenter,
+        WebControlOptions options)
     {
         var contentRoot = AppContext.BaseDirectory;
         var webRoot = Path.Combine(contentRoot, "wwwroot");
@@ -69,6 +73,16 @@ internal static class ControlWebHost
         }));
 
         app.MapGet("/api/status", () => Results.Ok(controlService.GetStatus()));
+
+        app.MapGet("/api/frame/meta", () => Results.Ok(new
+        {
+            logicalWidth = framePresenter.LogicalWidth,
+            logicalHeight = framePresenter.LogicalHeight,
+            physicalWidth = framePresenter.PhysicalWidth,
+            physicalHeight = framePresenter.PhysicalHeight,
+            horizontalScale = framePresenter.HorizontalScale,
+            verticalScale = framePresenter.VerticalScale
+        }));
 
         app.MapPost("/api/scene/play", (PlaySceneRequest request) =>
         {
@@ -142,7 +156,7 @@ internal static class ControlWebHost
 
         app.MapGet("/api/frame", () =>
         {
-            var png = sceneRenderer.CaptureFramePng();
+            var png = framePresenter.CapturePresentedFramePng(sceneRenderer);
             return Results.Bytes(png, "image/png");
         });
 

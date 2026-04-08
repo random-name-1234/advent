@@ -106,11 +106,51 @@
     let intervalId = null;
     let frameCount = 0;
     let lastFpsTime = performance.now();
+    let frameWidth = 64;
+    let frameHeight = 32;
+
+    function apiFetch(url) {
+      if (token) {
+        return fetch(url, { headers: { "X-Advent-Token": token } });
+      }
+
+      return fetch(url);
+    }
+
+    function updateScaleLabels() {
+      for (const option of scaleSelect.options) {
+        const scale = parseInt(option.value, 10);
+        option.textContent = scale + "x (" + (frameWidth * scale) + "x" + (frameHeight * scale) + ")";
+      }
+    }
+
+    function syncFrameSize(width, height) {
+      if (!width || !height) return;
+
+      frameWidth = width;
+      frameHeight = height;
+      updateScaleLabels();
+      applyScale();
+    }
 
     function applyScale() {
       const s = parseInt(scaleSelect.value, 10);
-      frameImg.style.width = (64 * s) + "px";
-      frameImg.style.height = (32 * s) + "px";
+      frameImg.style.width = (frameWidth * s) + "px";
+      frameImg.style.height = (frameHeight * s) + "px";
+    }
+
+    function loadFrameMetadata() {
+      return apiFetch("/api/frame/meta")
+        .then(r => r.ok ? r.json() : null)
+        .then(meta => {
+          if (!meta) return;
+
+          syncFrameSize(meta.physicalWidth, meta.physicalHeight);
+          statusEl.textContent = "Connected - " + meta.physicalWidth + "x" + meta.physicalHeight;
+        })
+        .catch(() => {
+          statusEl.textContent = "Connecting...";
+        });
     }
 
     function fetchFrame() {
@@ -119,11 +159,12 @@
       const url = "/api/frame?t=" + Date.now();
       const img = new Image();
       img.onload = function () {
+        syncFrameSize(img.naturalWidth, img.naturalHeight);
         frameImg.src = img.src;
         frameCount++;
         const now = performance.now();
         if (now - lastFpsTime >= 1000) {
-          statusEl.textContent = "Live - " + frameCount + " fps";
+          statusEl.textContent = "Live - " + frameWidth + "x" + frameHeight + " - " + frameCount + " fps";
           frameCount = 0;
           lastFpsTime = now;
         }
@@ -132,14 +173,10 @@
         statusEl.textContent = "Connection lost - retrying...";
       };
 
-      if (token) {
-        fetch(url, { headers: { "X-Advent-Token": token } })
-          .then(r => r.blob())
-          .then(blob => { img.src = URL.createObjectURL(blob); })
-          .catch(() => { statusEl.textContent = "Connection lost - retrying..."; });
-      } else {
-        img.src = url;
-      }
+      apiFetch(url)
+        .then(r => r.blob())
+        .then(blob => { img.src = URL.createObjectURL(blob); })
+        .catch(() => { statusEl.textContent = "Connection lost - retrying..."; });
     }
 
     function startPolling() {
@@ -151,8 +188,10 @@
     scaleSelect.addEventListener("change", applyScale);
     fpsSelect.addEventListener("change", startPolling);
 
-    applyScale();
-    startPolling();
+    loadFrameMetadata().finally(() => {
+      applyScale();
+      startPolling();
+    });
   </script>
 </body>
 </html>

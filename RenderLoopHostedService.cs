@@ -10,6 +10,7 @@ internal sealed class RenderLoopHostedService(
     MatrixOutputOptions outputOptions,
     SceneControlService sceneControl,
     SceneRenderer sceneRenderer,
+    MatrixFramePresenter framePresenter,
     IMatrixOutput output)
     : BackgroundService
 {
@@ -22,6 +23,9 @@ internal sealed class RenderLoopHostedService(
         Console.WriteLine(hostOptions.IsTestMode
             ? "Scene mode: TEST (cycle all scenes)."
             : "Scene mode: NORMAL (random seasonal scenes).");
+        Console.WriteLine($"Logical scene canvas: {MatrixConstants.Width}x{MatrixConstants.Height}");
+        Console.WriteLine(
+            $"Physical matrix: {hostOptions.MatrixWidth}x{hostOptions.MatrixHeight} ({framePresenter.PresentationDescription}).");
         Console.WriteLine($"Matrix backend initialized: {output.Name}");
 
         var previous = DateTime.UtcNow;
@@ -33,7 +37,8 @@ internal sealed class RenderLoopHostedService(
 
             sceneControl.Advance(elapsed);
             sceneRenderer.AdvanceAndRender(elapsed, sceneControl.ActiveScene);
-            output.Present(sceneRenderer.Img);
+            using var presentedFrame = framePresenter.CapturePresentedFrame(sceneRenderer);
+            output.Present(presentedFrame);
 
             var delay = isSimulatorMode ? hostOptions.SimulatorFrameDelayMs : hostOptions.HardwareFrameDelayMs;
             await Task.Delay(delay, stoppingToken).ConfigureAwait(false);
