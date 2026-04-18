@@ -4,11 +4,8 @@ using System.Globalization;
 using System.Threading;
 using System.Threading.Tasks;
 using advent.Data.Weather;
-using SixLabors.Fonts;
 using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.Drawing.Processing;
 using SixLabors.ImageSharp.PixelFormats;
-using SixLabors.ImageSharp.Processing;
 using static advent.MatrixConstants;
 
 namespace advent;
@@ -21,15 +18,6 @@ public class WeatherScene : ISpecialScene, IDeferredActivationScene
     private static readonly TimeSpan PanelDuration =
         TimeSpan.FromMilliseconds(SceneDuration.TotalMilliseconds / PanelCount);
     private static readonly TimeSpan TransitionDuration = TimeSpan.FromMilliseconds(900);
-
-    private static readonly Font HeroTempFont = AppFonts.Create(12f);
-    private static readonly DrawingOptions CrispDrawingOptions = new()
-    {
-        GraphicsOptions = new GraphicsOptions
-        {
-            Antialias = false
-        }
-    };
 
     private static readonly Rgba32 BackgroundColor = new(0, 0, 0);
     private static readonly Rgba32 HeaderColor = new(248, 168, 66);
@@ -270,10 +258,7 @@ public class WeatherScene : ISpecialScene, IDeferredActivationScene
 
     private static void DrawHeroTemperature(Image<Rgba32> img, string text, Rgba32 color)
     {
-        var textSize = TextMeasurer.MeasureSize(text, new TextOptions(HeroTempFont));
-        var x = Width - textSize.Width - 2f;
-        var y = 7f;
-        DrawText(img, text, HeroTempFont, color, (int)x, (int)y);
+        HeroPixelFont.DrawRightAligned(img, text, Width - 2, 7, color);
     }
 
     private static void DrawBottomStrip(
@@ -675,11 +660,6 @@ public class WeatherScene : ISpecialScene, IDeferredActivationScene
     private static void DrawPixelRightAlignedText(Image<Rgba32> img, string text, Rgba32 color, int rightX, int y)
     {
         RailDmiText.DrawRightAligned(img, text, rightX, y, color);
-    }
-
-    private static void DrawText(Image<Rgba32> img, string text, Font font, Rgba32 color, int x, int y)
-    {
-        img.Mutate(ctx => ctx.DrawText(CrispDrawingOptions, text, font, color, new PointF(x, y)));
     }
 
     private static void Blit(Image<Rgba32> destination, Image<Rgba32> source, int offsetX)
