@@ -106,11 +106,17 @@
     let intervalId = null;
     let frameCount = 0;
     let lastFpsTime = performance.now();
+    let frameWidth = 64;
+    let frameHeight = 32;
 
     function applyScale() {
       const s = parseInt(scaleSelect.value, 10);
-      frameImg.style.width = (64 * s) + "px";
-      frameImg.style.height = (32 * s) + "px";
+      frameImg.style.width = (frameWidth * s) + "px";
+      frameImg.style.height = (frameHeight * s) + "px";
+      for (const option of scaleSelect.options) {
+        const scale = parseInt(option.value, 10);
+        option.textContent = scale + "x (" + (frameWidth * scale) + "x" + (frameHeight * scale) + ")";
+      }
     }
 
     function fetchFrame() {
@@ -119,11 +125,16 @@
       const url = "/api/frame?t=" + Date.now();
       const img = new Image();
       img.onload = function () {
+        const previous = frameImg.src;
+        frameWidth = img.naturalWidth;
+        frameHeight = img.naturalHeight;
+        applyScale();
         frameImg.src = img.src;
+        if (previous.startsWith("blob:")) URL.revokeObjectURL(previous);
         frameCount++;
         const now = performance.now();
         if (now - lastFpsTime >= 1000) {
-          statusEl.textContent = "Live - " + frameCount + " fps";
+          statusEl.textContent = "Live - " + frameWidth + "x" + frameHeight + " - " + frameCount + " fps";
           frameCount = 0;
           lastFpsTime = now;
         }
