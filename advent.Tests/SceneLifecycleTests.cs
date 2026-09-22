@@ -150,7 +150,7 @@ public class SceneLifecycleTests
     [Fact]
     public void SpaceInvadersScene_ActivatesDrawsAndExpires()
     {
-        var scene = new SpaceInvadersScene();
+        var scene = new SpaceInvadersScene(1);
         scene.Activate();
 
         using var canvas = new Image<Rgba32>(64, 32);
@@ -159,7 +159,7 @@ public class SceneLifecycleTests
 
         Assert.True(scene.IsActive);
 
-        for (var i = 0; i < 240 && scene.IsActive; i++)
+        for (var i = 0; i < SpaceInvadersScene.MaxSceneDuration.TotalMilliseconds / 100 && scene.IsActive; i++)
         {
             scene.Elapsed(TimeSpan.FromMilliseconds(100));
             scene.Draw(canvas);

@@ -572,6 +572,33 @@ public class SceneSelectorTests
     }
 
     [Fact]
+    public void TryGetSceneByName_UsesExtendedDuration_ForSpaceInvaders()
+    {
+        var imageDirectory = CreateImageDirectory();
+        try
+        {
+            var sut = new SceneSelector(11, imageSceneDirectory: imageDirectory);
+            Assert.True(sut.TryGetSceneByName("Space Invaders", out var scene));
+            var timedScene = UnwrapTransitionScene(scene);
+            var field = timedScene.GetType().GetField("maxDuration", BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.Equal(SpaceInvadersScene.MaxSceneDuration, field!.GetValue(timedScene));
+            // Exercise the real catalog wrapper with a round finishing after 20 seconds.
+            typeof(TimedScene).GetField("innerScene", BindingFlags.Instance | BindingFlags.NonPublic)!
+                .SetValue(timedScene, new SpaceInvadersScene(6));
+            scene.Activate();
+            for (var tick = 0; tick < 215; tick++) scene.Elapsed(TimeSpan.FromMilliseconds(100));
+            Assert.True(scene.IsActive);
+            Assert.Equal(SpaceInvadersScene.RoundResult.Won, ((SpaceInvadersScene)UnwrapTimedScene(scene)).Result);
+            for (var tick = 0; tick < 50; tick++) scene.Elapsed(TimeSpan.FromMilliseconds(100));
+            Assert.False(scene.IsActive);
+        }
+        finally
+        {
+            Directory.Delete(imageDirectory, true);
+        }
+    }
+
+    [Fact]
     public void TryGetSceneByName_UsesExtendedDuration_ForLegibilityLab()
     {
         var imageDirectory = CreateImageDirectory();
