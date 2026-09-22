@@ -51,6 +51,7 @@ Keep ADRs concise and practical with these sections:
 - [`0019-use-measured-pixel-text-for-information-scenes.md`](0019-use-measured-pixel-text-for-information-scenes.md)
 - [`0020-skip-rail-intros-and-identify-fast-corridor-services.md`](0020-skip-rail-intros-and-identify-fast-corridor-services.md)
 - [`0021-base-fast-rail-classification-on-the-published-timetable.md`](0021-base-fast-rail-classification-on-the-published-timetable.md)
+- [`0022-add-independent-pixel-scenes-and-read-only-home-snapshots.md`](0022-add-independent-pixel-scenes-and-read-only-home-snapshots.md)
 
 Numbers 0014-0017 are reserved for unpublished hardware experiments, which are
 not part of the current Pi 4 scene/readability work.
