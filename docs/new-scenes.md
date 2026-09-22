@@ -6,7 +6,7 @@ automatic rotation by default while their previews are reviewed.
 
 | Scene | Composition | Data |
 | --- | --- | --- |
-| Night Train | British electric commuter train, yellow cab, Cambridge canopy / doors / departure signal | None |
+| Night Train | British electric commuter train, yellow cab, green station canopy / doors / departure signal | None |
 | Aquarium | Three fish, independent swimming/tail cycles, plants, bubbles | None |
 | Pixel City | Terraced street, double-decker bus, pedestrians, night windows | Local clock and configured solar location |
 | Breakout | Collision-driven ball, destructible bricks, fallible paddle, re-serve | None |
@@ -31,9 +31,10 @@ are not copied into the repo or gallery.
 
 Night Train uses a stylised Great Northern-like electric unit: continuous
 silver sides, blue doors/lower body, sloping yellow cab, lit window band and
-pantograph. Station cues are brickwork, a green canopy with valance, a readable
-Cambridge nameboard and a platform starting signal ahead of the train. This is
-an evocation, not an exact scale drawing of a particular platform or train class.
+pantograph. Station cues are brickwork, a green canopy with valance and a platform
+starting signal ahead of the train. The station is deliberately unnamed, with no
+nameboard. This is an evocation, not an exact scale drawing of a particular
+platform or train class.
 Doors open only while stopped and close before the departure signal clears;
 the entire train leaves before the scene ends. No lifecycle or data contract
 changes accompany this art revision, so ADR 0022 remains the architecture.

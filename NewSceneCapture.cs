@@ -49,7 +49,7 @@ internal static class NewSceneCapture
         var home = new HomeFixture(HomeData(FixtureTime));
         return
         [
-            ("night-train", () => new NightTrainScene(), "A silver-and-blue British electric train, yellow cab and lit windows beneath a Cambridge nameboard and green canopy. Doors close before the departure signal clears."),
+            ("night-train", () => new NightTrainScene(), "A silver-and-blue British electric train, yellow cab and lit windows at an unnamed brick-built station with a green canopy. Doors close before the departure signal clears."),
             ("aquarium", () => new AquariumScene(), "Three fish with independent paths, gently swaying plants and rising bubbles."),
             ("pixel-city", () => new PixelCityScene(clock), "A double-decker passes the night-time streetscape. Day/night follows local solar times."),
             ("breakout", () => new BreakoutScene(), "Destructible bricks, fixed-step ball collisions and a fallible paddle. No scoreboard."),

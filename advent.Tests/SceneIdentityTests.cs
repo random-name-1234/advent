@@ -37,20 +37,20 @@ public sealed class SceneIdentityTests
     }
 
     [Fact]
-    public void CambridgeNameboardHasNoWireOrTrainOccludingItsGlyphsAtTheStop()
+    public void StationHasBrickworkInsteadOfANameboardBeneathTheGreenCanopy()
     {
-        var color = new Rgba32(218, 227, 216);
-        Assert.InRange(RailDmiText.MeasureWidth("CAMBRIDGE"), 1, 44);
-        using var expected = new Image<Rgba32>(64, 32);
-        RailDmiText.Draw(expected, "CAMBRIDGE", 9, 12, color);
+        var brick = new Rgba32(78, 45, 35);
+        var highlight = new Rgba32(101, 61, 42);
         var scene = new NightTrainScene();
         scene.Activate();
         scene.Elapsed(TimeSpan.FromSeconds(10));
         using var actual = new Image<Rgba32>(64, 32);
         scene.Draw(actual);
         for (var y = 12; y < 17; y++)
-        for (var x = 9; x < 53; x++)
-            if (expected[x, y] == color) Assert.Equal(color, actual[x, y]);
+        for (var x = 9; x < 50; x++)
+            Assert.True(actual[x, y] == brick || actual[x, y] == highlight);
+        Assert.Equal(highlight, actual[10, 14]);
+        Assert.Equal(new Rgba32(41, 76, 70), actual[7, 8]);
     }
 
     [Fact]

@@ -31,7 +31,7 @@ internal sealed class NightTrainScene() : PixelStoryScene("Night Train")
         Disc(image, 48, 3, 1, Color(172, 181, 153));
         DrawStation(image);
 
-        // The contact wire stays below the nameboard's five-pixel text region.
+        // The pantograph meets the contact wire at y=17.
         Box(image, 0, 17, 64, 1, Color(56, 72, 87));
         Box(image, 62, 5, 1, 22, Color(75, 91, 102));
         Box(image, 53, 6, 10, 1, Color(75, 91, 102));
@@ -56,7 +56,7 @@ internal sealed class NightTrainScene() : PixelStoryScene("Night Train")
     private static void DrawStation(Image<Rgba32> image)
     {
         Box(image, 9, 10, 41, 15, Color(78, 45, 35));
-        for (var y = 17; y < 24; y += 3)
+        for (var y = 14; y < 24; y += 3)
         for (var x = 10 + y % 2 * 3; x < 50; x += 6)
             Box(image, x, y, 3, 1, Color(101, 61, 42));
         Box(image, 7, 8, 46, 2, Color(41, 76, 70));
@@ -64,8 +64,6 @@ internal sealed class NightTrainScene() : PixelStoryScene("Night Train")
         for (var x = 8; x < 53; x += 2) Dot(image, x, 11, Color(130, 153, 134));
         Box(image, 10, 17, 1, 8, Color(114, 146, 126));
         Box(image, 48, 17, 1, 8, Color(114, 146, 126));
-        Box(image, 8, 12, 46, 5, Color(19, 30, 48));
-        RailDmiText.Draw(image, "CAMBRIDGE", 9, 12, Color(218, 227, 216));
         Box(image, 14, 19, 6, 5, Color(187, 157, 86));
         Box(image, 17, 19, 1, 5, Color(70, 61, 43));
         Box(image, 31, 21, 9, 2, Color(38, 66, 58));
