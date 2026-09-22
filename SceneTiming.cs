@@ -6,5 +6,6 @@ internal static class SceneTiming
 {
     public static readonly TimeSpan MaxSceneDuration = TimeSpan.FromSeconds(20);
     public static readonly TimeSpan RandomSceneWindow = TimeSpan.FromMinutes(1);
+    public static readonly TimeSpan MinimumClockInterval = TimeSpan.FromSeconds(10);
     public const int MaxRandomSceneRequestsPerWindow = 2;
 }

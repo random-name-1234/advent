@@ -13,7 +13,7 @@ public class BoidsScene : ISpecialScene
     private const float SeparationRadius = 3.5f;
     private const float AlignmentRadius = 8f;
     private const float CohesionRadius = 10f;
-    private const float SeparationWeight = 2.4f;
+    private const float SeparationWeight = 2.6f;
     private const float AlignmentWeight = 1.0f;
     private const float CohesionWeight = 0.8f;
 
@@ -65,7 +65,7 @@ public class BoidsScene : ISpecialScene
             // Draw trail (previous position, dimmed)
             var tx = WrapCoord(b.PrevX, Width);
             var ty = WrapCoord(b.PrevY, Height);
-            BlendPixel(img, tx, ty, Scale(b.Color, 0.3f));
+            BlendPixel(img, tx, ty, Scale(b.Color, 0.18f));
 
             // Draw boid as 2x2 block (current position, bright)
             var bx = WrapCoord(b.X, Width);

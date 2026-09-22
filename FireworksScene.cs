@@ -43,7 +43,7 @@ public class FireworksScene : ISpecialScene
             while (timeToNextBurst <= TimeSpan.Zero)
             {
                 SpawnBurst();
-                timeToNextBurst += TimeSpan.FromMilliseconds(350 + random.Next(400));
+                timeToNextBurst += TimeSpan.FromMilliseconds(500 + random.Next(400));
             }
         }
 
@@ -113,8 +113,8 @@ public class FireworksScene : ISpecialScene
 
     private void SpawnBurst()
     {
-        var cx = 8 + random.Next(48);
-        var cy = 4 + random.Next(12);
+        var cx = 11 + random.Next(42);
+        var cy = 6 + random.Next(10);
         var color = RandomBurstColor();
         var sparkCount = 35 + random.Next(25);
 

@@ -1,4 +1,5 @@
 using advent.Data.Weather;
+using advent.Data.Home;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
 
@@ -6,9 +7,9 @@ namespace advent;
 
 public sealed class LegibilityLabScene : ISpecialScene
 {
-    public static readonly TimeSpan MaxSceneDuration = TimeSpan.FromSeconds(60);
     internal static readonly TimeSpan SampleDuration = TimeSpan.FromSeconds(8);
-    internal const int SampleCount = 7;
+    internal const int SampleCount = 14;
+    public static readonly TimeSpan MaxSceneDuration = SampleDuration * SampleCount + TimeSpan.FromSeconds(2);
     private static readonly DateTime SampleClock = new(2026, 9, 21, 18, 12, 30);
     private static readonly ClockRenderer Clock = new();
     private static readonly WeatherSnapshot Weather = new(12, 10, 8, 1, true,
@@ -56,6 +57,31 @@ public sealed class LegibilityLabScene : ISpecialScene
             case 4: RailCardRenderer.Draw(image, Train with { Number = 2, Time = "18:32", Status = "CANCELLED" }, time); break;
             case 5: MessageScene.DrawPage(image, ShortMessage, time, new Rgba32(220, 230, 255)); break;
             case 6: MessageScene.DrawPage(image, PagedMessage, time, new Rgba32(220, 230, 255)); break;
+            case >= 7 and < SampleCount:
+                var scene = CreateHomeSample(page);
+                scene.Activate();
+                scene.Elapsed(page == 11 ? TimeSpan.FromSeconds(12) : page == 12 ? TimeSpan.FromSeconds(18) : time);
+                scene.Draw(image);
+                break;
         }
+    }
+
+    internal static ISpecialScene CreateHomeSample(int page)
+    {
+        // Explicitly synthetic manual lab samples, never registered as live feeds.
+        var now = NewSceneCapture.FixtureTime;
+        var clock = new NewSceneCapture.FixedClock(now);
+        var data = NewSceneCapture.HomeData(now);
+        data = page switch
+        {
+            8 => data with { Cats = [data.Cats[0], data.Cats[1] with { Location = CatLocation.Unknown }] },
+            10 => data with { Current = data.Current! with { Price = -3.4, Band = "cheap" } },
+            11 => data with { NextCheapWindow = new CheapWindow(now.AddHours(3), now.AddHours(6)) },
+            12 => data with { NextCheapWindow = null },
+            13 => data with { Current = data.Current! with { Band = "unknown" } },
+            _ => data
+        };
+        var source = new NewSceneCapture.HomeFixture(data);
+        return page is 7 or 8 ? new TwoCatsScene(source, clock) : new AgilePowerScene(source, clock);
     }
 }

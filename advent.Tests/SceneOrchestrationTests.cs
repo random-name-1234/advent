@@ -26,25 +26,25 @@ public class SceneOrchestrationTests
         var control = CreateControlService(isTestMode: false, out var playbackEngine);
 
         ForceRandomSceneTimer(control, TimeSpan.Zero);
-        control.Advance(TimeSpan.FromMilliseconds(10));
+        control.Advance(SceneTiming.MinimumClockInterval);
 
         Assert.Equal(1, playbackEngine.QueueLength);
     }
 
     [Fact]
-    public void NormalMode_DoesNotQueueMoreThanTwoScenesWithinOneMinute()
+    public void NormalMode_DoesNotAccumulateAutomaticScenesDuringPlayback()
     {
         var control = CreateControlService(isTestMode: false, out var playbackEngine);
 
         ForceRandomSceneTimer(control, TimeSpan.Zero);
-        control.Advance(TimeSpan.FromMilliseconds(10));
+        control.Advance(SceneTiming.MinimumClockInterval);
         ForceRandomSceneTimer(control, TimeSpan.Zero);
         control.Advance(TimeSpan.FromMilliseconds(10));
         ForceRandomSceneTimer(control, TimeSpan.Zero);
         control.Advance(TimeSpan.FromMilliseconds(10));
 
         Assert.True(playbackEngine.HasActiveScene);
-        Assert.Equal(1, playbackEngine.QueueLength);
+        Assert.Equal(0, playbackEngine.QueueLength);
     }
 
     [Fact]

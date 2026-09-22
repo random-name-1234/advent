@@ -87,20 +87,20 @@ public class StarfieldParallaxScene : ISpecialScene
             img[x, y] = color;
 
             // Fast stars (layer 3) get a 2px trail
-            if (star.Layer == 3 && x > 0)
+            if (star.Layer == 3 && x + 1 < Width)
             {
                 var trail = ClampToByte(brightness * 0.4f);
-                img[x - 1, y] = new Rgba32(trail, trail, trail);
-                if (x > 1)
+                img[x + 1, y] = new Rgba32(trail, trail, trail);
+                if (x + 2 < Width)
                 {
                     var trail2 = ClampToByte(brightness * 0.15f);
-                    img[x - 2, y] = new Rgba32(trail2, trail2, trail2);
+                    img[x + 2, y] = new Rgba32(trail2, trail2, trail2);
                 }
             }
-            else if (star.Layer == 2 && x > 0)
+            else if (star.Layer == 2 && x + 1 < Width)
             {
                 var trail = ClampToByte(brightness * 0.25f);
-                img[x - 1, y] = new Rgba32(trail, trail, trail);
+                img[x + 1, y] = new Rgba32(trail, trail, trail);
             }
         }
     }

@@ -8,6 +8,24 @@ namespace advent.Tests;
 public class InformationLayoutTests
 {
     [Fact]
+    public void MessagesPreferSentenceBoundariesWithoutAddingPagesOrDroppingLines()
+    {
+        string[] lines = ["FIRST", "SENTENCE.", "ANOTHER", "LONG", "SENTENCE."];
+        var pages = MessageLayout.BalancePages(lines);
+        Assert.Equal(2, pages.Length);
+        Assert.Equal(new[] { "FIRST", "SENTENCE." }, pages[0]);
+        Assert.Equal(lines, pages.SelectMany(page => page));
+        for (var count = 1; count <= 30; count++)
+        {
+            var input = Enumerable.Range(0, count).Select(i => i % 2 == 0 ? "END." : "WORDS").ToArray();
+            pages = MessageLayout.BalancePages(input);
+            Assert.Equal((count + 2) / 3, pages.Length);
+            Assert.All(pages, page => Assert.InRange(page.Length, 1, 3));
+            Assert.Equal(input, pages.SelectMany(page => page));
+        }
+    }
+
+    [Fact]
     public void Weather_AllConditionsAndExtremeValues_HaveDisjointMeasuredRegions()
     {
         foreach (var code in new[] { 0, 1, 2, 3, 45, 48, 51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 71, 73, 75, 77, 80, 81, 82, 85, 86, 95, 96, 99, -1 })
@@ -164,7 +182,7 @@ public class InformationLayoutTests
         Assert.Equal(Pixels(expected), Pixels(actual));
         var scene = new LegibilityLabScene();
         scene.Activate();
-        scene.Elapsed(TimeSpan.FromSeconds(55));
+        scene.Elapsed(LegibilityLabScene.SampleDuration * LegibilityLabScene.SampleCount - TimeSpan.FromSeconds(1));
         Assert.True(scene.IsActive);
         scene.Elapsed(TimeSpan.FromSeconds(1));
         Assert.False(scene.IsActive);

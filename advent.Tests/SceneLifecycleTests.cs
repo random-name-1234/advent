@@ -223,7 +223,7 @@ public class SceneLifecycleTests
         Assert.True(scene.IsActive);
         Assert.True(scene.HidesTime);
 
-        scene.Elapsed(TimeSpan.FromSeconds(61));
+        scene.Elapsed(LegibilityLabScene.MaxSceneDuration);
 
         Assert.False(scene.IsActive);
         Assert.False(scene.HidesTime);

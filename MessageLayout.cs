@@ -65,7 +65,7 @@ internal sealed record MessageLayout(IReadOnlyList<string[]> Pages, int Scale, T
         throw new ArgumentException(error, nameof(message));
     }
 
-    private static string[][] BalancePages(IReadOnlyList<string> lines)
+    internal static string[][] BalancePages(IReadOnlyList<string> lines)
     {
         var pageCount = (lines.Count + 2) / 3;
         var pages = new string[pageCount][];
@@ -74,9 +74,21 @@ internal sealed record MessageLayout(IReadOnlyList<string[]> Pages, int Scale, T
         {
             // Avoid a final orphan line when the earlier pages can share the space.
             var count = (int)Math.Ceiling((lines.Count - used) / (double)(pageCount - page));
+            if (page < pageCount - 1)
+            {
+                var remainingPages = pageCount - page - 1;
+                var boundary = Enumerable.Range(1, Math.Min(3, lines.Count - used))
+                    .Where(size => lines.Count - used - size >= remainingPages &&
+                                   lines.Count - used - size <= remainingPages * 3 &&
+                                   EndsWithAnySentenceMark(lines[used + size - 1]))
+                    .OrderBy(size => Math.Abs(size - count)).FirstOrDefault();
+                if (boundary > 0) count = boundary;
+            }
             pages[page] = lines.Skip(used).Take(count).ToArray();
             used += count;
         }
         return pages;
     }
+
+    private static bool EndsWithAnySentenceMark(string line) => line.Length > 0 && line[^1] is '.' or '!' or '?';
 }

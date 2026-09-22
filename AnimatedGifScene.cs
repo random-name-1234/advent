@@ -36,7 +36,7 @@ public class AnimatedGifScene : ISpecialScene
             var metadata = frame.Metadata.GetGifMetadata();
             var frameDelay = metadata.FrameDelay;
             // FrameDelay is in hundredths of a second
-            var delay = TimeSpan.FromMilliseconds(frameDelay * 10);
+            var delay = TimeSpan.FromMilliseconds(Math.Max(1, frameDelay) * 10);
             frameDurations.Add(delay);
             totalDuration += delay;
         }
@@ -60,7 +60,7 @@ public class AnimatedGifScene : ISpecialScene
 
     public void Elapsed(TimeSpan timeSpan)
     {
-        if (!IsActive)
+        if (!IsActive || timeSpan <= TimeSpan.Zero)
             return;
 
         elapsedThisScene += timeSpan;
@@ -73,8 +73,10 @@ public class AnimatedGifScene : ISpecialScene
             return;
         }
 
-        // Advance to the next frame if necessary
-        if (currentFrameElapsed >= frameDurations[currentFrameIndex])
+        // Skip complete cycles, then catch up by at most one animation's frames.
+        // Every frame has a positive duration, including zero-delay source GIFs.
+        currentFrameElapsed = TimeSpan.FromTicks(currentFrameElapsed.Ticks % totalDuration.Ticks);
+        while (currentFrameElapsed >= frameDurations[currentFrameIndex])
         {
             currentFrameElapsed -= frameDurations[currentFrameIndex];
             currentFrameIndex = (currentFrameIndex + 1) % gifImage.Frames.Count;

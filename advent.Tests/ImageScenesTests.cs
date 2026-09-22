@@ -6,6 +6,42 @@ namespace advent.Tests;
 
 public class ImageScenesTests
 {
+    [Theory]
+    [InlineData(25, 0, 255, 0)]
+    [InlineData(100, 0, 0, 255)]
+    [InlineData(1000, 0, 255, 0)]
+    public void GifCatchesUpAcrossVariableAndZeroDelays(int milliseconds, byte red, byte green, byte blue)
+    {
+        var directory = CreateTempDirectory();
+        try
+        {
+            var path = Path.Combine(directory, "timing.gif");
+            using (var animation = new Image<Rgba32>(64, 32, new Rgba32(255, 0, 0)))
+            {
+                animation.Frames.RootFrame.Metadata.GetGifMetadata().FrameDelay = 0;
+                using var second = new Image<Rgba32>(64, 32, new Rgba32(0, 255, 0));
+                second.Frames.RootFrame.Metadata.GetGifMetadata().FrameDelay = 3;
+                animation.Frames.AddFrame(second.Frames.RootFrame);
+                using var third = new Image<Rgba32>(64, 32, new Rgba32(0, 0, 255));
+                third.Frames.RootFrame.Metadata.GetGifMetadata().FrameDelay = 7;
+                animation.Frames.AddFrame(third.Frames.RootFrame);
+                animation.SaveAsGif(path);
+            }
+            var scene = new AnimatedGifScene(path);
+            scene.Activate();
+            scene.Elapsed(TimeSpan.FromMilliseconds(milliseconds));
+            using var actual = new Image<Rgba32>(64, 32);
+            scene.Draw(actual);
+            Assert.Equal(new Rgba32(red, green, blue), actual[10, 10]);
+            scene.Activate();
+            for (var tick = 0; tick < milliseconds; tick++) scene.Elapsed(TimeSpan.FromMilliseconds(1));
+            using var stepped = new Image<Rgba32>(64, 32);
+            scene.Draw(stepped);
+            Assert.Equal(actual[10, 10], stepped[10, 10]);
+        }
+        finally { Directory.Delete(directory, true); }
+    }
+
     [Fact]
     public void StaticImageScene_Activates_Draws_AndExpires()
     {

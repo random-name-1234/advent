@@ -89,7 +89,8 @@ public class SceneLayoutCaptureTests
             Environment.CurrentDirectory = root;
             ISpecialScene[] scenes = [new CatScene(), new StarfieldParallaxScene(), new MetaballsScene(),
                 new DonkeyKongScene(), new SpaceInvadersScene(), new BonkersParadeScene(), new SynthwaveGridScene(),
-                new OrbitalScene(), new FireworksScene(), new BoidsScene(), new TetrisScene(), new SunriseSunsetScene(),
+                new OrbitalScene(new NewSceneCapture.FixedClock(NewSceneCapture.FixtureTime)), new FireworksScene(), new BoidsScene(), new TetrisScene(),
+                new SunriseSunsetScene(timeProvider: new NewSceneCapture.FixedClock(NewSceneCapture.FixtureTime)),
                 new ErrorScene(), new SantaScene(), new MatrixRainScene(), new WarpCoreScene(), new GameOfLifeScene(), new PlasmaSdfScene(), new RainbowSnowScene()];
             var seasonal = Directory.GetFiles(Path.Combine(root, "advent-images", "12"), "*.gif").Order()
                 .Select(path => (ISpecialScene)new AnimatedGifScene(path));

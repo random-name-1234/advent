@@ -5,8 +5,9 @@ using static advent.MatrixConstants;
 
 namespace advent;
 
-public class OrbitalScene : ISpecialScene
+public class OrbitalScene(TimeProvider? timeProvider = null) : ISpecialScene
 {
+    private readonly TimeProvider clock = timeProvider ?? TimeProvider.System;
     private const float DaysPerSecond = 10f;
     private static readonly TimeSpan SceneDuration = TimeSpan.FromSeconds(18);
     private static readonly DateTime J2000Utc = new(2000, 1, 1, 12, 0, 0, DateTimeKind.Utc);
@@ -32,7 +33,7 @@ public class OrbitalScene : ISpecialScene
     public void Activate()
     {
         elapsedThisScene = TimeSpan.Zero;
-        daysSinceJ2000AtActivation = (DateTime.UtcNow - J2000Utc).TotalDays;
+        daysSinceJ2000AtActivation = (clock.GetUtcNow().UtcDateTime - J2000Utc).TotalDays;
         HidesTime = true;
         IsActive = true;
     }
@@ -83,7 +84,7 @@ public class OrbitalScene : ISpecialScene
                 1 => new Rgba32(160, 200, 255), // cool blue
                 _ => new Rgba32(200, 210, 230)  // white
             };
-            img[x, y] = Scale(tint, pulse);
+            img[x, y] = Scale(tint, pulse * .32f);
         }
     }
 

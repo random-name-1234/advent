@@ -35,8 +35,12 @@ internal sealed class WeatherWindowScene(IWeatherSnapshotSource source) : PixelS
         if (condition == "clear") Disc(image, 45, 8, 4, weather.IsDay ? Color(247, 207, 113) : Color(185, 200, 181));
         if (condition != "clear")
         {
-            Cloud(image, Wrap(Seconds * .8 + 10, 85) - 12, 5, Color(98, 117, 128));
-            Cloud(image, Wrap(Seconds * .6 + 47, 85) - 12, 10, Color(85, 104, 117));
+            // Slow illumination within storm clouds, never a full-screen flash.
+            var storm = condition == "storm";
+            var glow = storm ? Math.Pow(Math.Max(0, Math.Sin(Seconds * .5)), 6) * .25 : 0;
+            var cloud = storm ? Mix(Color(49, 65, 83), Color(157, 168, 180), glow) : Color(98, 117, 128);
+            Cloud(image, Wrap(Seconds * .8 + 10, 85) - 12, 5, cloud);
+            Cloud(image, Wrap(Seconds * .6 + 47, 85) - 12, 10, storm ? cloud : Color(85, 104, 117));
         }
         for (var x = 0; x < 64; x++)
             Box(image, x, 22 + (int)(Math.Sin(x * .12) * 2), 1, 10, condition == "snow" ? Color(152, 172, 176) : Color(37, 69, 53));
@@ -44,12 +48,15 @@ internal sealed class WeatherWindowScene(IWeatherSnapshotSource source) : PixelS
         Disc(image, 11, 17, 4, Color(31, 71, 57));
         if (condition is "rain" or "storm" or "snow")
         {
-            for (var i = 0; i < 22; i++)
+            for (var i = 0; i < (condition == "storm" ? 28 : 22); i++)
             {
                 var x = Wrap(i * 17 + (condition == "snow" ? Math.Sin(Seconds + i) * 2 : Seconds * 1.5), 64);
                 var y = Wrap(i * 11 + Seconds * (condition == "snow" ? 2 : 9), 29);
                 Box(image, x, y, 1, condition == "snow" ? 1 : 2, condition == "snow" ? Color(216, 226, 222) : Color(126, 174, 195));
             }
+            if (condition != "snow")
+                for (var i = 0; i < 4; i++)
+                    Box(image, 8 + i * 14, 3 + Wrap(Seconds * .65 + i * 7, 23), 1, 3, Color(77, 110, 130));
         }
         if (condition == "fog")
             for (var y = 10; y < 25; y += 5) Box(image, 3, y, 58, 2, Color(112, 130, 136));

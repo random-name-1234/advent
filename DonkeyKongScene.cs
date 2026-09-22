@@ -128,9 +128,9 @@ public class DonkeyKongScene : ISpecialScene
     [
         "..HH..",
         ".HSSH.",
-        ".R..R.",
+        ".S....",
         "..BB..",
-        ".RBBR.",
+        ".RBBRS",
         "..RR..",
         ".B..B.",
         ".B..B."
@@ -140,10 +140,10 @@ public class DonkeyKongScene : ISpecialScene
     [
         "..HH..",
         ".HSSH.",
-        "..RR..",
+        "....S.",
         ".RBBR.",
         "..BB..",
-        ".R..R.",
+        "SR..R.",
         ".B..B.",
         ".B..B."
     ];
@@ -904,9 +904,9 @@ public class DonkeyKongScene : ISpecialScene
             '.' => null,
             'A' => new Rgba32(160, 92, 42),
             'S' => new Rgba32(244, 203, 146),
-            'H' => new Rgba32(238, 64, 62),
-            'R' => new Rgba32(226, 58, 56),
-            'B' => new Rgba32(80, 140, 255),
+            'H' => new Rgba32(255, 104, 99),
+            'R' => new Rgba32(255, 91, 89),
+            'B' => new Rgba32(164, 183, 255),
             'G' => new Rgba32(52, 82, 132),
             'X' => new Rgba32(255, 220, 200),
             'P' => new Rgba32(255, 126, 182),
