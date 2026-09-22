@@ -13,10 +13,13 @@ public class SpaceInvadersScene : ISpecialScene
     private const int FormationSpacingX = 7;
     private const int FormationSpacingY = 5;
     private const int PlayerY = 28;
-    private const float SimulationStepSeconds = 1f / 30f;
+    private const double SimulationStepSeconds = 1d / 30;
     private const float PlayerSpeed = 22f;
+    private const float PlayerBoltSpeed = 24f;
+    private const float ResultHoldSeconds = 2.5f;
+    private const double MaxRoundSeconds = 42;
 
-    private static readonly TimeSpan SceneDuration = TimeSpan.FromSeconds(18);
+    public static readonly TimeSpan MaxSceneDuration = TimeSpan.FromSeconds(45);
 
     private static readonly string[] InvaderTopFrameA =
     [
@@ -98,7 +101,7 @@ public class SpaceInvadersScene : ISpecialScene
         new(196, 146, 255)
     ];
 
-    private readonly Random random = new();
+    private readonly Random random;
     private readonly List<InvaderActor> invaders = new(FormationRows * FormationCols);
     private readonly List<BoltActor> bolts = new(24);
     private readonly bool[,] shields = new bool[Width, Height];
@@ -116,9 +119,22 @@ public class SpaceInvadersScene : ISpecialScene
     private float playerFireCooldown;
     private float playerTargetX;
     private float playerX;
-    private float resetBeatSeconds;
-    private float simulationAccumulator;
-    private int waveNumber;
+    private double simulationAccumulator;
+    private double simulationSeconds;
+    private float resultSeconds;
+    private float reactionInterval;
+    private float aimSpread;
+    private float enemyFireInterval;
+
+    public SpaceInvadersScene() : this(new Random()) { }
+    internal SpaceInvadersScene(int seed) : this(new Random(seed)) { }
+    private SpaceInvadersScene(Random random) => this.random = random;
+
+    internal enum RoundResult { Playing, Won, Lost, TimedOut }
+    internal RoundResult Result { get; private set; }
+    internal int AliveInvaders => CountAliveInvaders();
+    internal int ShotsFired { get; private set; }
+    internal double ResultAtSeconds { get; private set; }
 
     public bool IsActive { get; private set; }
     public bool HidesTime { get; private set; }
@@ -128,33 +144,37 @@ public class SpaceInvadersScene : ISpecialScene
     public void Activate()
     {
         elapsedThisScene = TimeSpan.Zero;
-        simulationAccumulator = 0f;
+        simulationAccumulator = 0;
+        simulationSeconds = 0;
         animationClock = 0f;
-        waveNumber = 0;
+        Result = RoundResult.Playing;
+        ResultAtSeconds = 0;
+        resultSeconds = 0;
+        ShotsFired = 0;
+        reactionInterval = .26f + (float)random.NextDouble() * .30f;
+        aimSpread = .35f + (float)random.NextDouble() * .5f;
+        enemyFireInterval = .8f + (float)random.NextDouble() * .4f;
         preferredAttackColumn = -1;
         IsActive = true;
         HidesTime = true;
-        ResetWave(true);
+        ResetWave();
     }
 
     public void Elapsed(TimeSpan timeSpan)
     {
-        if (!IsActive) return;
+        if (!IsActive || timeSpan <= TimeSpan.Zero) return;
 
-        elapsedThisScene += timeSpan;
-        if (elapsedThisScene > SceneDuration)
-        {
-            IsActive = false;
-            HidesTime = false;
-            return;
-        }
-
-        simulationAccumulator += Math.Clamp((float)timeSpan.TotalSeconds, 0f, 0.25f);
-        while (simulationAccumulator >= SimulationStepSeconds)
+        var step = timeSpan < MaxSceneDuration - elapsedThisScene ? timeSpan : MaxSceneDuration - elapsedThisScene;
+        elapsedThisScene += step;
+        simulationAccumulator += step.TotalSeconds;
+        // At most one bounded round of catch-up; outcomes do not depend on render FPS.
+        while (simulationAccumulator + 1e-10 >= SimulationStepSeconds && IsActive)
         {
             simulationAccumulator -= SimulationStepSeconds;
-            UpdateSimulation(SimulationStepSeconds);
+            simulationSeconds += SimulationStepSeconds;
+            UpdateSimulation((float)SimulationStepSeconds);
         }
+        if (elapsedThisScene >= MaxSceneDuration) EndScene();
     }
 
     public void Draw(Image<Rgba32> img)
@@ -164,30 +184,44 @@ public class SpaceInvadersScene : ISpecialScene
         DrawBackground(img);
         DrawShields(img);
         DrawInvaders(img);
-        DrawBolts(img);
+        if (Result == RoundResult.Playing) DrawBolts(img);
         DrawPlayer(img);
+        if (Result != RoundResult.Playing && resultSeconds >= .4f)
+        {
+            PixelArt.Box(img, 1, 9, 62, 9, new Rgba32(4, 7, 16));
+            PixelArt.Text(img, Result switch
+            {
+                RoundResult.Won => "WAVE CLEAR",
+                RoundResult.Lost => "GAME OVER",
+                _ => "TIME UP"
+            }, 11, Result == RoundResult.Won ? new Rgba32(138, 255, 184) : new Rgba32(255, 176, 126));
+        }
     }
 
     private void UpdateSimulation(float dt)
     {
         animationClock += dt;
 
-        if (resetBeatSeconds > 0f)
+        if (Result != RoundResult.Playing)
         {
-            resetBeatSeconds = MathF.Max(0f, resetBeatSeconds - dt);
-            if (resetBeatSeconds <= 0f)
-                ResetWave(false);
+            resultSeconds += dt;
+            playerExplosionSeconds = MathF.Max(0, playerExplosionSeconds - dt);
+            UpdateInvaderExplosions(dt);
+            if (resultSeconds >= ResultHoldSeconds) EndScene();
             return;
         }
 
         UpdateFormation(dt);
+        if (Result != RoundResult.Playing) return;
         UpdateEnemyFire(dt);
         UpdatePlayer(dt);
         UpdateBolts(dt);
         UpdateInvaderExplosions(dt);
 
-        if (CountAliveInvaders() == 0)
-            resetBeatSeconds = 0.42f;
+        if (Result == RoundResult.Playing && CountAliveInvaders() == 0)
+            FinishRound(RoundResult.Won);
+        else if (Result == RoundResult.Playing && simulationSeconds >= MaxRoundSeconds)
+            FinishRound(RoundResult.TimedOut);
     }
 
     private void UpdateFormation(float dt)
@@ -198,22 +232,16 @@ public class SpaceInvadersScene : ISpecialScene
 
         formationStepCooldown += ComputeFormationStepInterval();
 
-        var nextX = formationX + formationDirection;
-        var left = nextX;
-        var right = nextX + (FormationCols - 1) * FormationSpacingX + 4f;
-        if (left < 6f || right > Width - 7f)
+        AdvanceFormation(ref formationX, ref formationY, ref formationDirection);
+        foreach (var invader in invaders)
         {
-            formationDirection *= -1f;
-            formationY += 2f;
+            if (!invader.IsAlive) continue;
+            var (x, y) = GetInvaderPosition(invader.Row, invader.Col);
+            for (var sy = (int)y - 1; sy <= y + 2; sy++)
+            for (var sx = (int)x - 2; sx <= x + 2; sx++)
+                if ((uint)sx < Width && (uint)sy < Height) shields[sx, sy] = false;
+            if (y + 2 >= PlayerY - 2) TriggerPlayerHit();
         }
-        else
-        {
-            formationX = nextX;
-        }
-
-        var formationBottom = formationY + (FormationRows - 1) * FormationSpacingY + 3f;
-        if (formationBottom >= 22f && playerExplosionSeconds <= 0f)
-            TriggerPlayerHit();
     }
 
     private void UpdateEnemyFire(float dt)
@@ -222,32 +250,21 @@ public class SpaceInvadersScene : ISpecialScene
         if (enemyFireCooldown > 0f || CountAliveInvaders() == 0)
             return;
 
-        enemyFireCooldown = MathF.Max(0.42f, 0.92f - waveNumber * 0.07f) + (float)random.NextDouble() * 0.2f;
+        enemyFireCooldown = enemyFireInterval + (float)random.NextDouble() * .2f;
         SpawnEnemyBolt();
     }
 
     private void UpdatePlayer(float dt)
     {
-        if (playerExplosionSeconds > 0f)
-        {
-            playerExplosionSeconds = MathF.Max(0f, playerExplosionSeconds - dt);
-            if (playerExplosionSeconds <= 0f)
-                resetBeatSeconds = 0.32f;
-            return;
-        }
-
         playerDecisionCooldown = MathF.Max(0f, playerDecisionCooldown - dt);
         playerFireCooldown = MathF.Max(0f, playerFireCooldown - dt);
 
-        var preferredAttackX = ChooseAttackTargetX();
-        if (TryChooseDodgeTarget(preferredAttackX))
+        if (playerDecisionCooldown <= 0f)
         {
-            playerDecisionCooldown = 0.1f;
-        }
-        else if (playerDecisionCooldown <= 0f)
-        {
-            playerTargetX = preferredAttackX;
-            playerDecisionCooldown = 0.28f + (float)random.NextDouble() * 0.08f;
+            var attackX = ChooseAttackTargetX();
+            if (!TryChooseDodgeTarget(attackX))
+                playerTargetX = Math.Clamp(attackX + ((float)random.NextDouble() * 2 - 1) * aimSpread, 4, 59);
+            playerDecisionCooldown = reactionInterval * (.8f + (float)random.NextDouble() * .4f);
         }
 
         var delta = playerTargetX - playerX;
@@ -263,19 +280,20 @@ public class SpaceInvadersScene : ISpecialScene
             {
                 X = playerX,
                 Y = PlayerY - 1,
-                VelocityY = -24f,
+                VelocityY = -PlayerBoltSpeed,
                 IsPlayer = true,
                 Color = new Rgba32(138, 255, 184)
             });
 
             playerFireCooldown = 0.22f + (float)random.NextDouble() * 0.08f;
+            ShotsFired++;
         }
     }
 
     private bool TryChooseDodgeTarget(float preferredAttackX)
     {
         var currentSafety = EvaluateLaneSafety(playerX);
-        if (currentSafety > -0.3f)
+        if (currentSafety > -0.3f && EvaluateLaneSafety(preferredAttackX) > -0.3f)
             return false;
 
         var bestX = playerX;
@@ -297,9 +315,6 @@ public class SpaceInvadersScene : ISpecialScene
             bestX = candidateX;
         }
 
-        if (bestScore <= currentSafety + 0.1f)
-            return false;
-
         playerTargetX = bestX;
         return true;
     }
@@ -308,6 +323,7 @@ public class SpaceInvadersScene : ISpecialScene
     {
         var bestX = Width / 2f;
         var bestScore = float.NegativeInfinity;
+        var bestColumn = preferredAttackColumn;
 
         for (var col = 0; col < FormationCols; col++)
         {
@@ -315,9 +331,10 @@ public class SpaceInvadersScene : ISpecialScene
             if (invader is null)
                 continue;
 
-            var (x, _) = GetInvaderPosition(invader.Value.Row, invader.Value.Col);
+            var x = PredictTargetX(invader.Value);
             var score = invader.Value.Row * 4.5f
                         - MathF.Abs(playerX - x) * 0.34f
+                        + EvaluateLaneSafety(x)
                         + (preferredAttackColumn == col ? 2.5f : 0f)
                         + (IsShotLaneClear(x) ? 3.5f : -1.8f);
 
@@ -326,25 +343,23 @@ public class SpaceInvadersScene : ISpecialScene
 
             bestScore = score;
             bestX = x;
-            preferredAttackColumn = col;
+            bestColumn = col;
         }
 
+        preferredAttackColumn = bestColumn;
         return bestX;
     }
 
     private bool CanTakeShot(float shotX)
     {
-        if (!IsShotLaneClear(shotX))
-            return false;
-
         for (var i = 0; i < invaders.Count; i++)
         {
             var invader = invaders[i];
             if (!invader.IsAlive)
                 continue;
 
-            var (x, y) = GetInvaderPosition(invader.Row, invader.Col);
-            if (MathF.Abs(x - shotX) > 0.9f || y >= PlayerY)
+            var x = PredictTargetX(invader);
+            if (MathF.Abs(x - shotX) > 1.2f)
                 continue;
 
             return true;
@@ -384,6 +399,7 @@ public class SpaceInvadersScene : ISpecialScene
             if (hitSomething || bolt.Y < -2f || bolt.Y > Height + 2f)
             {
                 bolts.RemoveAt(i);
+                if (Result != RoundResult.Playing) { bolts.Clear(); return; }
                 continue;
             }
 
@@ -488,7 +504,7 @@ public class SpaceInvadersScene : ISpecialScene
         {
             X = sx,
             Y = sy + 3,
-            VelocityY = 12f + waveNumber * 0.65f,
+            VelocityY = 12.65f,
             IsPlayer = false,
             Color = new Rgba32(255, 118, 126)
         });
@@ -508,7 +524,7 @@ public class SpaceInvadersScene : ISpecialScene
     {
         var alive = CountAliveInvaders();
         var removed = FormationRows * FormationCols - alive;
-        var baseInterval = 0.62f - waveNumber * 0.025f - removed * 0.013f;
+        var baseInterval = 0.595f - removed * 0.013f;
         return MathF.Max(0.18f, baseInterval);
     }
 
@@ -542,27 +558,71 @@ public class SpaceInvadersScene : ISpecialScene
         return (formationX + col * FormationSpacingX, formationY + row * FormationSpacingY);
     }
 
+    private void AdvanceFormation(ref float x, ref float y, ref float direction)
+    {
+        var minCol = FormationCols;
+        var maxCol = -1;
+        foreach (var invader in invaders)
+        {
+            if (!invader.IsAlive) continue;
+            minCol = Math.Min(minCol, invader.Col);
+            maxCol = Math.Max(maxCol, invader.Col);
+        }
+        if (maxCol < 0) return;
+        var next = x + direction;
+        if (next + minCol * FormationSpacingX - 2 < 4 || next + maxCol * FormationSpacingX + 2 > Width - 5)
+        {
+            direction *= -1;
+            y += 2;
+        }
+        else x = next;
+    }
+
+    private float PredictTargetX(InvaderActor invader)
+    {
+        var (_, targetY) = GetInvaderPosition(invader.Row, invader.Col);
+        var flight = MathF.Max(0, (PlayerY - 1 - (targetY + 2)) / PlayerBoltSpeed);
+        var x = formationX;
+        var y = formationY;
+        var direction = formationDirection;
+        for (var next = MathF.Max(0, formationStepCooldown); next <= flight; next += ComputeFormationStepInterval())
+            AdvanceFormation(ref x, ref y, ref direction);
+        return x + invader.Col * FormationSpacingX;
+    }
+
     private void TriggerPlayerHit()
     {
-        if (playerExplosionSeconds > 0f)
+        if (Result != RoundResult.Playing)
             return;
 
         playerExplosionSeconds = 0.48f;
+        FinishRound(RoundResult.Lost);
     }
 
-    private void ResetWave(bool firstWave)
+    private void FinishRound(RoundResult result)
     {
-        waveNumber = firstWave ? 1 : waveNumber + 1;
+        Result = result;
+        ResultAtSeconds = simulationSeconds;
+        resultSeconds = 0;
+    }
+
+    private void EndScene()
+    {
+        IsActive = false;
+        HidesTime = false;
+    }
+
+    private void ResetWave()
+    {
         bolts.Clear();
         invaders.Clear();
-        resetBeatSeconds = 0f;
         preferredAttackColumn = -1;
 
         formationX = 10f;
         formationY = 4f;
         formationDirection = 1f;
         formationStepCooldown = 0.24f;
-        enemyFireCooldown = firstWave ? 0.78f : 0.56f;
+        enemyFireCooldown = .78f;
 
         playerX = Width / 2f;
         playerTargetX = playerX;
@@ -675,7 +735,8 @@ public class SpaceInvadersScene : ISpecialScene
             if (invader.IsAlive)
             {
                 var sprite = GetInvaderSprite(invader.Row, useAltFrame);
-                DrawSprite(img, (int)MathF.Round(x) - 2, (int)MathF.Round(y) - 1, sprite, RowColors[invader.Row]);
+                DrawSprite(img, (int)MathF.Round(x) - 2, (int)MathF.Round(y) - 1, sprite,
+                    Result == RoundResult.Playing ? RowColors[invader.Row] : Scale(RowColors[invader.Row], .25f));
             }
             else if (invader.ExplosionTime > 0f)
             {
@@ -723,7 +784,8 @@ public class SpaceInvadersScene : ISpecialScene
             return;
         }
 
-        DrawSprite(img, x, PlayerY - 2, PlayerSprite, new Rgba32(178, 236, 255));
+        if (Result != RoundResult.Lost)
+            DrawSprite(img, x, PlayerY - 2, PlayerSprite, new Rgba32(178, 236, 255));
     }
 
     private float EvaluateLaneSafety(float candidateX)
@@ -736,20 +798,20 @@ public class SpaceInvadersScene : ISpecialScene
             if (bolt.IsPlayer || bolt.VelocityY <= 0f)
                 continue;
 
-            var dy = PlayerY - bolt.Y;
-            if (dy < -1f || dy > 15f)
-                continue;
+            var enters = MathF.Max(0, (PlayerY - 2 - bolt.Y) / bolt.VelocityY);
+            var leaves = (PlayerY + 1 - bolt.Y) / bolt.VelocityY;
+            if (leaves < 0 || enters > 1.1f) continue;
 
-            var dx = MathF.Abs(bolt.X - candidateX);
-            if (dx > 3.4f)
-                continue;
-
-            var timeToImpact = dy / MathF.Max(1f, bolt.VelocityY);
-            if (timeToImpact < 0f || timeToImpact > 1.1f)
-                continue;
-
-            safety -= (3.5f - dx) * 2.5f;
-            safety -= (1.1f - timeToImpact) * 7.5f;
+            // Check the whole movement path while the bolt crosses the ship's
+            // height, not just the destination. Don't dodge then walk back into it.
+            var atEntry = playerX + Math.Clamp(candidateX - playerX, -PlayerSpeed * enters, PlayerSpeed * enters);
+            var atExit = playerX + Math.Clamp(candidateX - playerX, -PlayerSpeed * leaves, PlayerSpeed * leaves);
+            var left = MathF.Min(atEntry, atExit);
+            var right = MathF.Max(atEntry, atExit);
+            var dx = MathF.Max(0, MathF.Max(left - bolt.X, bolt.X - right));
+            if (dx > 4.5f) continue;
+            safety -= (4.5f - dx) * 8;
+            safety -= (1.1f - enters) * 8;
         }
 
         return safety;

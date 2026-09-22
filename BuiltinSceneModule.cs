@@ -12,7 +12,7 @@ internal sealed class BuiltinSceneModule : ISceneModule
             new SceneCatalogRegistration("Starfield Parallax", static () => new StarfieldParallaxScene()),
             new SceneCatalogRegistration("Metaballs", static () => new MetaballsScene()),
             new SceneCatalogRegistration("Donkey Kong", static () => new DonkeyKongScene()),
-            new SceneCatalogRegistration("Space Invaders", static () => new SpaceInvadersScene()),
+            new SceneCatalogRegistration("Space Invaders", static () => new SpaceInvadersScene(), MaxDuration: SpaceInvadersScene.MaxSceneDuration),
             new SceneCatalogRegistration("Bonkers Parade", static () => new BonkersParadeScene()),
             new SceneCatalogRegistration("Synthwave Grid", static () => new SynthwaveGridScene()),
             new SceneCatalogRegistration("Orbital", static () => new OrbitalScene()),
