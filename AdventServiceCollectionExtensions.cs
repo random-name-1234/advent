@@ -1,5 +1,6 @@
 using advent.Data.Rail;
 using advent.Data.Weather;
+using advent.Data.Home;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace advent;
@@ -26,6 +27,10 @@ internal static class AdventServiceCollectionExtensions
         services.AddSingleton<IWeatherSnapshotSource>(sp => sp.GetRequiredService<WeatherSnapshotStore>());
         services.AddHostedService<BackgroundRefreshHostedService<WeatherSnapshotStore>>();
 
+        services.AddSingleton<HomeSnapshotStore>(_ => HomeSnapshotStore.FromEnvironment());
+        services.AddSingleton<IHomeSnapshotSource>(sp => sp.GetRequiredService<HomeSnapshotStore>());
+        services.AddHostedService<BackgroundRefreshHostedService<HomeSnapshotStore>>();
+
         if (railOptions is not null)
         {
             services.AddSingleton(railOptions);
@@ -47,7 +52,9 @@ internal static class AdventServiceCollectionExtensions
             sp.GetRequiredService<IRailSnapshotSource>(),
             RailConfigured: railOptions is not null,
             Latitude: weatherOptions.Latitude,
-            Longitude: weatherOptions.Longitude));
+            Longitude: weatherOptions.Longitude,
+            HomeSnapshotSource: sp.GetRequiredService<IHomeSnapshotSource>(),
+            NewScenesInRotation: string.Equals(Environment.GetEnvironmentVariable("ADVENT_NEW_SCENES_IN_ROTATION"), "true", StringComparison.OrdinalIgnoreCase)));
 
         services.AddSingleton<ISceneModule, WeatherSceneModule>();
         services.AddSingleton<ISceneModule, BuiltinSceneModule>();
@@ -55,6 +62,7 @@ internal static class AdventServiceCollectionExtensions
         services.AddSingleton<ISceneModule, SeasonalSceneModule>();
         services.AddSingleton<ISceneModule, ImageSceneModule>();
         services.AddSingleton<ISceneModule, ManualSceneModule>();
+        services.AddSingleton<ISceneModule, NewSceneModule>();
 
         services.AddSingleton<ISceneCatalog>(sp =>
             SceneCatalog.Create(sp.GetServices<ISceneModule>(), sp.GetRequiredService<SceneModuleContext>()));

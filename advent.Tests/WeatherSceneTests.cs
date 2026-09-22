@@ -30,7 +30,7 @@ public class WeatherSceneTests
     }
 
     [Theory]
-    [InlineData(1, "PART CLOUD")]
+    [InlineData(1, "PARTLY")]
     [InlineData(45, "MIST")]
     [InlineData(63, "SHOWERS")]
     public void ConditionLabel_UsesCompactPanelFriendlyText(int weatherCode, string expected)
@@ -56,8 +56,8 @@ public class WeatherSceneTests
         Assert.True(CountLitPixels(canvas, 0, 0, 64, 8) > 0);
         Assert.True(CountLitPixels(canvas, 0, 8, 64, 16) > 0);
         Assert.True(CountLitPixels(canvas, 0, 24, 64, 8) > 0);
-        Assert.True(CountLitPixels(canvas, 0, 0, 64, 1) > 0);
-        Assert.True(CountLitPixels(canvas, 0, 31, 64, 1) > 0);
+        Assert.Equal(0, CountLitPixels(canvas, 0, 0, 64, 1));
+        Assert.Equal(0, CountLitPixels(canvas, 0, 31, 64, 1));
     }
 
     [Fact]

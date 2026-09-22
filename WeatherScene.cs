@@ -144,7 +144,7 @@ public class WeatherScene : ISpecialScene, IDeferredActivationScene
 
     public void Elapsed(TimeSpan timeSpan)
     {
-        if (!IsActive)
+        if (!IsActive || timeSpan <= TimeSpan.Zero)
             return;
 
         elapsedThisScene += timeSpan;
@@ -192,52 +192,59 @@ public class WeatherScene : ISpecialScene, IDeferredActivationScene
         Blit(img, currentPanelBuffer!, 0);
     }
 
-    private void DrawForecastPanel(Image<Rgba32> img, WeatherSnapshot weather, int panelIndex)
+    private void DrawForecastPanel(Image<Rgba32> image, WeatherSnapshot weather, int panelIndex) =>
+        DrawPanel(image, weather, panelIndex, elapsedThisScene);
+
+    internal static void DrawPanel(Image<Rgba32> image, WeatherSnapshot weather, int panelIndex, TimeSpan elapsed)
     {
-        FillRect(img, 0, 0, Width, Height, BackgroundColor);
-
-        var forecast = GetForecast(weather, panelIndex);
-        var isToday = panelIndex == 0;
-        var weatherCode = isToday ? weather.CurrentWeatherCode : forecast.WeatherCode;
-        var time = (float)elapsedThisScene.TotalSeconds;
-
-        // Row 1 (y 0-5): Day label + condition (condition in bright color)
-        var conditionText = ConditionLabel(weatherCode);
-        DrawHeader(img, forecast.DayLabel, conditionText, weatherCode);
-
-        // Row 2 (y 7-24): Large icon left, hero temp + sub-line right
-        var bob = (int)MathF.Round(MathF.Sin(time * 2.1f + panelIndex * 0.9f) * 1.0f);
-        DrawWeatherIcon(img, 0, 7 + bob, 16, weatherCode, isToday ? weather.IsDay : true);
-
-        var heroValue = isToday ? weather.CurrentTemperatureC : forecast.MaxTempC;
-        DrawHeroTemperature(img, FormatTemp(heroValue), isToday ? PrimaryTextColor : HighTextColor);
-
-        // Sub-line under hero temp: feels-like (today) or lo temp (forecast)
-        if (isToday)
-        {
-            var feelsText = $"Feels {FormatTemp(weather.FeelsLikeC)}";
-            DrawPixelRightAlignedText(img, feelsText, FeelsLikeColor, Width - 1, 19);
-        }
-        else
-        {
-            var loText = $"Lo {FormatTemp(forecast.MinTempC)}";
-            DrawPixelRightAlignedText(img, loText, LowTextColor, Width - 1, 19);
-        }
-
-        // Row 3 (y 26-31): Bottom strip — precip + wind
-        DrawBottomStrip(img, weather, forecast, isToday);
+        MatrixTextLayout.Clear(image);
+        var layout = BuildPanelLayout(weather, panelIndex, elapsed);
+        FillRect(image, 2, 7, 60, 1, DividerColor);
+        FillRect(image, 2, 25, 60, 1, DividerColor);
+        DrawWeatherIcon(image, layout.IconBounds.X, layout.IconBounds.Y, layout.IconBounds.Width,
+            layout.WeatherCode, layout.IsDay);
+        HeadlineText.Draw(image, layout.Temperature, layout.TemperatureBounds.X, layout.TemperatureBounds.Y, layout.TemperatureColor);
+        foreach (var run in layout.Text) run.Draw(image);
+        DrawRainDrop(image, 2, 27);
     }
 
-    private static void DrawHeader(Image<Rgba32> img, string dayLabel, string conditionText, int weatherCode)
+    internal static WeatherPanelLayout BuildPanelLayout(WeatherSnapshot weather, int panelIndex, TimeSpan elapsed)
     {
-        FillRect(img, 0, 5, Width, 1, DividerColor);
-        DrawPixelText(img, dayLabel, HeaderColor, 0, 0);
+        var forecast = GetForecast(weather, panelIndex);
+        var today = panelIndex == 0;
+        var code = today ? weather.CurrentWeatherCode : forecast.WeatherCode;
+        var day = today ? "NOW" : MatrixTextLayout.Normalize(forecast.DayLabel);
+        if (day.Length == 0) day = $"DAY {panelIndex + 1}";
+        if (RailDmiText.MeasureWidth(day) > 26) day = day[..Math.Min(3, day.Length)];
+        var condition = ConditionLabel(code);
+        var available = 60 - RailDmiText.MeasureWidth(day) - 2;
+        if (RailDmiText.MeasureWidth(condition) > available)
+            condition = MapWeatherType(code) switch
+            {
+                WeatherType.PartlyCloudy => "PARTLY",
+                WeatherType.Drizzle => "DRIZ",
+                WeatherType.Rain => "RAIN",
+                _ => "WX"
+            };
 
-        var conditionColor = ConditionColor(weatherCode);
-        var dayWidth = RailDmiText.MeasureWidth(dayLabel) + 2;
-        var conditionWidth = Width - dayWidth;
-        var conditionTrimmed = RailDmiText.TrimToWidth(conditionText, conditionWidth);
-        DrawPixelRightAlignedText(img, conditionTrimmed, conditionColor, Width - 1, 0);
+        var hero = FormatTemp(today ? weather.CurrentTemperatureC : forecast.MaxTempC) + "C";
+        var supporting = today ? $"FEEL {FormatTemp(weather.FeelsLikeC)}" : $"LOW {FormatTemp(forecast.MinTempC)}";
+        var rain = forecast.PrecipitationProbability is >= 0 and <= 100 ? $"{forecast.PrecipitationProbability}%" : "--%";
+        var wind = today ? weather.WindSpeedMph : forecast.MaxWindSpeedMph;
+        var roundedWind = Math.Round(wind, MidpointRounding.AwayFromZero);
+        var windText = float.IsFinite(wind) && wind >= 0 && roundedWind <= 999 ? $"{roundedWind:0}MPH" : "--MPH";
+        var bob = (int)MathF.Round(MathF.Sin((float)elapsed.TotalSeconds * 2.1f + panelIndex * 0.9f));
+        MatrixTextRun Right(string text, int y, Rgba32 color) => new(text, 62 - RailDmiText.MeasureWidth(text), y, color);
+        return new WeatherPanelLayout(
+            [
+                new(day, 2, 1, HeaderColor),
+                Right(condition, 1, ConditionColor(code)),
+                Right(supporting, 20, today ? FeelsLikeColor : LowTextColor),
+                new(rain, 7, 26, RainColor),
+                Right(windText, 26, WindColor)
+            ],
+            hero, new Rectangle(62 - HeadlineText.MeasureWidth(hero), 9, HeadlineText.MeasureWidth(hero), HeadlineText.Height),
+            today ? PrimaryTextColor : HighTextColor, new Rectangle(2, 9 + bob, 14, 14), code, !today || weather.IsDay);
     }
 
     private static Rgba32 ConditionColor(int weatherCode)
@@ -256,33 +263,6 @@ public class WeatherScene : ISpecialScene, IDeferredActivationScene
         };
     }
 
-    private static void DrawHeroTemperature(Image<Rgba32> img, string text, Rgba32 color)
-    {
-        HeroPixelFont.DrawRightAligned(img, text, Width - 2, 7, color);
-    }
-
-    private static void DrawBottomStrip(
-        Image<Rgba32> img,
-        WeatherSnapshot weather,
-        DailyForecast forecast,
-        bool isToday)
-    {
-        const int stripY = 26;
-        FillRect(img, 0, stripY - 1, Width, 1, DividerColor);
-
-        var precipProb = forecast.PrecipitationProbability;
-        var windSpeed = isToday ? weather.WindSpeedMph : forecast.MaxWindSpeedMph;
-
-        // Rain probability left
-        var rainText = $"{precipProb}%";
-        DrawRainDrop(img, 0, stripY + 1);
-        DrawPixelText(img, rainText, RainColor, 4, stripY + 1);
-
-        // Wind speed right
-        var windText = $"{Math.Round(windSpeed):0}mph";
-        DrawPixelRightAlignedText(img, windText, WindColor, Width - 1, stripY + 1);
-    }
-
     private static void DrawRainDrop(Image<Rgba32> img, int x, int y)
     {
         // Tiny 3x4 raindrop icon
@@ -296,7 +276,10 @@ public class WeatherScene : ISpecialScene, IDeferredActivationScene
 
     private static string FormatTemp(float tempC)
     {
-        return $"{Math.Round(tempC, MidpointRounding.AwayFromZero):0}\u00b0C";
+        var rounded = Math.Round(tempC, MidpointRounding.AwayFromZero);
+        return float.IsFinite(tempC) && rounded is >= -99 and <= 99
+            ? rounded.ToString("0", CultureInfo.InvariantCulture) + "\u00b0"
+            : "--\u00b0";
     }
 
     private static DailyForecast GetForecast(WeatherSnapshot weather, int panelIndex)
@@ -307,8 +290,8 @@ public class WeatherScene : ISpecialScene, IDeferredActivationScene
                 weather.CurrentWeatherCode,
                 weather.CurrentTemperatureC,
                 weather.CurrentTemperatureC,
-                0,
-                0f);
+                -1,
+                float.NaN);
 
         if (panelIndex < weather.Forecasts.Length)
             return weather.Forecasts[panelIndex];
@@ -321,7 +304,7 @@ public class WeatherScene : ISpecialScene, IDeferredActivationScene
         return MapWeatherType(weatherCode) switch
         {
             WeatherType.Clear => "CLEAR",
-            WeatherType.PartlyCloudy => "PART CLOUD",
+            WeatherType.PartlyCloudy => "PARTLY",
             WeatherType.Cloudy => "CLOUDY",
             WeatherType.Fog => "MIST",
             WeatherType.Drizzle => "DRIZZLE",
@@ -650,16 +633,6 @@ public class WeatherScene : ISpecialScene, IDeferredActivationScene
             return;
 
         img[x, y] = color;
-    }
-
-    private static void DrawPixelText(Image<Rgba32> img, string text, Rgba32 color, int x, int y)
-    {
-        RailDmiText.Draw(img, text, x, y, color);
-    }
-
-    private static void DrawPixelRightAlignedText(Image<Rgba32> img, string text, Rgba32 color, int rightX, int y)
-    {
-        RailDmiText.DrawRightAligned(img, text, rightX, y, color);
     }
 
     private static void Blit(Image<Rgba32> destination, Image<Rgba32> source, int offsetX)

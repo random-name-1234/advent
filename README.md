@@ -43,6 +43,12 @@ Out of the box, `advent` can rotate through things like:
 
 There is also a `--test-mode` that runs the full catalogue in sequence instead of picking seasonal scenes at random.
 
+Eight new scenes are available for manual review: Night Train, Aquarium, Pixel
+City, Breakout, Weather Window, Moonlit Landscape, Two Cats and Agile Power.
+See [the scene guide and offline animation gallery instructions](docs/new-scenes.md)
+and [the Home Dashboard API contract](docs/home-dashboard-advent-api.md).
+They do not enter automatic rotation until `ADVENT_NEW_SCENES_IN_ROTATION=true`.
+
 ## Backends
 
 | Backend | Stack | Notes |

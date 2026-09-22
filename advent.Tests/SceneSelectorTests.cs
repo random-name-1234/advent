@@ -694,7 +694,7 @@ public class SceneSelectorTests
 
     private static int ExpectedNonDecemberSceneCount()
     {
-        return 15;
+        return 20;
     }
 
     private static WeatherSnapshot CreateWeatherSnapshot()

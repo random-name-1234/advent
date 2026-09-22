@@ -38,6 +38,12 @@ internal static class RailDmiText
 
     private static readonly IReadOnlyDictionary<char, string[]> CuratedGlyphs = new Dictionary<char, string[]>
     {
+        ['%'] = ["11001", "11010", "00100", "01011", "10011"],
+        ['&'] = ["01100", "10010", "01100", "10011", "01101"],
+        ['='] = ["000", "111", "000", "111", "000"],
+        ['"'] = ["101", "101", "000", "000", "000"],
+        ['@'] = ["01110", "10001", "10111", "10101", "01110"],
+        ['#'] = ["01010", "11111", "01010", "11111", "01010"],
         ['!'] =
         [
             "1",
@@ -412,12 +418,16 @@ internal static class RailDmiText
 
     public static int Height => Font.Value.Height;
 
+    internal static bool HasGlyph(char character) => Font.Value.HasGlyph(character);
+
+    internal static PixelFont CreateFallbackFont() => PixelText.Font.WithGlyphs(CuratedGlyphs);
+
     public static int MeasureWidth(string text) => Font.Value.MeasureWidth(text);
 
     public static string TrimToWidth(string text, int maxWidth) => Font.Value.TrimToWidth(text, maxWidth);
 
-    public static void Draw(Image<Rgba32> img, string text, int x, int y, Rgba32 color) =>
-        Font.Value.Draw(img, text, x, y, color);
+    public static void Draw(Image<Rgba32> img, string text, int x, int y, Rgba32 color, int scale = 1) =>
+        Font.Value.Draw(img, text, x, y, color, scale);
 
     public static void DrawCentered(Image<Rgba32> img, string text, int centerX, int y, Rgba32 color) =>
         Font.Value.DrawCentered(img, text, centerX, y, color);
@@ -434,7 +444,7 @@ internal static class RailDmiText
         catch (Exception ex)
         {
             Console.WriteLine($"Rail DMI font bake failed, falling back to default pixel font: {ex.Message}");
-            return PixelText.Font;
+            return CreateFallbackFont();
         }
     }
 

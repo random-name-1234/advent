@@ -12,144 +12,6 @@ namespace advent;
 /// </summary>
 internal sealed class ClockRenderer
 {
-    // 7px wide, 9px tall digit font — clean single-pixel strokes.
-    private static readonly Dictionary<char, string[]> LargeDigits = new()
-    {
-        ['0'] =
-        [
-            "0111110",
-            "1100011",
-            "1100011",
-            "1100011",
-            "1100011",
-            "1100011",
-            "1100011",
-            "1100011",
-            "0111110"
-        ],
-        ['1'] =
-        [
-            "0001100",
-            "0011100",
-            "0101100",
-            "0001100",
-            "0001100",
-            "0001100",
-            "0001100",
-            "0001100",
-            "0111111"
-        ],
-        ['2'] =
-        [
-            "0111110",
-            "1100011",
-            "0000011",
-            "0000110",
-            "0011100",
-            "0110000",
-            "1100000",
-            "1100011",
-            "1111111"
-        ],
-        ['3'] =
-        [
-            "0111110",
-            "1100011",
-            "0000011",
-            "0000011",
-            "0011110",
-            "0000011",
-            "0000011",
-            "1100011",
-            "0111110"
-        ],
-        ['4'] =
-        [
-            "0000110",
-            "0001110",
-            "0011110",
-            "0110110",
-            "1100110",
-            "1111111",
-            "0000110",
-            "0000110",
-            "0000110"
-        ],
-        ['5'] =
-        [
-            "1111111",
-            "1100000",
-            "1100000",
-            "1111110",
-            "0000011",
-            "0000011",
-            "0000011",
-            "1100011",
-            "0111110"
-        ],
-        ['6'] =
-        [
-            "0111110",
-            "1100011",
-            "1100000",
-            "1100000",
-            "1111110",
-            "1100011",
-            "1100011",
-            "1100011",
-            "0111110"
-        ],
-        ['7'] =
-        [
-            "1111111",
-            "1100011",
-            "0000110",
-            "0000110",
-            "0001100",
-            "0001100",
-            "0011000",
-            "0011000",
-            "0011000"
-        ],
-        ['8'] =
-        [
-            "0111110",
-            "1100011",
-            "1100011",
-            "1100011",
-            "0111110",
-            "1100011",
-            "1100011",
-            "1100011",
-            "0111110"
-        ],
-        ['9'] =
-        [
-            "0111110",
-            "1100011",
-            "1100011",
-            "1100011",
-            "0111111",
-            "0000011",
-            "0000011",
-            "1100011",
-            "0111110"
-        ]
-    };
-
-    private static readonly string[] ColonGlyph =
-    [
-        "00",
-        "11",
-        "11",
-        "00",
-        "00",
-        "00",
-        "11",
-        "11",
-        "00"
-    ];
-
     private const int DigitWidth = 7;
     private const int DigitHeight = 9;
     private const int ColonWidth = 2;
@@ -170,35 +32,16 @@ internal sealed class ClockRenderer
     private static readonly Rgba32 DateColor = new(110, 120, 150);
     private static readonly Rgba32 SeparatorColor = new(28, 32, 42);
 
-    public void Draw(Image<Rgba32> img)
+    public void Draw(Image<Rgba32> img) => DrawAt(img, DateTime.Now);
+
+    internal void DrawAt(Image<Rgba32> img, DateTime now)
     {
-        var now = DateTime.Now;
-        var hours = now.Hour;
-        var minutes = now.Minute;
         var colonVisible = now.Millisecond < 500;
 
         // Time vertically: y=3, height=9 → ends at y=11
         const int timeY = 3;
-        var x = TimeStartX;
-
-        // Hour tens
-        DrawLargeDigit(img, hours / 10, x, timeY, TimeColor);
-        x += DigitWidth + DigitKern;
-
-        // Hour units
-        DrawLargeDigit(img, hours % 10, x, timeY, TimeColor);
-        x += DigitWidth + ColonPad;
-
-        // Colon
-        DrawGlyph(img, ColonGlyph, ColonWidth, x, timeY, colonVisible ? ColonColor : ColonDimColor);
-        x += ColonWidth + ColonPad;
-
-        // Minute tens
-        DrawLargeDigit(img, minutes / 10, x, timeY, TimeColor);
-        x += DigitWidth + DigitKern;
-
-        // Minute units
-        DrawLargeDigit(img, minutes % 10, x, timeY, TimeColor);
+        DrawTimeDigits(img, now.ToString("HH:mm", System.Globalization.CultureInfo.InvariantCulture), TimeStartX, timeY, TimeColor,
+            colonVisible ? ColonColor : ColonDimColor);
 
         // Thin separator line
         const int sepY = timeY + DigitHeight + 2; // y=14
@@ -233,29 +76,9 @@ internal sealed class ClockRenderer
         return $"{dayOfWeek} {day} {month}";
     }
 
-    private static void DrawLargeDigit(Image<Rgba32> img, int digit, int x, int y, Rgba32 color)
-    {
-        if (digit is < 0 or > 9)
-            return;
-
-        var glyph = LargeDigits[(char)('0' + digit)];
-        DrawGlyph(img, glyph, DigitWidth, x, y, color);
-    }
-
-    private static void DrawGlyph(Image<Rgba32> img, string[] glyph, int width, int x, int y, Rgba32 color)
-    {
-        for (var row = 0; row < glyph.Length; row++)
-        {
-            var bits = glyph[row];
-            for (var col = 0; col < bits.Length && col < width; col++)
-            {
-                if (bits[col] != '1')
-                    continue;
-
-                SetPixel(img, x + col, y + row, color);
-            }
-        }
-    }
+    internal static void DrawTimeDigits(Image<Rgba32> img, string time, int x, int y,
+        Rgba32 color, Rgba32? colonColor = null) =>
+        HeadlineText.DrawTime(img, time, x, y, color, colonColor);
 
     private static void SetPixel(Image<Rgba32> img, int x, int y, Rgba32 color)
     {

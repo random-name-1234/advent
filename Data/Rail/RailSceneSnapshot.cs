@@ -17,6 +17,7 @@ internal sealed record RailStationSnapshot(
     bool IsUnavailable)
 {
     public string StationCode => HeaderLabel;
+    public string? Crs { get; init; }
 }
 
 internal sealed record RailServiceSnapshot(
@@ -29,6 +30,11 @@ internal sealed record RailServiceSnapshot(
     string OperatorText,
     string CallingText,
     string DetailTicker,
-    DateTimeOffset SortTime);
+    DateTimeOffset SortTime)
+{
+    public DateTimeOffset? ScheduledAt { get; init; }
+    public bool HasDeparted { get; init; }
+    public bool IsFastToCounterpart { get; init; }
+}
 
 internal sealed record RailAlertSnapshot(string Message, int SeverityWeight);

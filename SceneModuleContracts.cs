@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using advent.Data.Rail;
 using advent.Data.Weather;
+using advent.Data.Home;
 
 namespace advent;
 
@@ -18,7 +19,9 @@ internal sealed record SceneModuleContext(
     IRailSnapshotSource? RailSnapshotSource,
     bool RailConfigured,
     double Latitude = 52.2053,
-    double Longitude = 0.1218);
+    double Longitude = 0.1218,
+    IHomeSnapshotSource? HomeSnapshotSource = null,
+    bool NewScenesInRotation = false);
 
 internal enum SceneTransitionStyle
 {

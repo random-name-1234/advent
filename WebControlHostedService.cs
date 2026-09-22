@@ -5,7 +5,8 @@ using Microsoft.Extensions.Hosting;
 
 namespace advent;
 
-internal sealed class WebControlHostedService(SceneControlService sceneControl, SceneRenderer sceneRenderer, WebControlOptions options) : IHostedService
+internal sealed class WebControlHostedService(SceneControlService sceneControl, SceneRenderer sceneRenderer, WebControlOptions options,
+    AdventHostOptions hostOptions) : IHostedService
 {
     private WebApplication? app;
 
@@ -17,7 +18,7 @@ internal sealed class WebControlHostedService(SceneControlService sceneControl, 
             return Task.CompletedTask;
         }
 
-        app = ControlWebHost.Build(sceneControl, sceneRenderer, options);
+        app = ControlWebHost.Build(sceneControl, sceneRenderer, options, hostOptions);
         return app.StartAsync(cancellationToken);
     }
 

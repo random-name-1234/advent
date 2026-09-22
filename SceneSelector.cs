@@ -15,7 +15,8 @@ public sealed class SceneSelector : ISceneScheduler
         new RailSceneModule(),
         new SeasonalSceneModule(),
         new ImageSceneModule(),
-        new ManualSceneModule()
+        new ManualSceneModule(),
+        new NewSceneModule()
     ];
 
     private readonly ISceneCatalog sceneCatalog;

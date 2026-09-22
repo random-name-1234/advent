@@ -4,13 +4,18 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
+using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.Processing;
 
 namespace advent;
 
 internal static class ControlWebHost
 {
-    public static WebApplication Build(SceneControlService controlService, SceneRenderer sceneRenderer, WebControlOptions options)
+    public static WebApplication Build(SceneControlService controlService, SceneRenderer sceneRenderer, WebControlOptions options,
+        AdventHostOptions? hostOptions = null)
     {
+        var physicalWidth = hostOptions?.MatrixWidth ?? MatrixConstants.Width;
+        var physicalHeight = hostOptions?.MatrixHeight ?? MatrixConstants.Height;
         var contentRoot = AppContext.BaseDirectory;
         var webRoot = Path.Combine(contentRoot, "wwwroot");
         var indexPath = Path.Combine(webRoot, "index.html");
@@ -69,6 +74,16 @@ internal static class ControlWebHost
         }));
 
         app.MapGet("/api/status", () => Results.Ok(controlService.GetStatus()));
+
+        app.MapGet("/api/frame/meta", () => Results.Ok(new
+        {
+            logicalWidth = MatrixConstants.Width,
+            logicalHeight = MatrixConstants.Height,
+            physicalWidth,
+            physicalHeight,
+            horizontalScale = physicalWidth / MatrixConstants.Width,
+            verticalScale = physicalHeight / MatrixConstants.Height
+        }));
 
         app.MapPost("/api/scene/play", (PlaySceneRequest request) =>
         {
@@ -142,8 +157,12 @@ internal static class ControlWebHost
 
         app.MapGet("/api/frame", () =>
         {
-            var png = sceneRenderer.CaptureFramePng();
-            return Results.Bytes(png, "image/png");
+            using var frame = sceneRenderer.CaptureFrame();
+            if (frame.Width != physicalWidth || frame.Height != physicalHeight)
+                frame.Mutate(ctx => ctx.Resize(physicalWidth, physicalHeight, KnownResamplers.NearestNeighbor));
+            using var stream = new MemoryStream();
+            frame.SaveAsPng(stream);
+            return Results.Bytes(stream.ToArray(), "image/png");
         });
 
         app.MapGet("/health", () => Results.Ok(new { ok = true }));

@@ -6,6 +6,12 @@ internal static class Program
 {
     private static async Task Main(string[] args)
     {
+        var capture = args.FirstOrDefault(arg => arg.StartsWith("--capture-new-scenes=", StringComparison.Ordinal));
+        if (capture is not null)
+        {
+            NewSceneCapture.WriteGallery(capture["--capture-new-scenes=".Length..]);
+            return;
+        }
         var builder = Host.CreateApplicationBuilder(args);
         builder.Services.AddAdventApplication(args);
 
