@@ -25,17 +25,19 @@ internal sealed class AquariumScene() : PixelStoryScene("Aquarium")
                 if (h % 3 == 0) Dot(image, x + (h % 2 == 0 ? 1 : -1), 29 - h, Color(29, 120, 74));
             }
         }
-        Fish(image, Wrap(9 + Seconds * 2.4, 82) - 9, 10 + (int)Math.Sin(Seconds * .9), 1, Color(247, 154, 53), Seconds);
-        Fish(image, 70 - Wrap(24 + Seconds * 1.7, 82), 18 + (int)Math.Sin(Seconds * .6), -1, Color(77, 182, 192), Seconds + 1);
+        Fish(image, Wrap(9 + Seconds * 2.4, 82) - 9, 10 + Bob(Seconds * .9), 1, Color(247, 154, 53), Seconds);
+        Fish(image, 70 - Wrap(24 + Seconds * 1.7, 82), 18 + Bob(Seconds * .6), -1, Color(77, 182, 192), Seconds + 1);
         Fish(image, Wrap(42 + Seconds * 1.3, 82) - 9, 6, 1, Color(193, 107, 91), Seconds + 2);
         for (var bubble = 0; bubble < 3; bubble++)
         {
             var y = 28 - Wrap(Seconds * 2 + bubble * 11, 32);
-            var x = 43 + (int)Math.Sin(Seconds + bubble * 2);
+            var x = 43 + Bob(Seconds + bubble * 2);
             Dot(image, x, y, Color(75, 121, 142));
             if (bubble == 0) Dot(image, x + 1, y - 1, Color(22, 56, 76));
         }
     }
+
+    internal static int Bob(double phase) => (int)Math.Round(Math.Sin(phase));
 
     private static void Fish(Image<Rgba32> image, int x, int y, int direction, Rgba32 color, double t)
     {

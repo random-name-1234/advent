@@ -130,6 +130,13 @@ internal sealed class BreakoutScene() : PixelStoryScene("Breakout")
         for (var col = 0; col < 8; col++)
             if (bricks[row, col]) Box(image, 4 + col * 7, 4 + row * 3, 5, 2, colors[row]);
         Box(image, (int)Math.Round(paddle) - 5, 28, 11, 2, Color(162, 199, 215));
+        if (pause <= 0)
+        {
+            var tx = (int)Math.Round(x) - Math.Sign(vx);
+            var ty = (int)Math.Round(y) - Math.Sign(vy);
+            if (tx is > 0 and < 63 && ty is > 0 and < 28 && image[tx, ty] == Color(1, 3, 7))
+                Dot(image, tx, ty, Color(77, 74, 64));
+        }
         Dot(image, (int)Math.Round(x), (int)Math.Round(y), Color(255, 246, 211));
     }
 }

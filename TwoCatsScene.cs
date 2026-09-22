@@ -9,6 +9,7 @@ internal sealed class TwoCatsScene(IHomeSnapshotSource source, TimeProvider? tim
 {
     private readonly TimeProvider clock = timeProvider ?? TimeProvider.System;
     private HomeSnapshot? snapshot;
+    private readonly HashSet<HomeCat> recentTransitions = [];
     private static readonly TabbyCoat Barney = new(
         Color(159, 168, 174), Color(62, 71, 80), Color(230, 233, 225), Color(230, 233, 225),
         Color(203, 188, 116), Color(205, 217, 220), Fluffy: true);
@@ -20,6 +21,13 @@ internal sealed class TwoCatsScene(IHomeSnapshotSource source, TimeProvider? tim
     {
         base.Activate();
         IsActive = source.TryGetSnapshot(out snapshot!) && snapshot.PetsReady(clock.GetUtcNow());
+        recentTransitions.Clear();
+        if (!IsActive) return;
+        var now = clock.GetUtcNow();
+        foreach (var cat in snapshot!.Cats)
+            if (cat.PreviousLocation != CatLocation.Unknown && cat.PreviousLocation != cat.Location &&
+                cat.ChangedAt is { } changed && now >= changed && now - changed <= TimeSpan.FromMinutes(2))
+                recentTransitions.Add(cat);
     }
 
     protected override void Render(Image<Rgba32> image)
@@ -48,7 +56,7 @@ internal sealed class TwoCatsScene(IHomeSnapshotSource source, TimeProvider? tim
             return;
         }
         var indoors = location == CatLocation.Indoors;
-        Box(image, left + 1, 8, 29, 16, indoors ? Color(33, 26, 25) : Color(8, 28, 27));
+        Box(image, left + 1, 8, 29, 16, indoors ? Color(49, 40, 35) : Color(8, 28, 27));
         Box(image, left + 1, 22, 29, 2, indoors ? Color(101, 63, 39) : Color(35, 70, 40));
         if (indoors)
         {
@@ -61,19 +69,24 @@ internal sealed class TwoCatsScene(IHomeSnapshotSource source, TimeProvider? tim
             Box(image, left + 2, 17, 27, 1, Color(57, 74, 59));
             for (var x = left + 3; x < left + 30; x += 6) Box(image, x, 15, 1, 8, Color(57, 74, 59));
         }
-        var moving = cat is { PreviousLocation: not CatLocation.Unknown } && Seconds < 4 &&
-                     cat.ChangedAt is { } changed && clock.GetUtcNow() - changed <= TimeSpan.FromMinutes(2);
-        var cx = left + 18;
+        var moving = cat is not null && recentTransitions.Contains(cat) && Seconds < 4;
+        var cx = left + CatCenter(indoors, moving, Seconds);
         if (moving)
         {
             Box(image, left + 1, 16, 6, 8, Color(15, 17, 19));
             Box(image, left + 2, 16, 4, 1, Color(177, 155, 116));
-            cx = left + 10 + (int)(indoors ? Seconds * 2 : (4 - Seconds) * 2);
         }
         Cat(image, cx, 17, coat, Seconds + (left == 0 ? 0 : 1.7), moving);
         var label = indoors ? "IN" : "OUT";
         RailDmiText.Draw(image, label, left + (31 - RailDmiText.MeasureWidth(label)) / 2, 25,
             indoors ? Color(131, 195, 158) : Color(147, 187, 211));
+    }
+
+    internal static int CatCenter(bool indoors, bool moving, double seconds)
+    {
+        var rest = indoors ? 18 : 10;
+        return moving ? (int)Math.Round(indoors ? 10 + Math.Clamp(seconds, 0, 4) * 2 :
+            18 - Math.Clamp(seconds, 0, 4) * 2) : rest;
     }
 
     private static void Cat(Image<Rgba32> image, int x, int y, TabbyCoat coat, double t, bool moving)

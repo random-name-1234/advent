@@ -41,7 +41,15 @@ Out of the box, `advent` can rotate through things like:
 - image scenes from your own files
 - an optional UK rail board scene
 
-There is also a `--test-mode` that runs the full catalogue in sequence instead of picking seasonal scenes at random.
+Normal rotation uses a readiness-aware shuffle bag, avoids immediate repeats and
+leaves at least ten seconds of clock time between automatic visits. It never
+queues more automatic scenes behind an active visit or manual queue. There is
+also a `--test-mode` that runs the automatic catalogue in sequence without that
+pause. Error and Legibility Lab remain manually selectable only.
+
+The [scene polish record](docs/scene-polish.md) covers the latest review, captures
+and regression checks. `/preview` defaults to an integer-pixel fit mode for narrow
+browser panes; explicit zoom is still available with horizontal scrolling.
 
 Eight new scenes are available for manual review: Night Train, Aquarium, Pixel
 City, Breakout, Weather Window, Moonlit Landscape, Two Cats and Agile Power.

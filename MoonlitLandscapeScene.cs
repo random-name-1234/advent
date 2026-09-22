@@ -47,11 +47,11 @@ internal sealed class MoonlitLandscapeScene(TimeProvider? timeProvider = null) :
         for (var x = 0; x < 64; x++)
         {
             var hill = 20 + (int)(Math.Sin(x * .1) * 3 + Math.Sin(x * .23));
-            Box(image, x, hill, 1, 32 - hill, Color(16, 35, 43));
+            Box(image, x, hill, 1, 32 - hill, Color(24, 46, 53));
             var near = 24 + (int)(Math.Sin(x * .13 + 1.5) * 3);
             Box(image, x, near, 1, 32 - near, Color(8, 23, 31));
         }
-        Box(image, 0, 26, 64, 6, Color(7, 22, 38));
+        Box(image, 0, 26, 64, 6, Color(12, 32, 52));
         var illumination = (1 - Math.Cos(Phase * Math.Tau)) / 2;
         for (var y = 27; y < 32; y++)
         {

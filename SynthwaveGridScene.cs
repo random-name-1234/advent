@@ -112,10 +112,12 @@ public class SynthwaveGridScene : ISpecialScene
             }
         }
 
-        for (var y = HorizonY + 1; y < Height; y++)
+        // Rasterise the moving lines, rather than testing integer rows against a
+        // fractional phase (which made every horizontal disappear together).
+        for (var line = 0; line <= Height + 6; line += 6)
         {
-            var row = y + offset;
-            if (Math.Abs(row % 6f) > 0.55f) continue;
+            var y = (int)MathF.Round(line - offset);
+            if (y <= HorizonY || y >= Height) continue;
 
             var depth = (y - HorizonY) / (float)Math.Max(1, Height - HorizonY);
             var widthAtDepth = (int)Math.Round(depth * (Width / 2f));

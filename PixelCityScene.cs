@@ -35,7 +35,7 @@ internal sealed class PixelCityScene(
             for (var row = 0; row < 2; row++)
             for (var col = 0; col < 2; col++)
                 Box(image, x + 2 + col * 4, top + 2 + row * 5, 2, 3,
-                    IsNight && (i + row + col + (int)(Seconds / 6)) % 4 != 0 ? Color(228, 171, 74) : Color(27, 53, 65));
+                    IsNight && WindowLit(i, row, col, Seconds) ? Color(228, 171, 74) : Color(27, 53, 65));
         }
         Box(image, 0, 24, 64, 2, Color(101, 102, 96));
         Box(image, 0, 26, 64, 6, Color(22, 28, 34));
@@ -55,5 +55,13 @@ internal sealed class PixelCityScene(
         Disc(image, bus + 4, 29, 1, Color(5, 9, 14));
         Disc(image, bus + 15, 29, 1, Color(5, 9, 14));
         Dot(image, bus + 18, 27, Color(255, 216, 148));
+    }
+
+    internal static bool WindowLit(int building, int row, int col, double seconds)
+    {
+        var id = building * 4 + row * 2 + col;
+        var interval = 7 + id % 5;
+        var phase = (id * 13 % 37) / 5.0;
+        return (id + (int)((seconds + phase) / interval)) % 4 != 0;
     }
 }

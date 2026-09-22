@@ -7,7 +7,8 @@ using SixLabors.ImageSharp.Processing;
 
 namespace advent;
 
-// Used only by the explicit offline capture command. Never registered as live data.
+// Synthetic fixtures for explicit offline captures and the manual Legibility Lab.
+// Never registered as live data.
 internal static class NewSceneCapture
 {
     internal static readonly DateTimeOffset FixtureTime = new(2026, 9, 21, 19, 10, 0, TimeSpan.Zero);
@@ -117,7 +118,7 @@ internal static class NewSceneCapture
             nav{display:flex;gap:20px}a{color:var(--accent);text-underline-offset:4px}footer{line-height:1.8;border-top:1px solid #46514c;color:var(--muted)}
             @media(max-width:650px){main{grid-template-columns:1fr}header,main,footer{padding:24px}h1{margin-top:28px}article p{min-height:0}}
             </style><header><div class="eyebrow">ADVENT / PI 4 / 64 x 32 LANDSCAPE</div><h1>Eight small worlds.</h1>
-            <p>Original pixel scenes for the existing panel. Each animation loops a full twenty-second sequence. Existing scenes are untouched.</p>
+            <p>Pixel scenes for the existing panel, with the reviewed motion and contrast polish. Each animation loops a full twenty-second sequence.</p>
             <p class="notice">Offline review. All home and weather values are fixtures, not live readings. Time-dependent scenes use 21 September 2026, 20:10 Europe/London.</p>
             </header><main>
             """ + string.Join('\n', cards) + """
@@ -146,14 +147,19 @@ internal static class NewSceneCapture
             ("UNKNOWN CAT", new TwoCatsScene(new HomeFixture(home with { Cats = [home.Cats[0], home.Cats[1] with { Location = CatLocation.Unknown }] }), clock)),
             ("CAT ARRIVES", new TwoCatsScene(new HomeFixture(home with { Cats = [home.Cats[0] with { ChangedAt = FixtureTime, PreviousLocation = CatLocation.Outdoors }, home.Cats[1]] }), clock)),
             ("NEGATIVE", new AgilePowerScene(new HomeFixture(home with { Current = home.Current! with { Price = -3.4, Band = "cheap" } }), clock)),
-            ("NO WINDOW", new AgilePowerScene(new HomeFixture(home with { NextCheapWindow = null }), clock))
+            ("NO WINDOW", new AgilePowerScene(new HomeFixture(home with { NextCheapWindow = null }), clock)),
+            ("STORM", new WeatherWindowScene(new WeatherFixture(95))),
+            ("CAT LEAVES", new TwoCatsScene(new HomeFixture(home with { Cats = [home.Cats[0] with
+                { Location = CatLocation.Outdoors, ChangedAt = FixtureTime, PreviousLocation = CatLocation.Indoors }, home.Cats[1]] }), clock)),
+            ("OVERNIGHT", new AgilePowerScene(new HomeFixture(home with { NextCheapWindow = new CheapWindow(FixtureTime.AddHours(3), FixtureTime.AddHours(6)) }), clock)),
+            ("CHEAP NOW", new AgilePowerScene(new HomeFixture(home with { NextCheapWindow = new CheapWindow(FixtureTime.AddMinutes(-10), FixtureTime.AddHours(2)) }), clock))
         ];
-        using var sheet = new Image<Rgba32>(256, 126, PixelArt.Color(3, 7, 11));
+        using var sheet = new Image<Rgba32>(256, 42 * ((cases.Length + 3) / 4), PixelArt.Color(3, 7, 11));
         for (var i = 0; i < cases.Length; i++)
         {
             var (name, scene) = cases[i];
             scene.Activate();
-            scene.Elapsed(TimeSpan.FromSeconds(name == "NO WINDOW" ? 12 : 2));
+            scene.Elapsed(TimeSpan.FromSeconds(name == "NO WINDOW" ? 18 : name is "OVERNIGHT" or "CHEAP NOW" ? 12 : 2));
             using var frame = new Image<Rgba32>(64, 32);
             scene.Draw(frame);
             var x = i % 4 * 64;
@@ -161,7 +167,7 @@ internal static class NewSceneCapture
             sheet.Mutate(ctx => ctx.DrawImage(frame, new Point(x, y + 10), 1));
             RailDmiText.Draw(sheet, name, x + 1, y + 2, PixelArt.Color(187, 205, 194));
         }
-        sheet.Mutate(ctx => ctx.Resize(1024, 504, KnownResamplers.NearestNeighbor));
+        sheet.Mutate(ctx => ctx.Resize(sheet.Width * 4, sheet.Height * 4, KnownResamplers.NearestNeighbor));
         sheet.SaveAsPng(Path.Combine(directory, "variants.png"));
     }
 }

@@ -21,16 +21,18 @@ public class SunriseSunsetScene : ISpecialScene
 
     private readonly double latitude;
     private readonly double longitude;
+    private readonly TimeProvider clock;
 
     private SkyKey[] skyKeys = null!;
     private float sunriseT;
     private float sunsetT;
     private TimeSpan elapsedThisScene;
 
-    public SunriseSunsetScene(double latitude = 52.2053, double longitude = 0.1218)
+    public SunriseSunsetScene(double latitude = 52.2053, double longitude = 0.1218, TimeProvider? timeProvider = null)
     {
         this.latitude = latitude;
         this.longitude = longitude;
+        clock = timeProvider ?? TimeProvider.System;
     }
 
     public bool IsActive { get; private set; }
@@ -44,7 +46,7 @@ public class SunriseSunsetScene : ISpecialScene
         HidesTime = true;
         IsActive = true;
 
-        var localNow = TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, TimeZoneInfo.Local);
+        var localNow = clock.GetLocalNow();
         var (riseHour, setHour) = CalculateSunTimes(localNow, latitude, longitude);
         sunriseT = (float)(riseHour / 24.0);
         sunsetT = (float)(setHour / 24.0);
@@ -156,13 +158,9 @@ public class SunriseSunsetScene : ISpecialScene
         else if (sunT > 0.9f) sunAlpha = (1f - sunT) / 0.1f;
         sunAlpha = Math.Clamp(sunAlpha, 0f, 1f);
 
-        // Draw sun as layered discs using direct writes (not additive)
-        // so glow/body/core each have distinct colors.
-        var glowColor = new Rgba32(
-            ToByte(255f * sunAlpha * 0.5f),
-            ToByte(200f * sunAlpha * 0.4f),
-            ToByte(80f * sunAlpha * 0.3f));
-        DrawDiscDirect(img, cx, cy, (int)SunRadius + 2, glowColor);
+        // A translucent warm halo lifts the sky instead of replacing it with a
+        // dark disc. The body and core retain their original size and colours.
+        DrawHalo(img, cx, cy, (int)SunRadius + 2, sunAlpha);
 
         var sunColor = new Rgba32(
             ToByte(255f * sunAlpha),
@@ -241,6 +239,18 @@ public class SunriseSunsetScene : ISpecialScene
         local = local * local * (3f - 2f * local);
 
         return (LerpColor(a.Top, b.Top, local), LerpColor(a.Horizon, b.Horizon, local));
+    }
+
+    internal static void DrawHalo(Image<Rgba32> img, int cx, int cy, int radius, float alpha)
+    {
+        for (var y = -radius; y <= radius; y++)
+        for (var x = -radius; x <= radius; x++)
+        {
+            if (x * x + y * y > radius * radius || (uint)(cx + x) >= Width || (uint)(cy + y) >= Height) continue;
+            var sky = img[cx + x, cy + y];
+            var warm = new Rgba32(Math.Max(sky.R, (byte)255), Math.Max(sky.G, (byte)200), Math.Max(sky.B, (byte)100));
+            img[cx + x, cy + y] = LerpColor(sky, warm, .25f * Math.Clamp(alpha, 0, 1));
+        }
     }
 
     private static void DrawDiscDirect(Image<Rgba32> img, int centerX, int centerY, int radius, Rgba32 color)

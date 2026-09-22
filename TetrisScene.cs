@@ -118,25 +118,19 @@ public class TetrisScene : ISpecialScene
 
     private void PrePopulateGrid()
     {
-        // Fill the bottom portion with a realistic-looking Tetris landscape
-        // so the scene looks interesting from the very first frame.
-        var fillHeight = 8 + random.Next(5); // 8-12 rows from bottom
-        for (var y = Rows - fillHeight; y < Rows; y++)
+        // Seed an actual sequence of dropped pieces, reserving the right column
+        // as a well. This preserves recognisable colour groups instead of noise.
+        for (var piece = 0; piece < 20; piece++)
         {
-            // Each row gets a random number of filled cells (not full — leave gaps)
-            var fillCount = 6 + random.Next(3); // 6-8 out of 10
-            var columns = new List<int>();
-            for (var x = 0; x < Cols; x++) columns.Add(x);
-
-            // Fisher-Yates to pick random columns
-            for (var i = columns.Count - 1; i > 0; i--)
+            SpawnPiece();
+            ChooseBestPlacement(out currentRotation, out currentX, reserveLastColumn: true);
+            while (CanPlace(currentPiece, currentRotation, currentX, currentY + 1)) currentY++;
+            if (currentY < Rows - 12)
             {
-                var j = random.Next(i + 1);
-                (columns[i], columns[j]) = (columns[j], columns[i]);
+                hasCurrent = false;
+                break;
             }
-
-            for (var i = 0; i < fillCount; i++)
-                grid[columns[i], y] = random.Next(1, 8); // random piece color
+            LockPiece();
         }
     }
 
@@ -258,7 +252,7 @@ public class TetrisScene : ISpecialScene
         }
     }
 
-    private void ChooseBestPlacement(out int bestRotation, out int bestCol)
+    private void ChooseBestPlacement(out int bestRotation, out int bestCol, bool reserveLastColumn = false)
     {
         bestRotation = 0;
         bestCol = 0;
@@ -277,7 +271,7 @@ public class TetrisScene : ISpecialScene
                 if (cells[i] > maxCx) maxCx = cells[i];
             }
 
-            for (var col = -minCx; col <= Cols - 1 - maxCx; col++)
+            for (var col = -minCx; col <= Cols - 1 - maxCx - (reserveLastColumn ? 1 : 0); col++)
             {
                 // Find landing row
                 var dropY = 0;
@@ -420,22 +414,17 @@ public class TetrisScene : ISpecialScene
 
     private void CollapseFlashingRows()
     {
-        // Process rows from bottom to top so shifting doesn't corrupt indices
-        var sortedRows = new List<int>(flashingRows);
-        sortedRows.Sort();
-        sortedRows.Reverse();
-
-        foreach (var clearedRow in sortedRows)
+        // Compact surviving rows once, so multi-line clears cannot shift another
+        // marked row away from its original index before it is removed.
+        var target = Rows - 1;
+        for (var source = Rows - 1; source >= 0; source--)
         {
-            // Shift everything above down by one
-            for (var y = clearedRow; y > 0; y--)
-            for (var x = 0; x < Cols; x++)
-                grid[x, y] = grid[x, y - 1];
-
-            // Clear top row
-            for (var x = 0; x < Cols; x++)
-                grid[x, 0] = 0;
+            if (flashingRows.Contains(source)) continue;
+            for (var x = 0; x < Cols; x++) grid[x, target] = grid[x, source];
+            target--;
         }
+        for (; target >= 0; target--)
+        for (var x = 0; x < Cols; x++) grid[x, target] = 0;
     }
 
     private void DrawBackground(Image<Rgba32> img)

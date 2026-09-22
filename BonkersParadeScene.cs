@@ -164,7 +164,7 @@ public class BonkersParadeScene : ISpecialScene
                 var c = MathF.Sin((x + y) * 0.18f + time * 2.9f);
                 var mix = (a + b + c) / 3f;
                 var phase = mix * 1.8f + time * 0.4f;
-                img[x, y] = Scale(Palette(phase, 1f), 0.28f);
+                img[x, y] = Scale(Palette(phase, 1f), 0.22f);
             }
         }
     }
@@ -181,7 +181,7 @@ public class BonkersParadeScene : ISpecialScene
                              MathF.Cos(x * 0.07f - phase * 1.3f) * 2.6f;
                 var y = (int)MathF.Round(yFloat);
                 BlendPixel(img, x, y, Scale(Palette(phase + x * 0.06f, 1f), 0.8f));
-                BlendPixel(img, x, y + 1, Scale(Palette(phase + x * 0.06f + 0.7f, 1f), 0.36f));
+                BlendPixel(img, x, y + 1, Scale(Palette(phase + x * 0.06f + 0.7f, 1f), 0.28f));
             }
         }
     }

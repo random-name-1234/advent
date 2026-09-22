@@ -20,7 +20,7 @@ internal sealed class BuiltinSceneModule : ISceneModule
             new SceneCatalogRegistration("Boids", static () => new BoidsScene()),
             new SceneCatalogRegistration("Tetris", static () => new TetrisScene()),
             new SceneCatalogRegistration("Sunrise Sunset", () => new SunriseSunsetScene(context.Latitude, context.Longitude)),
-            new SceneCatalogRegistration("Error", static () => new ErrorScene())
+            new SceneCatalogRegistration("Error", static () => new ErrorScene(), IncludedInCycle: false)
         ];
     }
 }

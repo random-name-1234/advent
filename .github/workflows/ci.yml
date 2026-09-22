@@ -37,3 +37,11 @@ jobs:
 
       - name: Test
         run: dotnet test advent.Tests/advent.Tests.csproj -c Release --no-build --verbosity normal
+
+      - name: Setup Node for preview tests
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Test responsive preview
+        run: node scripts/test-preview.mjs

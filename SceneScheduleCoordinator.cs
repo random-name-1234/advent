@@ -11,6 +11,8 @@ internal sealed class SceneScheduleCoordinator
     private TimeSpan elapsedSinceStartup;
     private bool isTestMode;
     private TimeSpan timeToNextRandomScene;
+    private TimeSpan idleTime;
+    private bool playbackWasBusy;
 
     public SceneScheduleCoordinator(ISceneScheduler scheduler, bool isTestMode)
     {
@@ -27,6 +29,7 @@ internal sealed class SceneScheduleCoordinator
             return false;
 
         isTestMode = testMode;
+        idleTime = TimeSpan.Zero;
         return true;
     }
 
@@ -41,6 +44,15 @@ internal sealed class SceneScheduleCoordinator
         }
 
         timeToNextRandomScene -= timeSpan;
+        var busy = playbackEngine.HasActiveScene || playbackEngine.QueueLength > 0;
+        if (busy || playbackWasBusy)
+        {
+            idleTime = TimeSpan.Zero;
+            playbackWasBusy = busy;
+            return;
+        }
+        idleTime += timeSpan;
+        if (idleTime < SceneTiming.MinimumClockInterval) return;
         if (timeToNextRandomScene < TimeSpan.Zero)
             EnqueueRandomSceneIfAllowed(playbackEngine);
     }
@@ -74,6 +86,7 @@ internal sealed class SceneScheduleCoordinator
         }
 
         recentRandomSceneRequests.Enqueue(elapsedSinceStartup);
+        idleTime = TimeSpan.Zero;
         timeToNextRandomScene = TimeSpan.FromMinutes(Random.Shared.NextDouble() * 2);
         playbackEngine.Enqueue(scheduler.GetScene());
     }

@@ -22,6 +22,8 @@ public sealed class SceneSelector : ISceneScheduler
     private readonly ISceneCatalog sceneCatalog;
     private readonly Func<int, int> nextIndex;
     private int cycleIndex;
+    private readonly HashSet<string> playedInBag = new(StringComparer.OrdinalIgnoreCase);
+    private string? lastRandomScene;
 
     public SceneSelector()
         : this(DateTime.Now.Month)
@@ -81,13 +83,25 @@ public sealed class SceneSelector : ISceneScheduler
 
     public ISpecialScene GetScene()
     {
-        var candidates = GetReadyCycleEntries();
-        var index = nextIndex(candidates.Count);
-        if ((uint)index >= (uint)candidates.Count)
+        var ready = GetReadyCycleEntries();
+        if (ready.Count == 0) throw new InvalidOperationException("No scenes are available for rotation.");
+        var candidates = ready.Where(entry => !playedInBag.Contains(entry.Name)).ToArray();
+        if (candidates.Length == 0)
+        {
+            playedInBag.Clear();
+            candidates = ready.ToArray();
+        }
+        if (candidates.Length > 1)
+            candidates = candidates.Where(entry => entry.Name != lastRandomScene).ToArray();
+        var index = nextIndex(candidates.Length);
+        if ((uint)index >= (uint)candidates.Length)
             throw new InvalidOperationException(
-                $"Scene index provider returned {index}, but valid range is 0..{candidates.Count - 1}.");
+                $"Scene index provider returned {index}, but valid range is 0..{candidates.Length - 1}.");
 
-        return candidates[index].Create();
+        var selected = candidates[index];
+        playedInBag.Add(selected.Name);
+        lastRandomScene = selected.Name;
+        return selected.Create();
     }
 
     public bool TryGetSceneByName(string sceneName, out ISpecialScene scene)

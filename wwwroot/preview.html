@@ -16,6 +16,7 @@
     * { box-sizing: border-box; }
     body {
       margin: 0;
+      padding: 16px;
       font-family: "Avenir Next", "Segoe UI", sans-serif;
       color: var(--text);
       background: var(--bg);
@@ -26,7 +27,10 @@
       justify-content: center;
     }
     h1 { font-size: 1rem; letter-spacing: 0.3px; color: var(--muted); margin: 0 0 12px; }
+    .viewport { width: 100%; overflow: auto; flex: 0 0 auto; }
     .frame-wrap {
+      width: max-content;
+      margin-inline: auto;
       background: #000;
       border: 2px solid #2c3c74;
       border-radius: 6px;
@@ -37,12 +41,14 @@
     #frame {
       image-rendering: pixelated;
       image-rendering: crisp-edges;
-      width: 640px;
-      height: 320px;
+      width: 64px;
+      height: 32px;
     }
     .controls {
       margin-top: 14px;
       display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
       gap: 10px;
       align-items: center;
       font-size: 0.88rem;
@@ -68,15 +74,18 @@
 </head>
 <body>
   <h1>LED Matrix Preview</h1>
-  <div class="frame-wrap">
+  <div class="viewport"><div class="frame-wrap">
     <img id="frame" alt="LED Matrix" src="/api/frame">
-  </div>
+  </div></div>
   <div class="controls">
     <label>Scale:
       <select id="scale">
+        <option value="auto" selected>Fit</option>
+        <option value="1">1x (64x32)</option>
+        <option value="2">2x (128x64)</option>
         <option value="5">5x (320x160)</option>
         <option value="8">8x (512x256)</option>
-        <option value="10" selected>10x (640x320)</option>
+        <option value="10">10x (640x320)</option>
         <option value="15">15x (960x480)</option>
         <option value="20">20x (1280x640)</option>
       </select>
@@ -110,10 +119,17 @@
     let frameHeight = 32;
 
     function applyScale() {
-      const s = parseInt(scaleSelect.value, 10);
+      const fittingScale = Math.max(1, Math.floor(Math.min(
+        (document.documentElement.clientWidth - 52) / frameWidth,
+        (window.innerHeight - 190) / frameHeight)));
+      const s = scaleSelect.value === "auto" ? fittingScale : parseInt(scaleSelect.value, 10);
       frameImg.style.width = (frameWidth * s) + "px";
       frameImg.style.height = (frameHeight * s) + "px";
       for (const option of scaleSelect.options) {
+        if (option.value === "auto") {
+          option.textContent = "Fit (" + fittingScale + "x)";
+          continue;
+        }
         const scale = parseInt(option.value, 10);
         option.textContent = scale + "x (" + (frameWidth * scale) + "x" + (frameHeight * scale) + ")";
       }
@@ -160,6 +176,7 @@
     }
 
     scaleSelect.addEventListener("change", applyScale);
+    window.addEventListener("resize", applyScale);
     fpsSelect.addEventListener("change", startPolling);
 
     applyScale();
