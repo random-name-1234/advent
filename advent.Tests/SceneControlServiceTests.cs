@@ -165,6 +165,24 @@ public class SceneControlServiceTests
     }
 
     [Fact]
+    public void EnqueueMessage_RejectsTooLittleReadingTime_WithoutQueueing()
+    {
+        var directory = CreateImageDirectory();
+        try
+        {
+            var engine = new ScenePlaybackEngine();
+            var control = new SceneControlService(engine, new SceneSelector(11, imageSceneDirectory: directory), false);
+            const string text = "Train to London Kings Cross is delayed by twenty minutes. Please check the platform before boarding.";
+            Assert.False(control.EnqueueMessage(text, TimeSpan.FromSeconds(2), out var error));
+            Assert.Contains("at least", error);
+            Assert.Equal(0, engine.QueueLength);
+            Assert.True(control.EnqueueMessage(text, null, out _));
+            Assert.Equal(1, engine.QueueLength);
+        }
+        finally { Directory.Delete(directory, true); }
+    }
+
+    [Fact]
     public void GetSceneCatalog_ReportsSceneAvailabilityAndCycleMembership()
     {
         var imageDirectory = CreateImageDirectory();

@@ -38,7 +38,10 @@ internal sealed record ServiceLocationDto(
     string? Etd,
     string? Platform,
     bool PlatformIsHidden,
-    bool IsPass);
+    bool IsPass)
+{
+    public bool IsCancelled { get; init; }
+}
 
 internal sealed record EndPointLocationDto(
     string? LocationName,

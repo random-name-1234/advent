@@ -1,107 +1,54 @@
-using System;
-using SixLabors.Fonts;
 using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.Drawing.Processing;
 using SixLabors.ImageSharp.PixelFormats;
-using SixLabors.ImageSharp.Processing;
-using static advent.MatrixConstants;
 
 namespace advent;
 
 public class MessageScene : ISpecialScene
 {
-    private const float ScrollSpeedPixelsPerSecond = 24f;
-    private static readonly TimeSpan MinDuration = TimeSpan.FromSeconds(4);
-    private static readonly TimeSpan MaxDuration = SceneTiming.MaxSceneDuration;
-
-    private readonly Font font;
-    private readonly string message;
-    private readonly string name;
-    private readonly TimeSpan? sceneDurationOverride;
+    private readonly MessageLayout layout;
     private readonly Rgba32 textColor;
-
-    private TimeSpan elapsedThisScene;
-    private TimeSpan sceneDuration;
-    private float textHeight;
-    private float textWidth;
+    private TimeSpan elapsed;
 
     public MessageScene(string message, TimeSpan? sceneDurationOverride = null, Rgba32? textColor = null)
     {
-        if (string.IsNullOrWhiteSpace(message))
-            throw new ArgumentException("Message cannot be empty.", nameof(message));
-
-        this.message = message.Trim();
-        name = $"Message: {BuildSceneLabel(this.message)}";
-        this.sceneDurationOverride = sceneDurationOverride;
-        this.textColor = textColor ?? Color.White;
-        font = AppFonts.Create(12);
+        layout = MessageLayout.Create(message, sceneDurationOverride);
+        var label = message.Trim();
+        Name = $"Message: {(label.Length <= 16 ? label : label[..15] + "\u2026")}";
+        this.textColor = textColor ?? new Rgba32(220, 230, 255);
     }
 
     public bool IsActive { get; private set; }
-    public bool HidesTime { get; private set; }
+    public bool HidesTime => IsActive;
     public bool RainbowSnow => false;
-    public string Name => name;
+    public string Name { get; }
+    internal MessageLayout Layout => layout;
 
     public void Activate()
     {
-        elapsedThisScene = TimeSpan.Zero;
+        elapsed = TimeSpan.Zero;
         IsActive = true;
-        HidesTime = true;
-
-        var textSize = TextMeasurer.MeasureSize(message, new TextOptions(font));
-        textWidth = Math.Max(1f, textSize.Width);
-        textHeight = Math.Max(1f, textSize.Height);
-        sceneDuration = sceneDurationOverride ?? ComputeSceneDuration();
     }
 
     public void Elapsed(TimeSpan timeSpan)
     {
-        if (!IsActive)
-            return;
-
-        elapsedThisScene += timeSpan;
-        if (elapsedThisScene > sceneDuration)
-        {
-            IsActive = false;
-            HidesTime = false;
-        }
+        if (!IsActive || timeSpan <= TimeSpan.Zero) return;
+        elapsed += timeSpan;
+        if (elapsed >= layout.Duration) IsActive = false;
     }
 
-    public void Draw(Image<Rgba32> img)
+    public void Draw(Image<Rgba32> image)
     {
-        if (!IsActive)
-            return;
-
-        var progress = elapsedThisScene.TotalMilliseconds / sceneDuration.TotalMilliseconds;
-        progress = Math.Clamp(progress, 0d, 1d);
-
-        var startX = Width;
-        var endX = -textWidth - 2f;
-        var x = (float)(startX + (endX - startX) * progress);
-        var y = (Height - textHeight) / 2f;
-
-        img.Mutate(xctx => xctx.DrawText(message, font, textColor, new PointF(x, y)));
+        if (IsActive) DrawPage(image, layout, elapsed, textColor);
     }
 
-    private TimeSpan ComputeSceneDuration()
+    internal static void DrawPage(Image<Rgba32> image, MessageLayout layout, TimeSpan elapsed, Rgba32 color)
     {
-        var travelDistance = Width + textWidth + 4f;
-        var seconds = travelDistance / ScrollSpeedPixelsPerSecond;
-        var duration = TimeSpan.FromSeconds(seconds);
-
-        if (duration < MinDuration)
-            return MinDuration;
-        if (duration > MaxDuration)
-            return MaxDuration;
-        return duration;
-    }
-
-    private static string BuildSceneLabel(string text)
-    {
-        const int max = 16;
-        if (text.Length <= max)
-            return text;
-
-        return text[..(max - 1)] + "…";
+        MatrixTextLayout.Clear(image);
+        foreach (var run in layout.TextRuns(elapsed, color)) run.Draw(image);
+        if (layout.Pages.Count < 2) return;
+        var left = (64 - (layout.Pages.Count * 4 - 1)) / 2;
+        for (var page = 0; page < layout.Pages.Count; page++)
+        for (var x = 0; x < 3; x++)
+            image[left + page * 4 + x, 30] = page == layout.PageAt(elapsed) ? color : new Rgba32(35, 40, 52);
     }
 }

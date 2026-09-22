@@ -176,7 +176,8 @@ public class ErrorScene : ISpecialScene
         DrawTextSmall(img, 16, 3, "CODE13", Scale(new Rgba32(222, 196, 255), fade));
 
         var bucket = (int)(time * 26f);
-        for (var y = 6; y < Height - 2; y++)
+        // Keep the CODE13 title's five rows clear of glitch pixels.
+        for (var y = 9; y < Height - 2; y++)
         {
             var rowOffset = ((Hash(bucket, y, noiseSeed) & 7) - 3);
             for (var x = 2; x < Width - 2; x++)

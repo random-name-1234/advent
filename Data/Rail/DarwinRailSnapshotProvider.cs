@@ -8,6 +8,9 @@ namespace advent.Data.Rail;
 internal static partial class DarwinRailSnapshotProvider
 {
     private static readonly Regex HtmlTagRegex = HtmlRegex();
+    // Table A's shorter CBG-KGX patterns include seven-stop, 63-minute Sunday services (ADR 0021).
+    private static readonly TimeSpan FastCorridorMaxDuration = TimeSpan.FromMinutes(65);
+    private const int FastCorridorMaxIntermediateStops = 7;
 
     private static readonly Rgba32 OnTimeColor = new(230, 192, 112);
     private static readonly Rgba32 DelayedColor = new(255, 152, 40);
@@ -77,18 +80,19 @@ internal static partial class DarwinRailSnapshotProvider
         return new RailStationSnapshot(
             request.StationLabel,
             departuresBoard.LocationName ?? request.StationLabel,
-            BuildDepartureServices(departuresBoard.TrainServices),
+            BuildDepartureServices(departuresBoard.TrainServices, request),
             BuildArrivalsFromOppositeDirection(oppositeDirectionBoard.TrainServices, request),
             BuildAlerts(departuresBoard.NrccMessages),
             updatedAt,
-            departuresBoard.ServicesAreUnavailable);
+            departuresBoard.ServicesAreUnavailable) { Crs = request.StationCrs };
     }
 
-    private static IReadOnlyList<RailServiceSnapshot> BuildDepartureServices(ServiceItemDto[]? services)
+    private static IReadOnlyList<RailServiceSnapshot> BuildDepartureServices(
+        ServiceItemDto[]? services, RailDirectionRequest request)
         => services is null or { Length: 0 }
             ? []
             : [.. services
-                .Select(BuildDepartureSnapshot)
+                .Select(service => BuildDepartureSnapshot(service, request.StationCrs, request.CounterpartCrs))
                 .Where(static service => service is not null)
                 .Cast<RailServiceSnapshot>()
                 .OrderBy(static service => service.SortTime)];
@@ -104,7 +108,8 @@ internal static partial class DarwinRailSnapshotProvider
                 .Cast<RailServiceSnapshot>()
                 .OrderBy(static service => service.SortTime)];
 
-    private static RailServiceSnapshot? BuildDepartureSnapshot(ServiceItemDto service)
+    internal static RailServiceSnapshot? BuildDepartureSnapshot(
+        ServiceItemDto service, string? stationCrs = null, string? counterpartCrs = null)
     {
         var location = PickEndPoint(service.Destination);
         if (location is null)
@@ -124,7 +129,7 @@ internal static partial class DarwinRailSnapshotProvider
             : RailStationNames.BuildLocationCode(location.LocationName);
         var callingPoints = BuildCallingPoints(service.SubsequentLocations);
         var (statusText, statusColor) = BuildStatus(service, planned, estimated);
-        var detailTicker = BuildDetailTicker(locationText, locationCode, service.Operator, callingPoints, statusText);
+        var detailTicker = BuildDetailTicker(locationText, service.Operator, callingPoints, statusText);
 
         return new RailServiceSnapshot(
             planned?.ToString("HH:mm", CultureInfo.InvariantCulture) ?? "--:--",
@@ -136,7 +141,41 @@ internal static partial class DarwinRailSnapshotProvider
             service.Operator ?? string.Empty,
             callingPoints,
             detailTicker,
-            estimated ?? planned ?? DateTimeOffset.MaxValue);
+            estimated ?? planned ?? DateTimeOffset.MaxValue)
+        {
+            ScheduledAt = planned,
+            HasDeparted = ParseBoardTimestamp(service.Atd).HasValue,
+            IsFastToCounterpart = IsFastCorridorService(service, stationCrs, counterpartCrs, planned)
+        };
+    }
+
+    private static bool IsFastCorridorService(
+        ServiceItemDto service, string? stationCrs, string? counterpartCrs, DateTimeOffset? departure)
+    {
+        var route = (stationCrs?.Trim().ToUpperInvariant(), counterpartCrs?.Trim().ToUpperInvariant());
+        if (route is not (("CBG", "KGX") or ("KGX", "CBG")) ||
+            departure is null || service.IsCancelled || service.ServiceIsSuppressed ||
+            service.SubsequentLocations is null)
+            return false;
+
+        var stops = 0;
+        // Inspect the full corridor leg, not the truncated ticker or the through destination.
+        foreach (var location in service.SubsequentLocations)
+        {
+            if (location.IsPass)
+                continue;
+            if (string.Equals(location.Crs?.Trim(), route.Item2, StringComparison.OrdinalIgnoreCase))
+            {
+                var arrival = ParseBoardTimestamp(location.Sta);
+                return !location.IsCancelled && arrival is { } scheduledArrival &&
+                    scheduledArrival > departure.Value &&
+                    scheduledArrival - departure.Value <= FastCorridorMaxDuration;
+            }
+            // Count cancelled intermediate calls too: disruption must not turn a stopper into FAST.
+            if (string.IsNullOrWhiteSpace(location.Crs) || ++stops > FastCorridorMaxIntermediateStops)
+                return false;
+        }
+        return false;
     }
 
     private static RailServiceSnapshot? BuildArrivalSnapshotFromOppositeDirection(
@@ -161,7 +200,7 @@ internal static partial class DarwinRailSnapshotProvider
         var priorCallingPoints = TakeLocationsBefore(service.SubsequentLocations, arrivalLocation);
         var callingPoints = BuildCallingPoints(priorCallingPoints, takeFromEnd: true);
         var (statusText, statusColor) = BuildStatus(service.IsCancelled, service.ServiceIsSuppressed, planned, estimated);
-        var detailTicker = BuildDetailTicker(locationText, locationCode, service.Operator, callingPoints, statusText);
+        var detailTicker = BuildDetailTicker(locationText, service.Operator, callingPoints, statusText);
 
         return new RailServiceSnapshot(
             planned?.ToString("HH:mm", CultureInfo.InvariantCulture) ?? "--:--",
@@ -178,7 +217,6 @@ internal static partial class DarwinRailSnapshotProvider
 
     private static string BuildDetailTicker(
         string locationText,
-        string locationCode,
         string? operatorName,
         string callingPoints,
         string statusText)
@@ -189,7 +227,7 @@ internal static partial class DarwinRailSnapshotProvider
         if (!string.IsNullOrWhiteSpace(operatorName))
             parts.Add(operatorName);
 
-        var servicePattern = BuildServicePatternText(locationText, locationCode, callingPoints);
+        var servicePattern = BuildServicePatternText(callingPoints);
         if (!string.IsNullOrWhiteSpace(servicePattern))
             parts.Add(servicePattern);
         if (!string.IsNullOrWhiteSpace(statusText))
@@ -198,17 +236,13 @@ internal static partial class DarwinRailSnapshotProvider
         return string.Join("  •  ", parts);
     }
 
-    private static string BuildServicePatternText(string locationText, string locationCode, string callingPoints)
+    private static string BuildServicePatternText(string callingPoints)
     {
         var normalizedCallingPoints = NormalizeCallingPoints(callingPoints);
         if (normalizedCallingPoints.Count is 0)
             return string.Empty;
 
-        var prefix = IsFastService(locationText, locationCode, normalizedCallingPoints)
-            ? "Fast via"
-            : "Via";
-
-        return $"{prefix} {string.Join(", ", normalizedCallingPoints)}";
+        return $"Via {string.Join(", ", normalizedCallingPoints)}";
     }
 
     private static IReadOnlyList<string> NormalizeCallingPoints(string callingPoints)
@@ -228,18 +262,6 @@ internal static partial class DarwinRailSnapshotProvider
             .Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
             .Select(RailStationNames.FullLabel)
             .Where(static point => !string.IsNullOrWhiteSpace(point))];
-    }
-
-    private static bool IsFastService(
-        string locationText,
-        string locationCode,
-        IReadOnlyList<string> normalizedCallingPoints)
-    {
-        // Simple heuristic for pre-computed detail ticker text.
-        // The real adaptive fast/slow classification happens at display time
-        // in RailBoardScene.ClassifyFastServices, which analyzes the spread
-        // of stop counts across all services on a board page.
-        return normalizedCallingPoints.Count > 0 && normalizedCallingPoints.Count <= 3;
     }
 
     private static IReadOnlyList<RailAlertSnapshot> BuildAlerts(NrccMessageDto[]? messages)
@@ -333,7 +355,7 @@ internal static partial class DarwinRailSnapshotProvider
         {
             var delayMinutes = (int)Math.Round((estimated.Value - planned.Value).TotalMinutes);
             if (delayMinutes > 0)
-                return ($"+{Math.Min(delayMinutes, 99):0}", DelayedColor);
+                return ($"+{delayMinutes:0}", DelayedColor);
         }
 
         return ("On time", OnTimeColor);

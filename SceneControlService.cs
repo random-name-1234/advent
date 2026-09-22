@@ -111,6 +111,9 @@ public sealed class SceneControlService
             return false;
         }
 
+        if (!MessageLayout.TryCreate(normalizedMessage, sceneDuration, out _, out error))
+            return false;
+
         var messageScene = new FadingScene(new MessageScene(normalizedMessage, sceneDuration));
         lock (gate)
         {

@@ -28,6 +28,16 @@ public sealed class PixelFont
     public int Height { get; }
     public int CharacterSpacing { get; }
 
+    internal bool HasGlyph(char character) => glyphs.ContainsKey(character);
+
+    internal PixelFont WithGlyphs(IReadOnlyDictionary<char, string[]> overrides)
+    {
+        var combined = new Dictionary<char, string[]>(glyphs);
+        foreach (var (character, glyph) in overrides)
+            combined[character] = glyph;
+        return new PixelFont(Height, CharacterSpacing, combined, fallbackGlyph, normalizeText);
+    }
+
     public int MeasureWidth(string text)
     {
         var normalized = this.normalizeText(text);
@@ -61,8 +71,9 @@ public sealed class PixelFont
         return trimmed.TrimEnd();
     }
 
-    public void Draw(Image<Rgba32> img, string text, int x, int y, Rgba32 color)
+    public void Draw(Image<Rgba32> img, string text, int x, int y, Rgba32 color, int scale = 1)
     {
+        if (scale < 1) throw new ArgumentOutOfRangeException(nameof(scale));
         var normalized = this.normalizeText(text);
         if (normalized.Length == 0)
             return;
@@ -73,10 +84,10 @@ public sealed class PixelFont
         {
             var glyph = ResolveGlyph(c);
             if (!first)
-                cursor += CharacterSpacing;
+                cursor += CharacterSpacing * scale;
 
-            DrawGlyph(img, glyph, cursor, y, color);
-            cursor += glyph[0].Length;
+            DrawGlyph(img, glyph, cursor, y, color, scale);
+            cursor += glyph[0].Length * scale;
             first = false;
         }
     }
@@ -137,7 +148,7 @@ public sealed class PixelFont
         return glyphs.TryGetValue(c, out var glyph) ? glyph : fallbackGlyph;
     }
 
-    private static void DrawGlyph(Image<Rgba32> img, string[] glyph, int x, int y, Rgba32 color)
+    private static void DrawGlyph(Image<Rgba32> img, string[] glyph, int x, int y, Rgba32 color, int scale)
     {
         for (var row = 0; row < glyph.Length; row++)
         {
@@ -147,12 +158,14 @@ public sealed class PixelFont
                 if (bits[col] != '1')
                     continue;
 
-                var px = x + col;
-                var py = y + row;
-                if ((uint)px >= img.Width || (uint)py >= img.Height)
-                    continue;
-
-                img[px, py] = color;
+                for (var dy = 0; dy < scale; dy++)
+                for (var dx = 0; dx < scale; dx++)
+                {
+                    var px = x + col * scale + dx;
+                    var py = y + row * scale + dy;
+                    if ((uint)px < img.Width && (uint)py < img.Height)
+                        img[px, py] = color;
+                }
             }
         }
     }

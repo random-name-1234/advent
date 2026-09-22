@@ -47,3 +47,10 @@ Keep ADRs concise and practical with these sections:
 - [`0011-separate-clock-fade-from-scene-transition.md`](0011-separate-clock-fade-from-scene-transition.md)
 - [`0012-shared-matrix-constants.md`](0012-shared-matrix-constants.md)
 - [`0013-multi-resolution-scaling-output.md`](0013-multi-resolution-scaling-output.md)
+- [`0018-page-rail-departures-and-refresh-between-cards.md`](0018-page-rail-departures-and-refresh-between-cards.md)
+- [`0019-use-measured-pixel-text-for-information-scenes.md`](0019-use-measured-pixel-text-for-information-scenes.md)
+- [`0020-skip-rail-intros-and-identify-fast-corridor-services.md`](0020-skip-rail-intros-and-identify-fast-corridor-services.md)
+- [`0021-base-fast-rail-classification-on-the-published-timetable.md`](0021-base-fast-rail-classification-on-the-published-timetable.md)
+
+Numbers 0014-0017 are reserved for unpublished hardware experiments, which are
+not part of the current Pi 4 scene/readability work.
